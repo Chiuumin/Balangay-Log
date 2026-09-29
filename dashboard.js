@@ -450,7 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const pill = item.querySelector('.pill');
                             if (pill) {
                                 pill.className = `pill pill-${result.new_status.toLowerCase().replace('_', '-')}`;
-                                pill.innerText = result.new_status.replace('_', ' ');
+                                   pill.innerText = result.new_status.replace('_', ' ');
                             }
                         }
                     });
