@@ -486,11 +486,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+ // Dismiss modals when clicking on background
     window.addEventListener('click', (e) => {
         if (e.target === encodeModal) closeModal();
         if (e.target === suggestModal) closeSuggest();
+        if (e.target === statusModal) closeStatusModal();
     });
-
+    
     // ==========================================
     // NOTIFICATION BELL & SIDEBAR BADGE SYNC
     // ==========================================
@@ -619,8 +621,87 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    fetchNotifications();
+    fetchNotifications();   
     setInterval(fetchNotifications, 8000);
+
+    // ==========================================
+    // STATUS MODAL & PROGRESSION ENGINE
+    // ==========================================
+    const statusModal          = document.getElementById('statusModal');
+    const btnCloseStatusModal  = document.getElementById('btnCloseStatusModal');
+    const btnCancelStatus      = document.getElementById('btnCancelStatus');
+    const btnConfirmStatus     = document.getElementById('btnConfirmStatus');
+    const statusModalCaseRef   = document.getElementById('statusModalCaseRef');
+    const targetStatusSelect   = document.getElementById('targetStatusSelect');
+    const statusActionNote     = document.getElementById('statusActionNote');
+
+    let activeStatusTargetRef = '';
+
+    function closeStatusModal() {
+        if (statusModal) statusModal.style.display = 'none';
+        activeStatusTargetRef = '';
+    }
+
+    if (btnCloseStatusModal) btnCloseStatusModal.addEventListener('click', closeStatusModal);
+    if (btnCancelStatus) btnCancelStatus.addEventListener('click', closeStatusModal);
+
+    // Clicking any status pill in Recent Cases opens the transition modal
+    document.addEventListener('click', (e) => {
+        const pill = e.target.closest('.pill');
+        if (!pill) return;
+
+        const caseItem = pill.closest('.case-item');
+        if (!caseItem) return;
+
+        const subtext = caseItem.querySelector('.case-subtext')?.innerText || '';
+        const refMatch = subtext.match(/TRK-\d{4}-\d{3}/);
+        const refNumber = refMatch ? refMatch[0] : subtext.split('·')[0].trim();
+
+        activeStatusTargetRef = refNumber;
+        if (statusModalCaseRef) statusModalCaseRef.innerText = refNumber;
+        if (statusActionNote) statusActionNote.value = '';
+        if (statusModal) statusModal.style.display = 'flex';
+    });
+
+    if (btnConfirmStatus) {
+        btnConfirmStatus.addEventListener('click', async () => {
+            if (!activeStatusTargetRef) return;
+
+            const selectedStatus = targetStatusSelect?.value || 'IN_PROGRESS';
+            const noteText       = statusActionNote?.value.trim() || '';
+
+            btnConfirmStatus.disabled = true;
+            btnConfirmStatus.innerText = 'Updating...';
+
+            try {
+                const response = await fetch('api/update_case_status.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        reference_number: activeStatusTargetRef,
+                        new_status: selectedStatus,
+                        action_note: noteText
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    closeStatusModal();
+                    loadDashboardData();
+                    if (typeof fetchNotifications === 'function') fetchNotifications();
+                } else {
+                    alert('Update failed: ' + result.message);
+                }
+            } catch (err) {
+                console.error('Status transition error:', err);
+                alert('Connection error while updating status.');
+            } finally {
+                btnConfirmStatus.disabled = false;
+                btnConfirmStatus.innerText = 'Update Status';
+            }
+        });
+    }
 
     // ==========================================
     // 6. SESSION, USER PROFILE & LOGOUT
