@@ -270,10 +270,18 @@
 <!-- ENCODE CASE MODAL (Case Inventory Module) -->
 <div class="modal-overlay" id="encodeModal" style="display: none;">
     <div class="modal-container" style="max-height: 88vh; max-width: 600px; width: 100%; overflow-y: auto; overflow-x: hidden;">
-        <div class="modal-header">
+       <div class="modal-header">
             <div>
                 <h3 class="modal-title">Encode New Incident Report</h3>
-                <span class="modal-subtitle">Scenario 1: Officer-Assisted Walk-In Intake</span>
+                <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                    <label for="intakeChannel" style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Reporting Channel:</label>
+                    <select id="intakeChannel" name="intake_channel" style="font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b;">
+                        <option value="Walk-In Desk" selected>Walk-In Desk Blotter</option>
+                        <option value="Emergency Hotline">Emergency Hotline Call</option>
+                        <option value="Tanod Patrol Dispatch">Field Tanod Patrol Report</option>
+                        <option value="Citizen Portal">Citizen Online Report</option>
+                    </select>
+                </div>
             </div>
             <button type="button" class="modal-close" id="btnCloseModal">&times;</button>
         </div>

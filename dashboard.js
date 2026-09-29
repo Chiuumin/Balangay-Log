@@ -5,7 +5,6 @@ window.currentAiSuggested = 'Low';
 window.savedOverrideJustification = '';
 let pendingPriorityChange = '';
 
-
 // ==========================================
 // 0. TOP-LEVEL AUTH & HISTORY TRAP
 // Must run OUTSIDE DOMContentLoaded for bfcache support
@@ -141,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnCloseModal) btnCloseModal.addEventListener('click', closeModal);
     if (btnCancelModal) btnCancelModal.addEventListener('click', closeModal);
 
-// ==========================================
+    // ==========================================
     // 4. ENCODE FORM DIRECT SUBMISSION
     // ==========================================
     const encodeForm = document.getElementById('encodeCaseForm');
@@ -152,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const activityTimelineContainer = document.getElementById('activityTimelineContainer');
     const urgentBanner = document.getElementById('urgentBanner');
 
-   if (encodeForm) {
+    if (encodeForm) {
         encodeForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -165,6 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const categoryVal       = document.getElementById('incidentCategory')?.value || '';
             const titleVal          = document.getElementById('incidentTitle')?.value.trim() || '';
             const narrativeVal      = document.getElementById('incidentNarrative')?.value.trim() || '';
+            const intakeChannelVal  = document.getElementById('intakeChannel')?.value || 'Walk-In Desk';
 
             // 2. Client-side input validation checks
             if (!nameVal || nameVal.length < 3) {
@@ -249,6 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 isPriorityOverridden: isOverridden,
                 overrideJustification: isOverridden ? finalJustification : null,
                 incidentNarrative: narrativeVal,
+                intakeChannel: intakeChannelVal,
                 lat: latVal,
                 lng: lngVal
             };
@@ -352,7 +353,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-   
     // ==========================================
     // 5. AI SUGGEST ENGINE & ACTION EXECUTION
     // ==========================================
@@ -792,7 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="case-tags">
                                 <span class="badge ${badgeClass}">${badgeLabel}</span>
                                 <span class="pill pill-${statusClass}">${item.status.replace('_', ' ')}</span>
-                                <button class="btn-suggest"> Suggest</button>
+                                <button class="btn-suggest">💡 Suggest</button>
                             </div>
                         </div>
                     `;
@@ -804,30 +804,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-   // ==========================================
-    // 9. LIVE AI TRIAGE + POP-UP DOWNGRADE ENGINE
     // ==========================================
-    const TRIAGE_DICTIONARY = {
+    // 9. LIVE AI TRIAGE (LEXICON & ACTION-WORD TOKEN ENGINE)
+    // ==========================================
+    const STOP_WORDS = new Set([
+        'ang', 'mga', 'ng', 'sa', 'si', 'sina', 'ni', 'nina', 'kay', 'kina',
+        'at', 'o', 'pero', 'dahil', 'kung', 'para', 'na', 'pa', 'ba', 'eh',
+        'may', 'meron', 'wala', 'po', 'opo', 'ito', 'iyan', 'iyon', 'dito', 'doon',
+        'the', 'a', 'an', 'is', 'are', 'was', 'were', 'in', 'on', 'at', 'to',
+        'for', 'with', 'and', 'or', 'of', 'by', 'it', 'this', 'that', 'from'
+    ]);
+
+    const ACTION_LEXICON = {
         critical: {
             weight: 60,
-            words: [
-                'baril', 'gun', 'saksak', 'knife', 'itak', 'patay', 'dugo', 
-                'bleeding', 'sunog', 'fire', 'hostage', 'sinaksak', 'babarilin', 
-                'emergency', 'hinimatay', 'unconscious', 'posible mamatay', 'tinaga'
+            actions: [
+                'nanaksak', 'sinaksak', 'saksakan', 'tinarakan', 'tinaga', 'taga',
+                'nagpaputok', 'binaril', 'pinaputukan', 'namaril', 'barilan',
+                'sinunog', 'nasusunog', 'sumabog', 'pinatay', 'napatay', 'pumatay',
+                'inaatake', 'inambush', 'hinostage', 'ginahasa',
+                'stabbed', 'stabbing', 'shot', 'shooting', 'burned', 'burning', 'exploded', 'murdered', 'killed'
             ]
         },
         high: {
             weight: 25,
-            words: [
-                'suntukan', 'away', 'buntalan', 'sinaktan', 'pulis', 'nakaw', 
-                'holdap', 'theft', 'threat', 'banta', 'harass', 'trespassing', 
-                'alitan', 'sapukan', 'pananakit', 'eskandalo', 'nanakit'
-            ]
-        },
-        low: {
-            words: [
-                'ingay', 'videoke', 'karaoke', 'tahol', 'aso', 'basura', 
-                'harang', 'parking', 'tsismis', 'utang', 'chismis'
+            actions: [
+                'nag-aaway', 'nagaaway', 'nagpang-abot', 'nagbugbugan', 'binugbog', 'binubugbog',
+                'nagsuntukan', 'sinuntok', 'hinampas', 'pinalo', 'sinaktan', 'nanakit',
+                'ninakaw', 'ninanakaw', 'nangholdap', 'hinoldap', 'kinulimbat',
+                'tinakas', 'ninakawan', 'umakyat',
+                'fighting', 'assaulted', 'beaten', 'robbed', 'stolen', 'burglary'
             ]
         }
     };
@@ -850,62 +856,77 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let triageDebounce;
 
-        // 1. Evaluate narrative text as officer types
+        // Evaluate narrative text tokens as officer types
         const evaluateTriage = () => {
-            const combinedText = (narrativeInput.value + ' ' + (categorySelect?.value || '')).toLowerCase();
+            const rawNarrative = narrativeInput.value.trim();
+            const categoryVal = categorySelect?.value || '';
 
-            if (narrativeInput.value.trim().length < 3) {
+            if (rawNarrative.length < 3) {
                 if (triageHint) triageHint.innerText = '';
                 window.currentAiSuggested = 'Low';
+                prioritySelect.value = 'Low';
                 return;
             }
 
-            let score = 0;
+            // 1. Tokenize into distinct clean words (ignoring punctuation & stop words)
+            const tokens = rawNarrative.toLowerCase()
+                .replace(/[^a-zA-ZñÑ0-9\s-]/g, ' ')
+                .split(/\s+/)
+                .filter(word => word.length >= 3 && !STOP_WORDS.has(word));
+
+           let matchedCritical = [];
+            let matchedHigh = [];
+
+            // 1. Check for Critical action verbs (Weapons, Lethal Threats, Arson)
+            ACTION_LEXICON.critical.actions.forEach(action => {
+                if (tokens.includes(action)) {
+                    matchedCritical.push(action);
+                }
+            });
+
+            // 2. Check for High action verbs (Brawls, Fistfights, Robbery, Burglary)
+            ACTION_LEXICON.high.actions.forEach(action => {
+                if (tokens.includes(action)) {
+                    matchedHigh.push(action);
+                }
+            });
+
+            // 3. Strict Tier Assignment: Critical ONLY if critical actions are explicitly found
+            let suggested = 'Low';
             let matchedKeywords = [];
 
-            TRIAGE_DICTIONARY.critical.words.forEach(w => {
-                if (combinedText.includes(w)) {
-                    score += TRIAGE_DICTIONARY.critical.weight;
-                    matchedKeywords.push(w);
-                }
-            });
-
-            TRIAGE_DICTIONARY.high.words.forEach(w => {
-                if (combinedText.includes(w)) {
-                    score += TRIAGE_DICTIONARY.high.weight;
-                    matchedKeywords.push(w);
-                }
-            });
-
-            if (categorySelect?.value === 'Physical Altercation') score += 25;
-            if (categorySelect?.value === 'Theft') score += 20;
-
-            let suggested = 'Low';
-            if (score >= 50) suggested = 'Critical';
-            else if (score >= 20) suggested = 'High';
+            if (matchedCritical.length > 0) {
+                suggested = 'Critical';
+                matchedKeywords = matchedCritical;
+            } else if (matchedHigh.length > 0 || categoryVal === 'Physical Altercation' || categoryVal === 'Theft') {
+                suggested = 'High';
+                matchedKeywords = matchedHigh;
+            }
 
             window.currentAiSuggested = suggested;
             prioritySelect.value = suggested;
 
             if (triageHint) {
                 if (matchedKeywords.length > 0) {
-                    triageHint.innerHTML = `⚡ AI Detected: <strong>${suggested}</strong> (${matchedKeywords.slice(0, 3).join(', ')})`;
+                    triageHint.innerHTML = `⚡ AI Detected Action: <strong>${suggested}</strong> (${matchedKeywords.slice(0, 3).join(', ')})`;
+                } else if (categoryVal === 'Physical Altercation' || categoryVal === 'Theft') {
+                    triageHint.innerHTML = `⚡ AI Category Assessment: <strong>${suggested}</strong>`;
                 } else {
-                    triageHint.innerHTML = `⚡ AI Suggested: <strong>${suggested}</strong>`;
+                    triageHint.innerHTML = `⚡ AI Suggested: <strong>${suggested}</strong> (Standard Monitoring)`;
                 }
             }
         };
 
         narrativeInput.addEventListener('input', () => {
             clearTimeout(triageDebounce);
-            triageDebounce = setTimeout(evaluateTriage, 200);
+            triageDebounce = setTimeout(evaluateTriage, 180);
         });
 
         if (categorySelect) {
             categorySelect.addEventListener('change', evaluateTriage);
         }
 
-        // 2. Intercept Manual Priority Downgrades
+        // Intercept Manual Priority Downgrades
         prioritySelect.addEventListener('change', () => {
             const chosen = prioritySelect.value;
 
@@ -923,7 +944,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // 3. Downgrade Modal Button Controls
+        // Downgrade Modal Button Controls
         if (popupReasonSelect && popupCustomGroup) {
             popupReasonSelect.addEventListener('change', () => {
                 popupCustomGroup.style.display = popupReasonSelect.value === 'Other' ? 'block' : 'none';
