@@ -475,33 +475,33 @@
     <!-- Link Dashboard JS logic -->
     <script src="dashboard.js?v=15"></script>
 
-    <!-- STATUS TRANSITION MODAL -->
-<div id="statusModal" class="modal-overlay" style="display: none;">
-    <div class="modal-box" style="max-width: 440px;">
-        <div class="modal-header">
+ <!-- STATUS TRANSITION MODAL -->
+<div id="statusModal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center;">
+    <div class="modal-box" style="background: #ffffff; width: 100%; max-width: 460px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.2); overflow: hidden; border: 1px solid #e2e8f0;">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #f1f5f9; background: #ffffff;">
             <div>
-                <h3 style="margin: 0; font-size: 1.1rem; color: #0f172a;">Update Incident Status</h3>
+                <h3 style="margin: 0; font-size: 1.1rem; color: #0f172a; font-weight: 700;">Update Incident Status</h3>
                 <span id="statusModalCaseRef" style="font-size: 0.78rem; color: #64748b; font-weight: 600;">TRK-XXXX-XXX</span>
             </div>
-            <button type="button" id="btnCloseStatusModal" class="btn-modal-close">&times;</button>
+            <button type="button" id="btnCloseStatusModal" style="background: transparent; border: none; font-size: 1.4rem; line-height: 1; cursor: pointer; color: #94a3b8;">&times;</button>
         </div>
-        <div class="modal-body" style="padding: 18px 22px;">
-            <div class="form-group" style="margin-bottom: 14px;">
-                <label style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: block;">Target Progression State</label>
-                <select id="targetStatusSelect" class="form-control" style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid #cbd5e1;">
+        <div class="modal-body" style="padding: 20px; background: #ffffff;">
+            <div style="margin-bottom: 16px;">
+                <label style="font-size: 0.82rem; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">Target Progression State</label>
+                <select id="targetStatusSelect" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.88rem; background: #ffffff; color: #0f172a; outline: none;">
                     <option value="IN_PROGRESS">In Progress (Active Dispatch / Investigation)</option>
                     <option value="FOR_RESOLUTION">For Resolution (Lupon / Conciliation Hearing)</option>
                     <option value="RESOLVED">Resolved (Amicable Settlement / Concluded)</option>
                     <option value="DISMISSED">Dismissed (Withdrawn / False Report)</option>
                 </select>
             </div>
-            <div class="form-group" style="margin-bottom: 14px;">
-                <label style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: block;">Officer Log / Progress Notes</label>
-                <textarea id="statusActionNote" class="form-control" rows="3" placeholder="Briefly describe tanod action taken or hearing progress..." style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid #cbd5e1;"></textarea>
+            <div style="margin-bottom: 20px;">
+                <label style="font-size: 0.82rem; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">Officer Log / Progress Notes</label>
+                <textarea id="statusActionNote" rows="3" placeholder="Briefly describe tanod action taken or hearing progress..." style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.88rem; font-family: inherit; color: #0f172a; outline: none; resize: vertical; box-sizing: border-box;"></textarea>
             </div>
-            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px;">
-                <button type="button" id="btnCancelStatus" class="btn btn-secondary" style="padding: 8px 14px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer;">Cancel</button>
-                <button type="button" id="btnConfirmStatus" class="btn btn-primary" style="padding: 8px 16px; border-radius: 6px; background: #0b1528; color: #fff; border: none; font-weight: 600; cursor: pointer;">Update Status</button>
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" id="btnCancelStatus" style="padding: 9px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; font-weight: 600; cursor: pointer; font-size: 0.85rem;">Cancel</button>
+                <button type="button" id="btnConfirmStatus" style="padding: 9px 18px; border-radius: 8px; background: #0b1528; color: #ffffff; border: none; font-weight: 600; cursor: pointer; font-size: 0.85rem;">Update Status</button>
             </div>
         </div>
     </div>
