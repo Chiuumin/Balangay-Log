@@ -123,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function openModal() {
         if (encodeModal) {
             encodeModal.style.display = 'flex';
-            document.body.style.overflow = 'hidden'; // Locks dashboard background scroll
+            document.body.style.overflow = 'hidden';
             initLeafletPicker();
         }
     }
@@ -131,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function closeModal() {
         if (encodeModal) {
             encodeModal.style.display = 'none';
-            document.body.style.overflow = ''; // Unlocks dashboard background scroll
+            document.body.style.overflow = '';
         }
     }
 
@@ -155,7 +155,6 @@ document.addEventListener('DOMContentLoaded', () => {
         encodeForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            // 1. Extract and sanitize field values
             const nameVal           = document.getElementById('complainantName')?.value.trim() || '';
             const phoneVal          = document.getElementById('complainantPhone')?.value.trim() || '';
             const purokVal          = document.getElementById('purokSelect')?.value || '';
@@ -166,7 +165,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const narrativeVal      = document.getElementById('incidentNarrative')?.value.trim() || '';
             const intakeChannelVal  = document.getElementById('intakeChannel')?.value || 'Walk-In Desk';
 
-            // 2. Client-side input validation checks
             if (!nameVal || nameVal.length < 3) {
                 alert('Please enter a valid Complainant Full Name (at least 3 characters).');
                 document.getElementById('complainantName')?.focus();
@@ -215,18 +213,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // Combine addresses and coordinates
             const fullAddress = `${houseVal} ${streetVal}`.trim();
             const latVal = parseFloat(document.getElementById('incidentLat')?.value) || 14.545300;
             const lngVal = parseFloat(document.getElementById('incidentLng')?.value) || 120.573900;
 
-            // --- OVERRIDE EXTRACTION ---
             const priorityVal = document.getElementById('priorityLevel')?.value || 'Low';
             const aiSuggested = window.currentAiSuggested || 'Low';
             const isOverridden = (aiSuggested === 'Critical' && priorityVal !== 'Critical') ? 1 : 0;
             const finalJustification = window.savedOverrideJustification || '';
 
-            // Guard: Require justification if downgraded from Critical
             if (isOverridden && !finalJustification.trim()) {
                 alert('Officer justification is required when downgrading a Critical incident.');
                 const downgradeModal = document.getElementById('downgradeModal');
@@ -236,7 +231,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // 3. Assemble clean payload without fallbacks
             const payload = {
                 complainantName: nameVal,
                 complainantPhone: phoneVal,
@@ -254,7 +248,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 lng: lngVal
             };
 
-            // 4. UI Submission feedback
             const btnSubmit = document.getElementById('btnSubmitCase') || encodeForm.querySelector('button[type="submit"]');
             if (btnSubmit) {
                 btnSubmit.disabled = true;
@@ -335,7 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const triageHint = document.getElementById('aiTriageHint');
                     if (triageHint) triageHint.innerText = '';
                     closeModal();
-                    
+
                     if (typeof loadDashboardData === 'function') loadDashboardData();
                     if (typeof fetchNotifications === 'function') fetchNotifications();
                 } else {
@@ -493,7 +486,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Dismiss modals when clicking on background
     window.addEventListener('click', (e) => {
         if (e.target === encodeModal) closeModal();
         if (e.target === suggestModal) closeSuggest();
@@ -805,38 +797,146 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ==========================================
-    // 9. LIVE AI TRIAGE (LEXICON & ACTION-WORD TOKEN ENGINE)
+    // 9. LIVE AI TRIAGE (UNIVERSAL BILINGUAL HARMS & STEM ENGINE)
     // ==========================================
     const STOP_WORDS = new Set([
+        // Filipino Stop Words
         'ang', 'mga', 'ng', 'sa', 'si', 'sina', 'ni', 'nina', 'kay', 'kina',
         'at', 'o', 'pero', 'dahil', 'kung', 'para', 'na', 'pa', 'ba', 'eh',
         'may', 'meron', 'wala', 'po', 'opo', 'ito', 'iyan', 'iyon', 'dito', 'doon',
+        'isang', 'parte', 'gilid', 'loob', 'labas', 'harap', 'tapat', 'kanto',
+        'raw', 'daw', 'din', 'rin', 'lang', 'naman', 'kasi', 'yata', 'pala',
+        
+        // English Stop Words
         'the', 'a', 'an', 'is', 'are', 'was', 'were', 'in', 'on', 'at', 'to',
-        'for', 'with', 'and', 'or', 'of', 'by', 'it', 'this', 'that', 'from'
+        'for', 'with', 'and', 'or', 'of', 'by', 'it', 'this', 'that', 'from',
+        'there', 'here', 'some', 'has', 'have', 'had', 'been', 'being',
+        
+        // Pronouns
+        'ako', 'ikaw', 'ka', 'siya', 'kami', 'tayo', 'kayo', 'sila',
+        'ko', 'mo', 'niya', 'namin', 'natin', 'ninyo', 'nila',
+        'akin', 'iyo', 'kaniya', 'kanya', 'amin', 'atin', 'inyo', 'kanila',
+        'he', 'she', 'they', 'them', 'their', 'we', 'us', 'our', 'you', 'your', 'my', 'me',
+        
+        // Non-threat noise terms
+        'nagpapatugtog', 'nagpapatutog', 'patugtog', 'tugtog', 'kanta', 'musika',
+        'narinig', 'dinig', 'tingin', 'sabi', 'usap', 'tanong', 'heard', 'talking'
     ]);
 
-    const ACTION_LEXICON = {
-        critical: {
-            weight: 60,
-            actions: [
-                'nanaksak', 'sinaksak', 'saksakan', 'tinarakan', 'tinaga', 'taga',
-                'nagpaputok', 'binaril', 'pinaputukan', 'namaril', 'barilan',
-                'sinunog', 'nasusunog', 'sumabog', 'pinatay', 'napatay', 'pumatay',
-                'inaatake', 'inambush', 'hinostage', 'ginahasa',
-                'stabbed', 'stabbing', 'shot', 'shooting', 'burned', 'burning', 'exploded', 'murdered', 'killed'
-            ]
-        },
-        high: {
-            weight: 25,
-            actions: [
-                'nag-aaway', 'nagaaway', 'nagpang-abot', 'nagbugbugan', 'binugbog', 'binubugbog',
-                'nagsuntukan', 'sinuntok', 'hinampas', 'pinalo', 'sinaktan', 'nanakit',
-                'ninakaw', 'ninanakaw', 'nangholdap', 'hinoldap', 'kinulimbat',
-                'tinakas', 'ninakawan', 'umakyat',
-                'fighting', 'assaulted', 'beaten', 'robbed', 'stolen', 'burglary'
-            ]
-        }
+    const THREAT_ROOTS = {
+        critical: [
+            // Lethal / Fatalities / Severe Trauma
+            'patay', 'bangkay', 'laslas', 'pugot', 'bitay', 'lunod', 'sakal', 'lason',
+            'dead', 'die', 'dying', 'kill', 'killer', 'murder', 'murderer', 'corpse', 'fatal',
+            'drown', 'strangle', 'poison', 'choke', 'hang',
+
+            // Bladed Weapons & Stabbing
+            'saksak', 'naksak', 'tarak', 'taga', 'itak', 'kutsilyo', 'patalim', 'balisong', 'gulok', 'kampit',
+            'stab', 'knife', 'blade', 'machete', 'slashed',
+
+            // Firearms & Explosives
+            'baril', 'maril', 'putok', 'armas', 'sumpak', 'rebolber', 'pistola', 'bala',
+            'shoot', 'gun', 'firearm', 'bullet', 'rifle', 'shotgun', 'pistol',
+            'sunog', 'sabog', 'granada', 'molotov', 'bomba', 'apoy',
+            'burn', 'arson', 'bomb', 'fire', 'explode', 'explosion',
+
+            // Crisis & Felonies
+            'hostage', 'gahasa', 'halay', 'kidnap', 'dukot', 'ambush',
+            'rape', 'abduct', 'kidnapping'
+        ],
+
+        high: [
+            // Physical Altercations & Injuries
+            'suntok', 'nuntok', 'bugbog', 'away', 'hampas', 'palo', 'tadyak', 'sipa', 'sakitan',
+            'buno', 'sampal', 'sabunot', 'bato', 'basag', 'kagulo', 'eskandalo', 'rambol',
+            'bali', 'pasa', 'dugo', 'sugat', 'lapnos',
+            'fight', 'assault', 'punch', 'beat', 'hit', 'brawl', 'strike', 'slap', 'kick',
+            'injury', 'injured', 'wound', 'bleeding', 'fracture', 'bruise', 'attack',
+
+            // Property Crimes & Theft
+            'nakaw', 'holdap', 'kulimbat', 'agaw', 'snatch', 'kupit', 'nanloob', 'pitas', 'umakyat',
+            'loob ng bahay', 'tinakas',
+            'steal', 'theft', 'rob', 'robbery', 'burglary', 'loot', 'stolen', 'thief',
+
+            // Threats, Harassment & Substances
+            'banta', 'pananakot', 'haras', 'tutok', 'hamon', 'droga', 'shabu', 'marijuana',
+            'threat', 'threaten', 'harass', 'extort', 'blackmail', 'drugs'
+        ]
     };
+
+    function getLevenshteinDistance(a, b) {
+        if (a.length === 0) return b.length;
+        if (b.length === 0) return a.length;
+        const matrix = [];
+        for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+        for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+        for (let i = 1; i <= b.length; i++) {
+            for (let j = 1; j <= a.length; j++) {
+                if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                    matrix[i][j] = matrix[i - 1][j - 1];
+                } else {
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j - 1] + 1,
+                        matrix[i][j - 1] + 1,
+                        matrix[i - 1][j] + 1
+                    );
+                }
+            }
+        }
+        return matrix[b.length][a.length];
+    }
+
+    function extractStem(word) {
+        let clean = word.toLowerCase().trim();
+
+        // 1. Tagalog Affix & Reduplication Stripping
+        clean = clean.replace(/^(pananana|panana|pamama|panunu|manana|mamama|manunu)/, '');
+        clean = clean.replace(/^(ipagpapatuloy|ipagpapa|nanghihi|manghihi|pagkaka)/, '');
+        clean = clean.replace(/^(nagsasa|magsasa|nagpa|magpa|pinag|ipag|nagsi|magsi|naga|maga)/, '');
+        clean = clean.replace(/^(ipina|pinag|pina|hina|tina|bina|sina|kinal|napa|papa)/, '');
+        clean = clean.replace(/^(pang|mang|pam|mam|pan|man|pag|nag|mag|umu|uma|ina|nam|pum)/, '');
+
+        if (clean.length >= 6 && clean.slice(0, 2) === clean.slice(2, 4)) {
+            clean = clean.slice(2);
+        }
+
+        if (clean.startsWith('naksak')) clean = clean.replace('naksak', 'saksak');
+        if (clean.startsWith('maril')) clean = clean.replace('maril', 'baril');
+        if (clean.startsWith('nuntok')) clean = clean.replace('nuntok', 'suntok');
+
+        clean = clean.replace(/(an|han|in|hin|hon|on)$/, '');
+
+        // 2. English Suffixes
+        clean = clean.replace(/(ing|ed|ers|er|es|s)$/, '');
+
+        return clean;
+    }
+
+    function matchesRootList(token, rootList) {
+        if (token.length < 3) {
+            return null;
+        }
+
+        const stem = extractStem(token);
+
+        for (const root of rootList) {
+            if (token === root || stem === root) {
+                return root;
+            }
+
+            if (token.includes(root) || stem.includes(root)) {
+                return root;
+            }
+
+            if (root.length >= 5 && Math.abs(stem.length - root.length) <= 1) {
+                if (getLevenshteinDistance(stem, root) <= 1) {
+                    return root;
+                }
+            }
+        }
+        return null;
+    }
 
     function setupLiveTriage() {
         const narrativeInput = document.getElementById('incidentNarrative');
@@ -856,7 +956,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let triageDebounce;
 
-        // Evaluate narrative text tokens as officer types
         const evaluateTriage = () => {
             const rawNarrative = narrativeInput.value.trim();
             const categoryVal = categorySelect?.value || '';
@@ -868,47 +967,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // 1. Tokenize into distinct clean words (ignoring punctuation & stop words)
             const tokens = rawNarrative.toLowerCase()
                 .replace(/[^a-zA-ZñÑ0-9\s-]/g, ' ')
                 .split(/\s+/)
                 .filter(word => word.length >= 3 && !STOP_WORDS.has(word));
 
-           let matchedCritical = [];
+            let matchedCritical = [];
             let matchedHigh = [];
 
-            // 1. Check for Critical action verbs (Weapons, Lethal Threats, Arson)
-            ACTION_LEXICON.critical.actions.forEach(action => {
-                if (tokens.includes(action)) {
-                    matchedCritical.push(action);
+            tokens.forEach(token => {
+                const critMatch = matchesRootList(token, THREAT_ROOTS.critical);
+                if (critMatch && !matchedCritical.includes(critMatch)) {
+                    matchedCritical.push(critMatch);
+                }
+
+                const highMatch = matchesRootList(token, THREAT_ROOTS.high);
+                if (highMatch && !matchedHigh.includes(highMatch)) {
+                    matchedHigh.push(highMatch);
                 }
             });
 
-            // 2. Check for High action verbs (Brawls, Fistfights, Robbery, Burglary)
-            ACTION_LEXICON.high.actions.forEach(action => {
-                if (tokens.includes(action)) {
-                    matchedHigh.push(action);
-                }
-            });
-
-            // 3. Strict Tier Assignment: Critical ONLY if critical actions are explicitly found
             let suggested = 'Low';
-            let matchedKeywords = [];
+            const allMatches = Array.from(new Set([...matchedCritical, ...matchedHigh]));
 
             if (matchedCritical.length > 0) {
                 suggested = 'Critical';
-                matchedKeywords = matchedCritical;
             } else if (matchedHigh.length > 0 || categoryVal === 'Physical Altercation' || categoryVal === 'Theft') {
                 suggested = 'High';
-                matchedKeywords = matchedHigh;
             }
 
             window.currentAiSuggested = suggested;
             prioritySelect.value = suggested;
 
             if (triageHint) {
-                if (matchedKeywords.length > 0) {
-                    triageHint.innerHTML = `⚡ AI Detected Action: <strong>${suggested}</strong> (${matchedKeywords.slice(0, 3).join(', ')})`;
+                if (allMatches.length > 0) {
+                    triageHint.innerHTML = `⚡ AI Detected Actions (${allMatches.join(', ')}): <strong>${suggested}</strong>`;
                 } else if (categoryVal === 'Physical Altercation' || categoryVal === 'Theft') {
                     triageHint.innerHTML = `⚡ AI Category Assessment: <strong>${suggested}</strong>`;
                 } else {
@@ -926,7 +1019,6 @@ document.addEventListener('DOMContentLoaded', () => {
             categorySelect.addEventListener('change', evaluateTriage);
         }
 
-        // Intercept Manual Priority Downgrades
         prioritySelect.addEventListener('change', () => {
             const chosen = prioritySelect.value;
 
@@ -944,7 +1036,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Downgrade Modal Button Controls
         if (popupReasonSelect && popupCustomGroup) {
             popupReasonSelect.addEventListener('change', () => {
                 popupCustomGroup.style.display = popupReasonSelect.value === 'Other' ? 'block' : 'none';
@@ -977,7 +1068,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Initialize triage listener
     setupLiveTriage();
     loadDashboardData();
-});
+}); 
