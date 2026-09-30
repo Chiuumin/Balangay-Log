@@ -29,7 +29,9 @@ if ($criticalRes) {
             'category_label' => 'CRITICAL EMERGENCY',
             'priority' => 'critical',
             'badge_color' => '#dc2626',
-            'border_color' => '#ef4444'
+            'border_color' => '#ef4444',
+            'subtext' => $row['reference_number'],          // Provides the ID text for the UI
+            'target_url' => '#' . $row['reference_number']  // Provides the anchor link for JS routing
         ];
     }
 }
@@ -51,7 +53,9 @@ if ($highRes) {
             'category_label' => 'HIGH PRIORITY',
             'priority' => 'high',
             'badge_color' => '#d97706',
-            'border_color' => '#f97316'
+            'border_color' => '#f97316',
+            'subtext' => $row['reference_number'],
+            'target_url' => '#' . $row['reference_number']
         ];
     }
 }
@@ -73,7 +77,9 @@ if ($lowRes) {
             'category_label' => 'LOW PRIORITY',
             'priority' => 'low',
             'badge_color' => '#15803d',
-            'border_color' => '#10b981'
+            'border_color' => '#10b981',
+            'subtext' => $row['reference_number'],
+            'target_url' => '#' . $row['reference_number']
         ];
     }
 }
@@ -98,3 +104,4 @@ echo json_encode([
 ]);
 
 $conn->close();
+?>
