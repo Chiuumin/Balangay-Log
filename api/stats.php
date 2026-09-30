@@ -25,8 +25,19 @@ try {
     $stmt = $pdo->query("SELECT COUNT(DISTINCT complainant_name) as count FROM incident_reports");
     $residentsServed = $stmt->fetch()['count'];
 
-    // 4. Avg Resolution Time (Hardcoded baseline for now until resolved timestamps are added to the DB)
-    $avgResolution = 2; 
+    // 4. Calculate Dynamic Average Resolution Time (in Days)
+    // We calculate the difference in hours and divide by 24 to get accurate decimals (e.g., 1.5 days)
+    $stmt = $pdo->query("
+        SELECT ROUND(AVG(TIMESTAMPDIFF(HOUR, i.created_at, m.created_at)) / 24, 1) as avg_days
+        FROM incident_reports i
+        JOIN case_milestones m ON i.id = m.incident_id
+        WHERE m.status_snapshot = 'RESOLVED'
+    ");
+    
+    $result = $stmt->fetch();
+    
+    // Fallback to 0 if no cases have been resolved yet
+    $avgResolution = $result['avg_days'] !== null ? $result['avg_days'] : 0;
 
     echo json_encode([
         'success' => true,
