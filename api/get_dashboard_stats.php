@@ -58,10 +58,30 @@ if ($recRes) {
     }
 }
 
+$urgentCases = [];
+$urgentRes = $conn->query("SELECT reference_number, complainant_name, complainant_phone, incident_type, narrative_description, incident_datetime, purok, scenario_type, verification_level, priority_level, ai_recommendation, status, assigned_officer_name, deployed_unit, created_at FROM incident_reports WHERE (priority_level IN ('Critical', 'High') OR status = 'CRITICAL') AND status NOT IN ('RESOLVED', 'FOR_RESOLUTION') ORDER BY CASE WHEN priority_level = 'Critical' OR status = 'CRITICAL' THEN 0 ELSE 1 END, created_at DESC");
+
+if ($urgentRes) {
+    while ($row = $urgentRes->fetch_assoc()) {
+        $urgentCases[] = $row;
+    }
+}
+
+$caseQueue = [];
+$queueRes = $conn->query("SELECT reference_number, complainant_name, complainant_phone, incident_type, narrative_description, incident_datetime, purok, scenario_type, verification_level, priority_level, ai_recommendation, status, assigned_officer_name, deployed_unit, created_at FROM incident_reports WHERE status NOT IN ('RESOLVED', 'FOR_RESOLUTION') ORDER BY CASE WHEN priority_level = 'Critical' OR status = 'CRITICAL' THEN 0 WHEN priority_level = 'High' THEN 1 ELSE 2 END, created_at DESC");
+
+if ($queueRes) {
+    while ($row = $queueRes->fetch_assoc()) {
+        $caseQueue[] = $row;
+    }
+}
+
 echo json_encode([
     'success' => true,
     'counts' => $counts,
-    'recent_cases' => $recent
+    'recent_cases' => $recent,
+    'urgent_cases' => $urgentCases,
+    'case_queue' => $caseQueue
 ]);
 
 $conn->close();

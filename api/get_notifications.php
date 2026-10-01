@@ -29,7 +29,8 @@ if ($criticalRes) {
             'category_label' => 'CRITICAL EMERGENCY',
             'priority' => 'critical',
             'badge_color' => '#dc2626',
-            'border_color' => '#ef4444'
+            'border_color' => '#ef4444',
+            'target_url' => 'urgent.html'
         ];
     }
 }
@@ -51,7 +52,8 @@ if ($highRes) {
             'category_label' => 'HIGH PRIORITY',
             'priority' => 'high',
             'badge_color' => '#d97706',
-            'border_color' => '#f97316'
+            'border_color' => '#f97316',
+            'target_url' => 'urgent.html'
         ];
     }
 }
@@ -73,7 +75,8 @@ if ($lowRes) {
             'category_label' => 'LOW PRIORITY',
             'priority' => 'low',
             'badge_color' => '#15803d',
-            'border_color' => '#10b981'
+            'border_color' => '#10b981',
+            'target_url' => 'urgent.html'
         ];
     }
 }

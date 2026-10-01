@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BalangayLog - Urgent / Emergency</title>
+
+    <script>
+        (function () {
+            const token = sessionStorage.getItem('authToken');
+            const user = sessionStorage.getItem('currentUser');
+            if (!token || !user || token === 'undefined' || token === 'null' || user === 'undefined' || user === 'null') {
+                window.location.replace('index.html');
+            }
+        })();
+    </script>
+
+    <link rel="stylesheet" href="dashboard.css">
+    <style>
+        .urgent-page {
+            background: #f8fafc;
+            min-height: calc(100vh - 64px);
+        }
+
+        .urgent-page-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .urgent-page-header h1 {
+            font-size: 2rem;
+            line-height: 1.2;
+            color: #0f172a;
+            margin: 0;
+        }
+
+        .urgent-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .priority-group-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .priority-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .priority-group-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0;
+            line-height: 1.3;
+            text-transform: uppercase;
+        }
+
+        .priority-group-dot {
+            width: 9px;
+            height: 9px;
+            flex: 0 0 9px;
+            border-radius: 50%;
+            background: #64748b;
+        }
+
+        .priority-group-critical .priority-group-title {
+            color: #a94f4f;
+        }
+
+        .priority-group-critical .priority-group-dot {
+            background: #df8585;
+        }
+
+        .priority-group-high .priority-group-title {
+            color: #b56d37;
+        }
+
+        .priority-group-high .priority-group-dot {
+            background: #e8a36b;
+        }
+
+        .priority-group-standard .priority-group-title {
+            color: #64748b;
+        }
+
+        .priority-group-standard .priority-group-dot {
+            background: #94a3b8;
+        }
+
+        .urgent-case-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 18px 20px 16px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.02);
+        }
+
+        .urgent-case-card.priority-card-critical {
+            border-color: #efb5b5;
+        }
+
+        .urgent-case-card.priority-card-high {
+            border-color: #f2c69f;
+        }
+
+        .urgent-case-card.priority-card-standard {
+            border-color: #cbd5e1;
+        }
+
+        .case-row-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .case-meta-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .case-id {
+            font-size: 0.7rem;
+            letter-spacing: 0;
+            text-transform: uppercase;
+            color: #64748b;
+            font-weight: 700;
+        }
+
+        .status-badge,
+        .priority-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 5px 10px;
+            border-radius: 999px;
+            white-space: nowrap;
+        }
+
+        .status-badge {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .priority-badge.critical {
+            background: #fff1f1;
+            color: #a94f4f;
+        }
+
+        .priority-badge.high {
+            background: #fff5eb;
+            color: #b56d37;
+        }
+
+        .priority-badge.standard {
+            background: #f1f5f9;
+            color: #475569;
+        }
+
+        .urgent-case-card h3 {
+            margin: 16px 0 18px;
+            color: #0f172a;
+            font-size: clamp(1.1rem, 2vw, 1.45rem);
+            line-height: 1.35;
+        }
+
+        .details-action-row {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 18px;
+        }
+
+        .case-details-grid {
+            width: 100%;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 18px 20px;
+            min-width: 0;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .detail-item span {
+            font-size: 0.66rem;
+            letter-spacing: 0;
+            text-transform: uppercase;
+            color: #64748b;
+            font-weight: 700;
+        }
+
+        .detail-item strong {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #1e293b;
+            line-height: 1.4;
+        }
+
+        .case-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+            width: 100%;
+            margin-left: 0;
+            flex-shrink: 0;
+            flex-wrap: nowrap;
+        }
+
+        .primary-btn,
+        .secondary-btn {
+            appearance: none;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-weight: 700;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: transform 0.15s ease, opacity 0.15s ease;
+            min-height: 42px;
+            white-space: nowrap;
+        }
+
+        .primary-btn {
+            background: #dc2626;
+            color: #ffffff;
+            box-shadow: 0 10px 18px rgba(220, 38, 38, 0.18);
+        }
+
+        .secondary-btn {
+            background: #ffffff;
+            color: #0f172a;
+            border: 1px solid #cbd5e1;
+        }
+
+        .quick-dispatch-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            margin: 0;
+            width: min(460px, calc(100vw - 32px));
+            max-height: calc(100dvh - 32px);
+            padding: 0;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            color: #0f172a;
+            box-shadow: 0 24px 64px rgba(15, 23, 42, 0.24);
+            transform: translate(-50%, -50%);
+            overflow-y: auto;
+            z-index: 1100;
+        }
+
+        .quick-dispatch-dialog::backdrop {
+            background: rgba(15, 23, 42, 0.62);
+        }
+
+        .quick-dialog-header,
+        .quick-dialog-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 20px;
+        }
+
+        .quick-dialog-header {
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .quick-dialog-header h2 {
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+        .quick-dialog-body {
+            display: grid;
+            gap: 16px;
+            padding: 20px;
+        }
+
+        .quick-dialog-body p {
+            color: #475569;
+            line-height: 1.55;
+        }
+
+        .quick-dialog-body label,
+        .drawer-status-row label,
+        .drawer-note-label {
+            display: grid;
+            gap: 7px;
+            color: #334155;
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .quick-dialog-body select,
+        .drawer-status-row select,
+        .drawer-note-input {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 10px 12px;
+            background: #ffffff;
+            color: #0f172a;
+            font: inherit;
+        }
+
+        .quick-dialog-footer {
+            justify-content: flex-end;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .dialog-close-btn {
+            width: 36px;
+            height: 36px;
+            border: 0;
+            border-radius: 8px;
+            background: transparent;
+            color: #475569;
+            font-size: 1.4rem;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .urgent-ghost-btn {
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 10px 14px;
+            background: #ffffff;
+            color: #334155;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .urgent-danger-btn {
+            border: 0;
+            border-radius: 8px;
+            padding: 10px 14px;
+            background: #dc2626;
+            color: #ffffff;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .urgent-danger-btn:disabled,
+        .primary-btn:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        .drawer-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            border: 0;
+            background: rgba(15, 23, 42, 0.58);
+            opacity: 0;
+            transition: opacity 0.22s ease;
+        }
+
+        body.drawer-open {
+            overflow: hidden;
+        }
+
+        .drawer-backdrop[hidden] {
+            display: none;
+        }
+
+        .drawer-backdrop.is-open {
+            opacity: 1;
+        }
+
+        .case-drawer {
+            position: fixed;
+            z-index: 1001;
+            inset: 0 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            width: min(40vw, 680px);
+            min-width: 440px;
+            height: 100vh;
+            height: 100dvh;
+            background: #ffffff;
+            box-shadow: -18px 0 44px rgba(15, 23, 42, 0.18);
+            transform: translateX(102%);
+            visibility: hidden;
+            transition: transform 0.24s ease, visibility 0.24s ease;
+        }
+
+        .case-drawer.is-open {
+            transform: translateX(0);
+            visibility: visible;
+        }
+
+        .drawer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 18px 22px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .drawer-heading-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .drawer-case-id {
+            overflow: hidden;
+            color: #0f172a;
+            font-size: 0.92rem;
+            font-weight: 800;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .drawer-priority {
+            padding: 5px 9px;
+            border-radius: 999px;
+            background: #fee2e2;
+            color: #b91c1c;
+            font-size: 0.68rem;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .drawer-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 22px;
+        }
+
+        .drawer-content h2 {
+            margin: 0 0 18px;
+            color: #0f172a;
+            font-size: 1.5rem;
+            line-height: 1.25;
+        }
+
+        .drawer-map-placeholder {
+            display: grid;
+            min-height: 170px;
+            place-content: center;
+            gap: 6px;
+            margin-bottom: 22px;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            background: #e5e7eb;
+            color: #475569;
+            text-align: center;
+        }
+
+        .drawer-map-placeholder strong {
+            font-size: 1rem;
+        }
+
+        .drawer-map-placeholder span {
+            font-size: 0.76rem;
+        }
+
+        .drawer-section-title {
+            margin: 0 0 12px;
+            color: #64748b;
+            font-size: 0.7rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .drawer-details-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+            margin-bottom: 22px;
+        }
+
+        .drawer-detail {
+            display: grid;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .drawer-detail span {
+            color: #64748b;
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .drawer-detail strong {
+            overflow-wrap: anywhere;
+            color: #1e293b;
+            font-size: 0.87rem;
+            font-weight: 600;
+            line-height: 1.45;
+        }
+
+        .drawer-description {
+            margin-bottom: 22px;
+            color: #334155;
+            font-size: 0.88rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        .drawer-note-input {
+            min-height: 86px;
+            resize: vertical;
+            margin-bottom: 22px;
+        }
+
+        .drawer-timeline {
+            display: grid;
+            gap: 0;
+            margin: 0 0 20px;
+            padding: 0 0 0 18px;
+            list-style: none;
+        }
+
+        .drawer-timeline li {
+            position: relative;
+            padding: 0 0 18px 18px;
+            border-left: 2px solid #e2e8f0;
+        }
+
+        .drawer-timeline li::before {
+            position: absolute;
+            top: 2px;
+            left: -6px;
+            width: 10px;
+            height: 10px;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            background: #dc2626;
+            content: '';
+        }
+
+        .drawer-timeline li:last-child {
+            border-left-color: transparent;
+        }
+
+        .drawer-timeline time,
+        .drawer-timeline span {
+            display: block;
+            color: #64748b;
+            font-size: 0.72rem;
+            line-height: 1.5;
+        }
+
+        .drawer-timeline strong {
+            display: block;
+            margin: 3px 0;
+            color: #1e293b;
+            font-size: 0.84rem;
+        }
+
+        .drawer-footer {
+            display: grid;
+            gap: 12px;
+            padding: 14px 22px 18px;
+            border-top: 1px solid #e2e8f0;
+            background: #ffffff;
+        }
+
+        .drawer-status-row,
+        .drawer-footer-actions {
+            display: flex;
+            align-items: flex-end;
+            justify-content: flex-end;
+            gap: 9px;
+        }
+
+        .drawer-status-row label {
+            flex: 1;
+        }
+
+        .drawer-status-row select {
+            min-height: 40px;
+        }
+
+        .drawer-footer-actions > * {
+            flex: 1;
+        }
+
+        .drawer-feedback {
+            min-height: 1em;
+            margin: 0;
+            color: #b91c1c;
+            font-size: 0.76rem;
+        }
+
+        .primary-btn:hover,
+        .secondary-btn:hover {
+            transform: translateY(-1px);
+            opacity: 0.98;
+        }
+
+        @media (max-width: 900px) {
+            .urgent-page-header {
+                flex-direction: column;
+            }
+
+            .case-details-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 560px) {
+            .app-layout {
+                display: block;
+            }
+
+            .sidebar {
+                display: none;
+            }
+
+            .main-wrapper {
+                width: 100%;
+                min-width: 0;
+                padding: 22px 16px;
+                overflow-y: visible;
+            }
+
+            .case-details-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .case-actions {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 8px;
+            }
+
+            .primary-btn,
+            .secondary-btn {
+                padding-right: 10px;
+                padding-left: 10px;
+                font-size: 0.74rem;
+            }
+
+            .case-drawer {
+                width: 100vw;
+                min-width: 0;
+            }
+
+            .drawer-header,
+            .drawer-content,
+            .drawer-footer {
+                padding-right: 16px;
+                padding-left: 16px;
+            }
+
+            .drawer-details-grid {
+                gap: 14px 10px;
+            }
+
+            .drawer-footer-actions {
+                flex-wrap: wrap;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .case-actions {
+                grid-template-columns: 1fr;
+            }
+
+            .case-actions button {
+                width: 100%;
+                white-space: normal;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="brand-box">
+                <div class="brand-avatar">B</div>
+                <div class="brand-text">
+                    <h2 class="brand-name">BalangayLog</h2>
+                    <span class="brand-sub">BRGY. DUALE</span>
+                </div>
+            </div>
+
+            <div class="user-profile-badge">
+                <div class="user-avatar" id="userAvatar">--</div>
+                <div class="user-info">
+                    <span class="user-name" id="userNameDisplay">Loading...</span>
+                    <span class="user-role-pill" id="userRoleDisplay">Officer</span>
+                </div>
+            </div>
+
+            <nav class="nav-menu">
+                <span class="nav-section-title">OVERVIEW</span>
+                <a href="dashboard.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+                    <span>Dashboard</span>
+                </a>
+
+                <span class="nav-section-title">CASES</span>
+                <a href="#" class="nav-item">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+                    <span>All Cases</span>
+                </a>
+                <a href="dashboard.html" class="nav-item">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    <span>Encode New Case</span>
+                </a>
+                <a href="urgent.html" class="nav-item active">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    <span>Urgent / Emergency</span>
+                    <span class="counter-badge badge-red" id="sidebarUrgentBadge" style="display: none;"></span>
+                </a>
+                <a href="#" class="nav-item">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M16 12l-4-4-4 4M12 16V8"></path></svg>
+                    <span>Lupon / Mediation</span>
+                </a>
+
+                <span class="nav-section-title">COMMUNITY</span>
+                <a href="#" class="nav-item">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                    <span>Barangay Alerts</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    <span>Residents</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
+                    <span>Spam Verification</span>
+                    <span class="counter-badge badge-red" id="sidebarSpamBadge" style="display: none"></span>
+                </a>
+
+                <span class="nav-section-title">REPORTING</span>
+                <a href="#" class="nav-item">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                    <span>Reports</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <span>Audit Trail</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    <span>SMS / Notifications</span>
+                </a>
+
+                <div class="nav-footer">
+                    <a href="#" class="nav-item">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        <span>Settings</span>
+                    </a>
+                    <a href="#" id="logoutBtn" class="nav-item">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                        <span>Log out</span>
+                    </a>
+                </div>
+            </nav>
+        </aside>
+
+        <main class="main-wrapper">
+            <header class="dashboard-header urgent-page-header">
+                <div class="header-titles">
+                    <h1 class="welcome-heading">Urgent / Emergency Cases</h1>
+                </div>
+                <div class="header-actions">
+                    <span class="current-date" id="liveClockDisplay">Loading date...</span>
+                    <a href="dashboard.html" class="btn-encode-case" style="text-decoration: none;">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12h18M12 3v18"></path></svg>
+                        <span>Back to Dashboard</span>
+                    </a>
+                </div>
+            </header>
+
+            <section class="card-panel urgent-panel">
+                <div class="panel-header">
+                    <h2>Emergency Case Queue</h2>
+                    <a href="dashboard.html" class="panel-link">Return to overview &rarr;</a>
+                </div>
+
+                <div class="urgent-section">
+                    <p class="urgent-action-feedback" id="urgentActionFeedback" role="status" aria-live="polite"></p>
+                    <div class="urgent-list" id="urgentCaseList">
+                        <div class="empty-state-box">
+                            <p>Loading urgent incidents...</p>
+                            <span>Critical and high-priority cases will appear here.</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <dialog class="quick-dispatch-dialog" id="quickDispatchDialog" aria-labelledby="quickDispatchTitle">
+        <form id="quickDispatchForm">
+            <div class="quick-dialog-header">
+                <h2 id="quickDispatchTitle">Acknowledge Emergency</h2>
+                <button class="dialog-close-btn" id="closeDispatchDialog" type="button" aria-label="Close dispatch dialog">&times;</button>
+            </div>
+            <div class="quick-dialog-body">
+                <p>You are about to acknowledge Case <strong id="dispatchCaseReference"></strong>. Please assign a responding unit.</p>
+                <label for="dispatchResponder">Assign Responder
+                    <select id="dispatchResponder" name="responder" required>
+                        <option value="">Select an officer or unit</option>
+                        <option value="officer|Officer Maria Santos">Officer Maria Santos</option>
+                        <option value="officer|Officer Perez">Officer Perez</option>
+                        <option value="unit|Barangay Patrol 1">Barangay Patrol 1</option>
+                        <option value="unit|Barangay Patrol 2">Barangay Patrol 2</option>
+                    </select>
+                </label>
+                <p class="drawer-feedback" id="dispatchFeedback" role="status" aria-live="polite"></p>
+            </div>
+            <div class="quick-dialog-footer">
+                <button class="urgent-ghost-btn" id="cancelDispatch" type="button">Cancel</button>
+                <button class="urgent-danger-btn" id="confirmDispatch" type="submit">Confirm Dispatch</button>
+            </div>
+        </form>
+    </dialog>
+
+    <button class="drawer-backdrop" id="drawerBackdrop" type="button" aria-label="Close case details" hidden></button>
+    <aside class="case-drawer" id="caseDetailsDrawer" role="dialog" aria-modal="true" aria-labelledby="drawerCaseReference" aria-hidden="true" inert>
+        <header class="drawer-header">
+            <div class="drawer-heading-group">
+                <strong class="drawer-case-id" id="drawerCaseReference">Case Details</strong>
+                <span class="drawer-priority" id="drawerPriority">Critical</span>
+            </div>
+            <button class="dialog-close-btn" id="closeCaseDrawer" type="button" aria-label="Close case details">&times;</button>
+        </header>
+        <div class="drawer-content">
+            <h2 id="drawerIncidentType">Loading case...</h2>
+            <div class="drawer-map-placeholder">
+                <strong>Map View</strong>
+                <span id="drawerMapLocation">Location details loading</span>
+            </div>
+            <h3 class="drawer-section-title">Incident Details</h3>
+            <div class="drawer-details-grid">
+                <div class="drawer-detail"><span>Full Address</span><strong id="drawerAddress"></strong></div>
+                <div class="drawer-detail"><span>Reporter Name</span><strong id="drawerReporter"></strong></div>
+                <div class="drawer-detail"><span>Contact Number</span><strong id="drawerPhone"></strong></div>
+                <div class="drawer-detail"><span>Time Reported</span><strong id="drawerTimeReported"></strong></div>
+                <div class="drawer-detail"><span>Assigned Officer</span><strong id="drawerOfficer"></strong></div>
+                <div class="drawer-detail"><span>Deployed Unit</span><strong id="drawerUnit"></strong></div>
+            </div>
+            <h3 class="drawer-section-title">Caller Description</h3>
+            <p class="drawer-description" id="drawerNarrative"></p>
+            <label class="drawer-note-label" for="drawerNoteInput">Add operational note</label>
+            <textarea class="drawer-note-input" id="drawerNoteInput" placeholder="Record an update for the case timeline..."></textarea>
+            <h3 class="drawer-section-title">Status Timeline</h3>
+            <ol class="drawer-timeline" id="drawerTimeline"><li>Loading case history...</li></ol>
+            <p class="drawer-feedback" id="drawerFeedback" role="status" aria-live="polite"></p>
+        </div>
+        <footer class="drawer-footer">
+            <div class="drawer-status-row">
+                <label for="drawerStatusSelect">New status
+                    <select id="drawerStatusSelect">
+                        <option value="PENDING">Pending</option>
+                        <option value="IN_PROGRESS">In Progress</option>
+                        <option value="FOR_RESOLUTION">For Resolution</option>
+                        <option value="RESOLVED">Resolved</option>
+                        <option value="CRITICAL">Critical</option>
+                    </select>
+                </label>
+                <button class="secondary-btn" id="updateDrawerStatus" type="button">Update Status</button>
+            </div>
+            <div class="drawer-footer-actions">
+                <button class="urgent-ghost-btn" id="addDrawerNote" type="button">Add Note</button>
+                <button class="urgent-danger-btn" id="closeDrawerCase" type="button">Close Case</button>
+            </div>
+        </footer>
+    </aside>
+
+    <script src="urgent.js"></script>
+</body>
+</html>
