@@ -28,8 +28,16 @@ if (!$input) {
 $referenceNumber = trim($input['reference_number'] ?? '');
 $newStatus       = trim($input['new_status'] ?? '');
 $actionNote      = trim($input['action_note'] ?? '');
+$hasOfficerAssignment = array_key_exists('assigned_officer_name', $input);
+$hasUnitAssignment = array_key_exists('deployed_unit', $input);
+$assignedOfficerName = $hasOfficerAssignment && $input['assigned_officer_name'] !== null
+    ? trim($input['assigned_officer_name'])
+    : null;
+$deployedUnit = $hasUnitAssignment && $input['deployed_unit'] !== null
+    ? trim($input['deployed_unit'])
+    : null;
 
-$allowedStatuses = ['PENDING', 'IN_PROGRESS', 'FOR_RESOLUTION', 'RESOLVED', 'DISMISSED'];
+$allowedStatuses = ['PENDING', 'IN_PROGRESS', 'FOR_RESOLUTION', 'RESOLVED', 'CRITICAL'];
 
 if (empty($referenceNumber) || !in_array($newStatus, $allowedStatuses)) {
     http_response_code(422);
@@ -38,7 +46,7 @@ if (empty($referenceNumber) || !in_array($newStatus, $allowedStatuses)) {
 }
 
 // 1. Fetch case details
-$stmtSelect = $conn->prepare("SELECT incident_id, status FROM incident_reports WHERE reference_number = ? LIMIT 1");
+$stmtSelect = $conn->prepare("SELECT id, status, assigned_officer_name, deployed_unit FROM incident_reports WHERE reference_number = ? LIMIT 1");
 $stmtSelect->bind_param("s", $referenceNumber);
 $stmtSelect->execute();
 $res = $stmtSelect->get_result();
@@ -50,31 +58,33 @@ if ($res->num_rows === 0) {
 }
 
 $caseData   = $res->fetch_assoc();
-$incidentId = $caseData['incident_id'];
+$incidentId = $caseData['id'];
 $oldStatus  = $caseData['status'];
+$assignedOfficerName = $hasOfficerAssignment ? $assignedOfficerName : $caseData['assigned_officer_name'];
+$deployedUnit = $hasUnitAssignment ? $deployedUnit : $caseData['deployed_unit'];
 $stmtSelect->close();
 
 // 2. Update case status
-$stmtUpdate = $conn->prepare("UPDATE incident_reports SET status = ? WHERE incident_id = ?");
-$stmtUpdate->bind_param("si", $newStatus, $incidentId);
+$stmtUpdate = $conn->prepare("UPDATE incident_reports SET status = ?, assigned_officer_name = ?, deployed_unit = ? WHERE id = ?");
+$stmtUpdate->bind_param("sssi", $newStatus, $assignedOfficerName, $deployedUnit, $incidentId);
 
 if ($stmtUpdate->execute()) {
     $stmtUpdate->close();
 
     // 3. Log milestone audit entry
     $note = !empty($actionNote) ? $actionNote : "Status transitioned from {$oldStatus} to {$newStatus}.";
-    $stmtMilestone = $conn->prepare("INSERT INTO case_milestones (incident_id, tracking_id, status_snapshot, action_note) VALUES (?, ?, ?, ?)");
-    if ($stmtMilestone) {
-        $stmtMilestone->bind_param("isss", $incidentId, $referenceNumber, $newStatus, $note);
-        $stmtMilestone->execute();
-        $stmtMilestone->close();
-    }
+    $stmtMilestone = $conn->prepare("INSERT INTO case_milestones (incident_id, tracking_id, status_snapshot, officer_in_charge, deployed_unit, action_note) VALUES (?, ?, ?, ?, ?, ?)");
+    $stmtMilestone->bind_param("isssss", $incidentId, $referenceNumber, $newStatus, $assignedOfficerName, $deployedUnit, $note);
+    $stmtMilestone->execute();
+    $stmtMilestone->close();
 
     echo json_encode([
         'success'    => true,
         'message'    => "Case status updated to {$newStatus}.",
         'old_status' => $oldStatus,
-        'new_status' => $newStatus
+        'new_status' => $newStatus,
+        'assigned_officer_name' => $assignedOfficerName,
+        'deployed_unit' => $deployedUnit
     ]);
 } else {
     http_response_code(500);
