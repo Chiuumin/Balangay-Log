@@ -26,17 +26,35 @@ window.addEventListener('pageshow', function () {
     }
 });
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     if (hasValidSession()) {
         window.location.replace('dashboard.html');
         return;
     }
 
+    const loginForm = document.getElementById('loginForm');
+    const setupForm = document.getElementById('setupForm');
+    const setupBtn = document.getElementById('setupBtn');
+    const errorBanner = document.getElementById('errorBanner');
+    const headerTitle = document.querySelector('.auth-header h2');
+    const headerText = document.querySelector('.auth-header p');
+
+    try {
+        const response = await fetch('api/check_setup.php', { cache: 'no-store' });
+        const data = await response.json();
+
+        if (data && data.setup_required) {
+            if (loginForm) loginForm.style.display = 'none';
+            if (setupForm) setupForm.style.display = 'block';
+            if (headerTitle) headerTitle.textContent = 'Initial System Setup';
+            if (headerText) headerText.textContent = 'Create the first System Administrator account.';
+        }
+    } catch (error) {
+        // Ignore and show the normal login form if setup check fails.
+    }
 
     // Element selections
-    const loginForm = document.getElementById('loginForm');
     const loginBtn = document.getElementById('loginBtn');
-    const errorBanner = document.getElementById('errorBanner');
     const usernameInput = document.getElementById('username');
     const passwordInput = document.getElementById('password');
     const togglePasswordBtn = document.getElementById('togglePassword');
@@ -77,6 +95,83 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(fetchRealtimeStats, 5000);
 
     // Form Submission & Authentication
+    if (setupForm) {
+        setupForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const firstName = document.getElementById('setup_first_name')?.value.trim() || '';
+            const lastName = document.getElementById('setup_last_name')?.value.trim() || '';
+            const username = document.getElementById('setup_username')?.value.trim() || '';
+            const password = document.getElementById('setup_password')?.value || '';
+            const confirmPassword = document.getElementById('setup_confirm_password')?.value || '';
+
+            if (!firstName || !lastName || !username || !password || !confirmPassword) {
+                if (errorBanner) {
+                    errorBanner.textContent = 'Please complete every field.';
+                    errorBanner.style.display = 'block';
+                }
+                return;
+            }
+
+            if (password.length < 6) {
+                if (errorBanner) {
+                    errorBanner.textContent = 'Password must be at least 6 characters long.';
+                    errorBanner.style.display = 'block';
+                }
+                return;
+            }
+
+            if (password !== confirmPassword) {
+                if (errorBanner) {
+                    errorBanner.textContent = 'Passwords do not match.';
+                    errorBanner.style.display = 'block';
+                }
+                return;
+            }
+
+            if (setupBtn) {
+                setupBtn.disabled = true;
+                setupBtn.textContent = 'Creating Account...';
+            }
+
+            try {
+                const response = await fetch('api/setup_admin.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        first_name: firstName,
+                        last_name: lastName,
+                        username,
+                        password,
+                        confirm_password: confirmPassword
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message || 'System administrator account created successfully.');
+                    window.location.href = 'index.html';
+                    return;
+                }
+
+                if (errorBanner) {
+                    errorBanner.textContent = result.message || 'Setup failed.';
+                    errorBanner.style.display = 'block';
+                }
+            } catch (error) {
+                if (errorBanner) {
+                    errorBanner.textContent = 'Unable to create the administrator account.';
+                    errorBanner.style.display = 'block';
+                }
+            } finally {
+                if (setupBtn) {
+                    setupBtn.disabled = false;
+                    setupBtn.textContent = 'Create Administrator';
+                }
+            }
+        });
+    }
+
     if (loginForm) {
         loginForm.addEventListener('submit', async (event) => {
             event.preventDefault();
@@ -112,7 +207,8 @@ document.addEventListener('DOMContentLoaded', () => {
                if (response.ok && data.success) {
                     sessionStorage.setItem('authToken', data.token);
                     sessionStorage.setItem('currentUser', JSON.stringify(data.user));
-                    window.location.replace('dashboard.html');
+                    const redirectPath = data.redirect || 'dashboard.html';
+                    window.location.replace(redirectPath);
                 } else {
                     if (errorBanner) {
                         errorBanner.innerText = data.message || 'Invalid credentials.';

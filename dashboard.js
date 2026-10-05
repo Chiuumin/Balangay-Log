@@ -66,6 +66,30 @@ document.addEventListener('DOMContentLoaded', () => {
     updateClock();
     setInterval(updateClock, 1000);
 
+    async function loadSystemParameters() {
+        try {
+            const response = await fetch('api/get_system_parameters.php', { credentials: 'same-origin' });
+            const result = await response.json();
+            if (!response.ok || !result.success) return;
+
+            const options = [
+                ['purokSelect', 'Select Purok', result.puroks],
+                ['incidentCategory', 'Select Category', result.categories]
+            ];
+            options.forEach(([elementId, placeholder, values]) => {
+                const select = document.getElementById(elementId);
+                if (!select) return;
+                const selectedValue = select.value;
+                select.replaceChildren(new Option(placeholder, ''));
+                values.forEach((value) => select.add(new Option(value, value)));
+                if (values.includes(selectedValue)) select.value = selectedValue;
+            });
+        } catch (error) {
+            console.warn('Could not load managed system parameters:', error);
+        }
+    }
+    loadSystemParameters();
+
     // ==========================================
     // 2. LEAFLET MAP INITIALIZATION
     // ==========================================
@@ -732,7 +756,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (nameDisplay) nameDisplay.innerText = fullName;
         if (roleDisplay) {
-            roleDisplay.innerText = role.charAt(0) + role.slice(1).toLowerCase();
+            roleDisplay.innerText = role === 'OFFICER' ? 'Desk Officer' : role.charAt(0) + role.slice(1).toLowerCase();
             roleDisplay.className = `user-role-pill role-${role.toLowerCase()}`;
         }
         if (avatar) {
@@ -763,8 +787,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const logoutBtn = document.getElementById('logoutBtn');
     if (logoutBtn) {
-        logoutBtn.addEventListener('click', (e) => {
+        logoutBtn.addEventListener('click', async (e) => {
             e.preventDefault();
+            try {
+                await fetch('api/logout.php', { method: 'POST', credentials: 'same-origin' });
+            } catch (error) {
+                console.warn('Logout request failed:', error);
+            }
             sessionStorage.clear();
             localStorage.clear();
             window.location.replace('index.html');

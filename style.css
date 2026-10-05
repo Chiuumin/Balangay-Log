@@ -45,6 +45,7 @@ body {
 }
 
 .brand-logo {
+    position: relative;
     width: 52px;
     height: 52px;
     background: linear-gradient(135deg, #4f46e5 0%, #db2777 100%);
@@ -56,6 +57,10 @@ body {
     font-weight: 800;
     color: #ffffff;
     box-shadow: 0 10px 25px -5px rgba(219, 39, 119, 0.4);
+}
+
+.brand-logo-fallback {
+    line-height: 1;
 }
 
 .brand-text h1 {
@@ -128,6 +133,68 @@ body {
     width: 100%;
     color: #0f172a;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.register-page {
+    max-width: 1000px;
+}
+
+.register-card {
+    max-width: 800px;
+    margin: 32px auto;
+}
+
+.register-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 28px;
+}
+
+.register-brand .brand-logo {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
+}
+
+.register-brand-name {
+    color: #0f172a;
+    font-size: 17px;
+    font-weight: 800;
+}
+
+.register-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 20px;
+}
+
+.register-grid .form-group--wide {
+    grid-column: 1 / -1;
+}
+
+.register-grid .form-group input[type="file"] {
+    height: auto;
+    min-height: 46px;
+    padding: 9px 12px;
+}
+
+.register-footer {
+    margin-top: 18px;
+    text-align: center;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.register-footer a {
+    color: #2563eb;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.register-footer a:hover {
+    text-decoration: underline;
 }
 
 .auth-header h2 {
@@ -338,5 +405,22 @@ body {
     .auth-section {
         width: 100%;
         flex: 1 1 100%;
+    }
+    .register-page {
+        min-height: 100vh;
+        justify-content: center;
+    }
+    .register-card {
+        margin: 0;
+        padding: 28px 22px;
+    }
+}
+
+@media (max-width: 520px) {
+    .register-grid {
+        grid-template-columns: 1fr;
+    }
+    .register-grid .form-group--wide {
+        grid-column: auto;
     }
 }

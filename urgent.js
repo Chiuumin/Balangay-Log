@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (userNameDisplay) userNameDisplay.innerText = name;
         if (userRoleDisplay) {
-            userRoleDisplay.innerText = role.charAt(0) + role.slice(1).toLowerCase();
+            userRoleDisplay.innerText = role === 'OFFICER' ? 'Desk Officer' : role.charAt(0) + role.slice(1).toLowerCase();
             userRoleDisplay.className = `user-role-pill role-${role.toLowerCase()}`;
         }
         if (userAvatar) {
@@ -78,8 +78,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const logoutBtn = document.getElementById('logoutBtn');
     if (logoutBtn) {
-        logoutBtn.addEventListener('click', (e) => {
+        logoutBtn.addEventListener('click', async (e) => {
             e.preventDefault();
+            try {
+                await fetch('api/logout.php', { method: 'POST', credentials: 'same-origin' });
+            } catch (error) {
+                console.warn('Logout request failed:', error);
+            }
             sessionStorage.clear();
             localStorage.clear();
             window.location.replace('index.html');
