@@ -24,7 +24,9 @@
         <!-- LEFT SIDE: BRANDING & REAL-TIME STATS -->
         <div class="hero-section">
             <div class="brand-header">
-                <div class="brand-logo">B</div>
+                <div class="brand-logo">
+                    <span class="brand-logo-fallback" aria-hidden="true">B</span>
+                </div>
                 <div class="brand-text">
                     <h1>BalangayLog</h1>
                     <span class="subtext">CASE MANAGEMENT SYSTEM</span>
@@ -66,10 +68,34 @@
 
                 <div id="errorBanner" class="error-banner" style="display: none;"></div>
 
+                <form id="setupForm" style="display: none;">
+                    <div class="form-group">
+                        <label for="setup_first_name">First Name</label>
+                        <input type="text" id="setup_first_name" required autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="setup_last_name">Last Name</label>
+                        <input type="text" id="setup_last_name" required autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="setup_username">Username</label>
+                        <input type="text" id="setup_username" required autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="setup_password">Password</label>
+                        <input type="password" id="setup_password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="setup_confirm_password">Confirm Password</label>
+                        <input type="password" id="setup_confirm_password" required>
+                    </div>
+                    <button type="submit" id="setupBtn" class="primary-btn">Create Administrator</button>
+                </form>
+
                 <form id="loginForm">
                     <div class="form-group">
-                        <label for="username">Username / Email</label>
-                        <input type="text" id="username" placeholder="e.g. capitan.reyes" required autocomplete="off">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" placeholder="Enter your username" required autocomplete="off">
                     </div>
 
                     <div class="form-group">
@@ -85,9 +111,14 @@
                         </div>
                     </div>
 
-                    <button type="submit" id="loginBtn" class="primary-btn">Sign In</button>
+                    <button type="submit" id="loginBtn" class="primary-btn">Login</button>
                     <a href="#" id="forgotPasswordLink" class="forgot-link">Forgot password?</a>
                 </form>
+
+                <div class="auth-links" style="display: flex; justify-content: space-between; margin-top: 18px; gap: 12px; flex-wrap: wrap;">
+                    <a href="register.php" class="forgot-link">Register as Resident</a>
+                    <a href="setup.php" class="forgot-link">Initial Setup</a>
+                </div>
             </div>
         </div>
     </div>
