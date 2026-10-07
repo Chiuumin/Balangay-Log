@@ -134,10 +134,15 @@ $trackingId = sprintf("TRK-%s-%03d", $year, $rowCount);
 $initialStatus = ($finalPriority === 'Critical') ? 'CRITICAL' : 'PENDING';
 $dt = date('Y-m-d H:i:s');
 
-// Prepared INSERT statement with 16 dynamic placeholders
+$scenarioType = strtoupper(str_replace(' ', '_', preg_replace('/[^A-Za-z0-9 ]/', '', ($input['intakeChannel'] ?? 'Walk-In Desk Blotter'))));
+if (!in_array($scenarioType, ['WALK_IN', 'ONLINE_PORTAL', 'EMERGENCY'], true)) {
+    $scenarioType = 'WALK_IN';
+}
+
+// Match the actual schema: these are the columns that exist in the database.
 $stmt = $conn->prepare("INSERT INTO incident_reports 
-    (reference_number, complainant_name, complainant_phone, incident_type, narrative_description, incident_datetime, purok, latitude, longitude, verification_level, ai_urgency_score, priority_level, ai_detected_priority, is_priority_overridden, override_justification, ai_recommendation, status) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'VERIFIED', ?, ?, ?, ?, ?, ?, ?)");
+    (reference_number, complainant_name, complainant_phone, incident_type, narrative_description, incident_datetime, purok, latitude, longitude, scenario_type, verification_level, ai_urgency_score, priority_level, ai_recommendation, status) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'VERIFIED', ?, ?, ?, ?)");
 
 if (!$stmt) {
     http_response_code(500);
@@ -145,7 +150,7 @@ if (!$stmt) {
     exit();
 }
 
-// Exactly 16 type specifiers matching the 16 parameters below:
+// Exactly 14 type specifiers matching the 14 bound parameters below:
 // s (1: reference_number)
 // s (2: complainant_name)
 // s (3: complainant_phone)
@@ -155,32 +160,28 @@ if (!$stmt) {
 // s (7: purok)
 // d (8: latitude)
 // d (9: longitude)
-// d (10: ai_urgency_score)
-// s (11: priority_level)
-// s (12: ai_detected_priority)
-// i (13: is_priority_overridden)
-// s (14: override_justification)
-// s (15: ai_recommendation)
-// s (16: status)
-$typeDefinition = "sssssssdddssisss";
+// s (10: scenario_type)
+// d (11: ai_urgency_score)
+// s (12: priority_level)
+// s (13: ai_recommendation)
+// s (14: status)
+$typeDefinition = "sssssssddsdsss";
 
 $stmt->bind_param(
-    $typeDefinition, 
-    $trackingId, 
-    $name, 
-    $phone, 
-    $type, 
-    $narrative, 
-    $dt, 
-    $purok, 
-    $lat, 
-    $lng, 
-    $urgencyScore, 
-    $finalPriority, 
-    $aiDetectedPriority, 
-    $isPriorityOverridden, 
-    $overrideJustification, 
-    $recommendation, 
+    $typeDefinition,
+    $trackingId,
+    $name,
+    $phone,
+    $type,
+    $narrative,
+    $dt,
+    $purok,
+    $lat,
+    $lng,
+    $scenarioType,
+    $urgencyScore,
+    $finalPriority,
+    $recommendation,
     $initialStatus
 );
 

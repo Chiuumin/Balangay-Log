@@ -135,8 +135,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    const btnQuickUrgent = document.getElementById('btnQuickUrgent');
+    const urgentPageLink = document.querySelector('.alert-action-link');
+
     if (btnOpenEncode) btnOpenEncode.addEventListener('click', (e) => { e.preventDefault(); openModal(); });
     if (btnQuickEncode) btnQuickEncode.addEventListener('click', (e) => { e.preventDefault(); openModal(); });
+    if (btnQuickUrgent) btnQuickUrgent.addEventListener('click', (e) => { e.preventDefault(); window.location.href = 'urgent.html'; });
+    if (urgentPageLink) urgentPageLink.addEventListener('click', (e) => { e.preventDefault(); window.location.href = 'urgent.html'; });
     if (btnCloseModal) btnCloseModal.addEventListener('click', closeModal);
     if (btnCancelModal) btnCancelModal.addEventListener('click', closeModal);
 
@@ -599,9 +604,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     row.addEventListener('click', () => {
                         notificationDropdown.style.display = 'none';
-                        window.location.href = item.target_url;
 
-                        const hash = item.target_url.split('#')[1];
+                        const targetUrl = item.target_url || 'urgent.html';
+                        window.location.href = targetUrl;
+
+                        const hash = String(targetUrl).split('#')[1];
                         if (hash) {
                             const targetEl = document.getElementById(hash);
                             if (targetEl) {

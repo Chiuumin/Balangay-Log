@@ -30,8 +30,8 @@ if ($criticalRes) {
             'priority' => 'critical',
             'badge_color' => '#dc2626',
             'border_color' => '#ef4444',
-            'subtext' => $row['reference_number'],          // Provides the ID text for the UI
-            'target_url' => '#' . $row['reference_number']  // Provides the anchor link for JS routing
+            'subtext' => $row['reference_number'],
+            'target_url' => 'urgent.html#' . $row['reference_number']
         ];
     }
 }
@@ -55,7 +55,7 @@ if ($highRes) {
             'badge_color' => '#d97706',
             'border_color' => '#f97316',
             'subtext' => $row['reference_number'],
-            'target_url' => '#' . $row['reference_number']
+            'target_url' => 'urgent.html#' . $row['reference_number']
         ];
     }
 }
@@ -79,7 +79,7 @@ if ($lowRes) {
             'badge_color' => '#15803d',
             'border_color' => '#10b981',
             'subtext' => $row['reference_number'],
-            'target_url' => '#' . $row['reference_number']
+            'target_url' => 'urgent.html#' . $row['reference_number']
         ];
     }
 }

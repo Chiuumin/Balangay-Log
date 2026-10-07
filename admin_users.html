@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BalangayLog - Official & User Management</title>
+    <style>
+        :root {
+            --bg-dark: #0b1528;
+            --card-bg: #ffffff;
+            --border-color: #e2e8f0;
+            --text-main: #0f172a;
+            --text-sub: #64748b;
+            --primary: #1e3a8a;
+            --danger: #ef4444;
+            --success: #10b981;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: #f8fafc; color: var(--text-main); display: flex; min-height: 100vh; }
+        
+        .main-content {
+            flex: 1;
+            padding: 32px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .page-header h1 { font-size: 1.5rem; font-weight: 800; color: #0f172a; }
+        .page-header p { font-size: 0.85rem; color: var(--text-sub); }
+        .btn {
+            padding: 9px 16px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            text-decoration: none;
+            display: inline-block;
+            transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn-primary { background: var(--bg-dark); color: #fff; }
+        .btn-danger { background: var(--danger); color: #fff; }
+        .btn-outline { background: #fff; border: 1px solid var(--border-color); color: var(--text-main); }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+        th { background: #f1f5f9; padding: 12px 16px; font-weight: 700; color: #475569; border-bottom: 1px solid var(--border-color); }
+        td { padding: 14px 16px; border-bottom: 1px solid var(--border-color); color: #334155; }
+        tr:hover { background: #f8fafc; }
+
+        .role-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+        .role-ADMIN { background: #fef3c7; color: #b45309; }
+        .role-OFFICER { background: #e0e7ff; color: #4338ca; }
+        .role-RESIDENT { background: #f1f5f9; color: #475569; }
+        .role-CHAIRMAN { background: #fae8ff; color: #86198f; }
+        .role-LUPON { background: #fce7f3; color: #9d174d; }
+
+        .status-pill {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+        .status-AUTHORIZED { background: #dcfce7; color: #15803d; }
+        .status-PENDING { background: #fef3c7; color: #b45309; }
+        .status-DEACTIVATED { background: #fee2e2; color: #b91c1c; }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-box {
+            background: #fff;
+            width: 100%;
+            max-width: 480px;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+        }
+        .modal-header {
+            padding: 16px 20px;
+            background: var(--bg-dark);
+            color: #fff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-body { padding: 20px; }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; font-size: 0.8rem; font-weight: 700; margin-bottom: 5px; color: #334155; }
+        .form-control {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            outline: none;
+        }
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 16px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="main-content">
+    <div class="page-header">
+        <div>
+            <h1>User & Official Management</h1>
+            <p>Admin control for account roles, verification status, emails, and credentials.</p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <a href="dashboard.html" class="btn btn-outline">&larr; Back to Dashboard</a>
+            <button class="btn btn-primary" id="btnOpenCreateModal">+ Create New Account</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Full Name</th>
+                    <th>Email</th>
+                    <th>Phone / Contact</th>
+                    <th>Role</th>
+                    <th>Authorization</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="userTableBody">
+                <tr><td colspan="7" style="text-align: center; color: var(--text-sub);">Loading accounts...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- CREATE / EDIT MODAL -->
+<div id="userModal" class="modal-overlay">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="modalTitle">Create New Account</h3>
+            <span id="btnCloseModal" style="cursor: pointer; font-size: 1.2rem;">&times;</span>
+        </div>
+        <div class="modal-body">
+            <form id="userForm">
+                <input type="hidden" id="editUserId">
+                
+                <div class="form-group">
+                    <label>Full Legal Name</label>
+                    <input type="text" id="modalFullName" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Email Address</label>
+                    <input type="email" id="modalEmail" class="form-control" required>
+                </div>
+                <div class="form-group" id="phoneGroup">
+                    <label>Phone / Contact (Optional)</label>
+                    <input type="text" id="modalPhone" class="form-control" placeholder="09XXXXXXXXX">
+                </div>
+                <div class="form-group">
+                    <label id="passwordLabel">Password</label>
+                    <input type="password" id="modalPassword" class="form-control" placeholder="Minimum 6 characters">
+                    <small id="passwordHelp" style="color: var(--text-sub); font-size: 0.75rem; display: none;">Leave blank to keep existing password.</small>
+                </div>
+                <div class="form-group">
+                    <label>Assigned Role</label>
+                    <select id="modalRole" class="form-control">
+                        <option value="OFFICER">OFFICER (Desk / Tanod)</option>
+                        <option value="ADMIN">ADMIN (System Administrator)</option>
+                        <option value="CHAIRMAN">CHAIRMAN (Punong Barangay)</option>
+                        <option value="LUPON">LUPON (Tagapagkasundo)</option>
+                        <option value="RESIDENT">RESIDENT (Citizen)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Authorization Status</label>
+                    <select id="modalAuthStatus" class="form-control">
+                        <option value="AUTHORIZED">AUTHORIZED</option>
+                        <option value="PENDING">PENDING</option>
+                        <option value="DEACTIVATED">DEACTIVATED</option>
+                    </select>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" id="btnCancelModal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSaveUser">Save Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    let usersList = [];
+    const tableBody = document.getElementById('userTableBody');
+    const userModal = document.getElementById('userModal');
+    const userForm = document.getElementById('userForm');
+
+    async function loadUsers() {
+        try {
+            const res = await fetch('api/manage_users.php');
+            const data = await res.json();
+            if (data.success) {
+                usersList = data.users;
+                renderTable();
+            }
+        } catch (e) {
+            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">Failed to load accounts.</td></tr>`;
+        }
+    }
+
+    function renderTable() {
+        if (!usersList || usersList.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">No accounts found.</td></tr>`;
+            return;
+        }
+
+        tableBody.innerHTML = usersList.map(u => `
+            <tr>
+                <td><strong>#${u.id}</strong></td>
+                <td>${u.full_name}</td>
+                <td>${u.email || '<span style="color:#94a3b8;">None</span>'}</td>
+                <td>${u.email_or_phone || '-'}</td>
+                <td><span class="role-badge role-${u.role || 'RESIDENT'}">${u.role || 'RESIDENT'}</span></td>
+                <td><span class="status-pill status-${u.authorization_status || 'AUTHORIZED'}">${u.authorization_status || 'AUTHORIZED'}</span></td>
+                <td>
+                    <button class="btn btn-outline" style="padding: 4px 8px; font-size: 0.78rem;" onclick="openEditModal(${u.id})">Edit</button>
+                    <button class="btn btn-danger" style="padding: 4px 8px; font-size: 0.78rem;" onclick="deleteUser(${u.id}, '${u.full_name}')">Delete</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function openCreateModal() {
+        document.getElementById('editUserId').value = '';
+        userForm.reset();
+        document.getElementById('modalTitle').innerText = 'Create New Account';
+        document.getElementById('passwordLabel').innerText = 'Password';
+        document.getElementById('passwordHelp').style.display = 'none';
+        document.getElementById('modalPassword').required = true;
+        document.getElementById('phoneGroup').style.display = 'block';
+        userModal.style.display = 'flex';
+    }
+
+    window.openEditModal = function(id) {
+        const user = usersList.find(u => u.id == id);
+        if (!user) return;
+
+        document.getElementById('editUserId').value = user.id;
+        document.getElementById('modalFullName').value = user.full_name;
+        document.getElementById('modalEmail').value = user.email || '';
+        document.getElementById('modalRole').value = user.role || 'RESIDENT';
+        document.getElementById('modalAuthStatus').value = user.authorization_status || 'AUTHORIZED';
+
+        document.getElementById('modalTitle').innerText = `Edit Account (#${user.id})`;
+        document.getElementById('passwordLabel').innerText = 'New Password (Optional)';
+        document.getElementById('passwordHelp').style.display = 'block';
+        document.getElementById('modalPassword').required = false;
+        document.getElementById('modalPassword').value = '';
+        document.getElementById('phoneGroup').style.display = 'none';
+
+        userModal.style.display = 'flex';
+    };
+
+    window.deleteUser = async function(id, name) {
+        if (!confirm(`Are you sure you want to permanently delete account of "${name}"?`)) return;
+
+        try {
+            const res = await fetch('api/manage_users.php', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert('Account deleted.');
+                loadUsers();
+            } else {
+                alert('Delete error: ' + data.message);
+            }
+        } catch (err) {
+            alert('Server error.');
+        }
+    };
+
+    userForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const editId = document.getElementById('editUserId').value;
+        const fullName = document.getElementById('modalFullName').value.trim();
+        const email = document.getElementById('modalEmail').value.trim();
+        const role = document.getElementById('modalRole').value;
+        const authStatus = document.getElementById('modalAuthStatus').value;
+        const password = document.getElementById('modalPassword').value;
+
+        if (editId) {
+            // Update
+            const payload = { id: editId, fullName, email, role, authStatus, newPassword: password };
+            const res = await fetch('api/manage_users.php', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.success) {
+                userModal.style.display = 'none';
+                loadUsers();
+            } else {
+                alert(data.message);
+            }
+        } else {
+            // Create
+            const phone = document.getElementById('modalPhone').value.trim();
+            const payload = { fullName, email, phone, role, authStatus, password };
+            const res = await fetch('api/manage_users.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.success) {
+                userModal.style.display = 'none';
+                loadUsers();
+            } else {
+                alert(data.message);
+            }
+        }
+    });
+
+    document.getElementById('btnOpenCreateModal').addEventListener('click', openCreateModal);
+    document.getElementById('btnCloseModal').addEventListener('click', () => userModal.style.display = 'none');
+    document.getElementById('btnCancelModal').addEventListener('click', () => userModal.style.display = 'none');
+
+    loadUsers();
+</script>
+
+</body>
+</html>
