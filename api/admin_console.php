@@ -273,11 +273,7 @@ try {
             adminRespond(['success' => false, 'message' => 'Unknown administrator action.'], 422);
     }
 } catch (PDOException $e) {
-    if ((string) $e->getCode() === '23000') {
-        adminRespond(['success' => false, 'message' => 'That name, username, or reference already exists.'], 409);
-    }
-    error_log('Admin console database error: ' . $e->getMessage());
-    adminRespond(['success' => false, 'message' => 'Administrator data could not be loaded. Import admin_schema.sql if the setup migration has not been applied.'], 500);
+    adminRespond(['success' => false, 'message' => 'DATABASE ERROR: ' . $e->getMessage()], 500);
 } catch (Throwable $e) {
     error_log('Admin console error: ' . $e->getMessage());
     adminRespond(['success' => false, 'message' => 'The administrator request could not be completed.'], 500);
