@@ -72,12 +72,28 @@ if (isLoggedIn()) {
 
                     <div class="form-group">
                         <label for="password">Password</label>
-                        <input type="password" id="password" name="password" required />
+                        <div class="password-input-wrapper">
+                            <input type="password" id="password" name="password" autocomplete="new-password" required />
+                            <button type="button" class="eye-btn" data-password-toggle="password" data-field-name="password" aria-controls="password" aria-label="Show password" aria-pressed="false">
+                                <svg class="eye-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="form-group">
                         <label for="confirm_password">Confirm Password</label>
-                        <input type="password" id="confirm_password" name="confirm_password" required />
+                        <div class="password-input-wrapper">
+                            <input type="password" id="confirm_password" name="confirm_password" autocomplete="new-password" required />
+                            <button type="button" class="eye-btn" data-password-toggle="confirm_password" data-field-name="confirm password" aria-controls="confirm_password" aria-label="Show confirm password" aria-pressed="false">
+                                <svg class="eye-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="form-group form-group--wide">
@@ -98,6 +114,19 @@ if (isLoggedIn()) {
         const registerForm = document.getElementById('registerForm');
         const registerBtn = document.getElementById('registerBtn');
         const errorBanner = document.getElementById('errorBanner');
+
+        document.querySelectorAll('[data-password-toggle]').forEach((toggle) => {
+            toggle.addEventListener('click', () => {
+                const passwordInput = document.getElementById(toggle.dataset.passwordToggle);
+                const isVisible = passwordInput.type === 'text';
+                passwordInput.type = isVisible ? 'password' : 'text';
+                toggle.setAttribute('aria-pressed', String(!isVisible));
+                toggle.setAttribute(
+                    'aria-label',
+                    `${isVisible ? 'Show' : 'Hide'} ${toggle.dataset.fieldName}`
+                );
+            });
+        });
 
         function showError(message) {
             errorBanner.textContent = message;
