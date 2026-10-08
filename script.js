@@ -295,3 +295,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.target === forgotModal) closeForgotModalHandler();
     });
 });
+
+// Universal Theme Toggle
+const themeBtn = document.getElementById('themeToggleBtn');
+if (themeBtn) {
+    themeBtn.addEventListener('click', () => {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const newTheme = isDark ? 'light' : 'dark';
+        if (newTheme === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+            document.documentElement.removeAttribute('data-theme');
+        }
+        localStorage.setItem('balangay_theme', newTheme);
+        themeBtn.textContent = newTheme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode';
+    });
+}
+
+// Universal Profile Update Handler
+document.getElementById('profileForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const res = await fetch('api/profile.php', { method: 'POST', body: formData });
+    const data = await res.json();
+    alert(data.message);
+    if (data.success) location.reload();
+});
+
+// Universal Password Update Handler
+document.getElementById('passwordForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const res = await fetch('api/profile.php', { method: 'POST', body: formData });
+    const data = await res.json();
+    alert(data.message);
+    if (data.success) e.currentTarget.reset();
+});

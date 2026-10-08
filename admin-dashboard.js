@@ -198,16 +198,40 @@ async function refreshData() {
         renderEquipment();
         renderAuditFilters();
         renderAudit();
-        if (data.admin) {
-            document.getElementById('settingsName').value = data.admin.full_name || '';
-            document.getElementById('settingsContact').value = data.admin.contact_number || '';
-            document.getElementById('adminName').textContent = data.admin.full_name || 'System Administrator';
+if (data.admin) {
+            const adminName = data.admin.full_name || 'System Administrator';
+            document.getElementById('adminName').textContent = adminName;
+            
+            if (document.getElementById('settingsName')) document.getElementById('settingsName').value = adminName;
+            if (document.getElementById('settingsContact')) document.getElementById('settingsContact').value = data.admin.contact_number || '';
+            if (document.getElementById('settingsProfileName')) document.getElementById('settingsProfileName').textContent = adminName;
+
+            const initials = adminName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join('');
             const avatar = document.getElementById('adminAvatar');
-            const initials = (data.admin.full_name || 'AD').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join('');
-            avatar.firstChild.textContent = initials;
+            if (avatar && avatar.firstChild) avatar.firstChild.textContent = initials;
+            const cardAvatar = document.getElementById('settingsAvatarInitials');
+            if (cardAvatar) cardAvatar.textContent = initials;
+
+
+            const pic = data.admin.profile_picture;
             const profilePicture = document.getElementById('adminProfilePicture');
-            profilePicture.hidden = !data.admin.profile_picture;
-            if (data.admin.profile_picture) profilePicture.src = data.admin.profile_picture;
+            if (profilePicture) {
+                profilePicture.hidden = !pic;
+                if (pic) profilePicture.src = pic;
+            }
+
+            const settingsPreview = document.getElementById('settingsAvatarPreview');
+            if (settingsPreview) {
+                settingsPreview.hidden = !pic;
+                if (pic) {
+                    settingsPreview.src = pic;
+                    settingsPreview.style.display = 'block';
+                    if (cardAvatar) cardAvatar.style.display = 'none';
+                } else {
+                    settingsPreview.style.display = 'none';
+                    if (cardAvatar) cardAvatar.style.display = 'block';
+                }
+            }
         }
     } catch (error) {
         showNotice(error.message, true);
@@ -419,3 +443,52 @@ document.getElementById('todayLabel').textContent = new Date().toLocaleDateStrin
 const initialView = location.hash.slice(1);
 if (viewTitles[initialView]) setView(initialView);
 refreshData();
+
+const photoInput = document.getElementById('settingsPhotoInput');
+const avatarPreview = document.getElementById('settingsAvatarPreview');
+const avatarInitials = document.getElementById('settingsAvatarInitials');
+
+if (photoInput) {
+    photoInput.addEventListener('change', function () {
+        const file = this.files && this.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            if (avatarPreview) {
+                avatarPreview.src = e.target.result;
+                avatarPreview.style.display = 'block';
+            }
+            if (avatarInitials) {
+                avatarInitials.style.display = 'none';
+            }
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+// Dark Theme Switcher
+const themeToggleBtn = document.getElementById('themeToggleBtn');
+const themeToggleLabel = document.getElementById('themeToggleLabel');
+
+function applyTheme(theme) {
+    if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('balangay_theme', 'dark');
+        if (themeToggleLabel) themeToggleLabel.textContent = 'Light Mode';
+    } else {
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('balangay_theme', 'light');
+        if (themeToggleLabel) themeToggleLabel.textContent = 'Dark Mode';
+    }
+}
+
+// Set initial label state on load
+if (localStorage.getItem('balangay_theme') === 'dark') {
+    applyTheme('dark');
+}
+
+themeToggleBtn?.addEventListener('click', () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    applyTheme(isDark ? 'light' : 'dark');
+});

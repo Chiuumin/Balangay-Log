@@ -114,3 +114,425 @@ td strong { color: var(--ink); font-size: 11px; }
 @media (max-width: 480px) {
     .topbar-meta { max-width: 115px; }.topbar-meta time { display: none; }.section-heading { align-items: start; flex-direction: column; }.section-heading > .button { align-self: stretch; }.form-row { grid-template-columns: 1fr; gap: 13px; }.detail-content { grid-template-columns: 1fr; }.detail-field--wide { grid-column: auto; }.dialog-actions { flex-wrap: wrap; }.dialog-actions .button { flex: 1; }
 }
+
+/* ==========================================================================
+   Profile & Settings Layout
+   ========================================================================== */
+.settings-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 820px;
+    margin: 10px 0 40px;
+}
+
+.profile-card {
+    padding: 24px 28px;
+    margin-top: 0;
+}
+
+.profile-header-group {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 24px;
+}
+
+.profile-avatar-wrap {
+    position: relative;
+    width: 66px;
+    height: 66px;
+    flex-shrink: 0;
+}
+
+.profile-avatar-lg {
+    position: relative;
+    width: 66px;
+    height: 66px;
+    background: #086b35;
+    color: #ffffff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Manrope', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    overflow: hidden;
+}
+
+.profile-avatar-lg img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 5;
+}
+
+.profile-avatar-lg img[hidden] {
+    display: none !important;
+}
+
+button.avatar-upload-trigger {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 26px;
+    height: 26px;
+    background: #173d3b;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    color: #ffffff;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    z-index: 10;
+    transition: background 0.15s ease;
+}
+
+button.avatar-upload-trigger:hover {
+    background: #19766c;
+}
+
+.profile-title-block h2 {
+    margin: 0;
+    font-family: 'Manrope', sans-serif;
+    font-size: 19px;
+    font-weight: 800;
+    color: var(--ink);
+}
+
+.profile-title-block p {
+    margin: 3px 0 6px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.role-badge {
+    display: inline-block;
+    background: #086b35;
+    color: #f6f7f6;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 12px;
+}
+
+.profile-save-action {
+    margin-left: auto;
+}
+
+.profile-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px 28px;
+    padding-top: 18px;
+    border-top: 1px solid #edf1f1;
+}
+
+.meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.meta-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+}
+
+.meta-value {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.meta-input {
+    width: 100%;
+    min-height: 36px;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #ffffff;
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 600;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.meta-input:focus {
+    border-color: #58a69b;
+    box-shadow: 0 0 0 3px rgba(25, 118, 108, 0.09);
+}
+
+.password-card {
+    padding: 24px 28px;
+    margin-top: 0;
+}
+
+.password-card .panel-heading {
+    padding-bottom: 14px;
+    border-bottom: 1px solid #edf1f1;
+}
+
+.password-card .panel-heading h2 {
+    font-size: 15px;
+}
+
+.settings-password-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 14px;
+}
+
+.settings-password-form .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.settings-password-form label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #374151;
+}
+
+.settings-password-form input {
+    width: 100%;
+    min-height: 38px;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #ffffff;
+    color: var(--ink);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.settings-password-form input:focus {
+    border-color: #58a69b;
+    box-shadow: 0 0 0 3px rgba(25, 118, 108, 0.09);
+}
+
+.settings-password-form .form-actions {
+    margin-top: 4px;
+}
+
+@media (max-width: 760px) {
+    .profile-meta-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+}
+
+/* ==========================================================================
+   Dark Theme Palette
+   ========================================================================== */
+[data-theme="dark"] {
+    color-scheme: dark;
+    --ink: #f0f6f5;             /* primary text */
+    --muted: #94a7a5;           /* secondary labels */
+    --line: #203837;            /* Subtle dark slate-teal borders */
+    --paper: #0b1616;           /* background */
+    --white: #112222;           /* cards/panels */
+    --sidebar: #203837;         /* sidebar color brand green */
+    --sidebar-soft: #0e1e1e;
+}
+
+
+[data-theme="dark"] body {
+    color: var(--ink);
+    background: var(--paper);
+}
+
+[data-theme="dark"] .section-heading h2,
+[data-theme="dark"] .panel-heading h2,
+[data-theme="dark"] .admin-topbar h1,
+[data-theme="dark"] strong {
+    color: #ffffff;
+}
+
+/* Form Controls, Dropdowns & Date Pickers */
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea,
+[data-theme="dark"] .search-field input,
+[data-theme="dark"] .select-field select,
+[data-theme="dark"] .audit-filters select,
+[data-theme="dark"] .audit-filters input[type="date"],
+[data-theme="dark"] .meta-input {
+    background-color: #0b1819 !important;
+    border-color: #243d3b !important;
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] input::placeholder {
+    color: #5c7473;
+}
+
+/* Date picker calendar icon for dark mode */
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.8) brightness(1.2);
+    cursor: pointer;
+}
+
+/* Buttons */
+[data-theme="dark"] .button-quiet,
+[data-theme="dark"] .small-button {
+    background: #152b2b;
+    border-color: #24413f;
+    color: #e2edea;
+}
+
+[data-theme="dark"] .button-quiet:hover,
+[data-theme="dark"] .small-button:hover {
+    background: #1b3838;
+    color: #ffffff;
+}
+
+[data-theme="dark"] .small-button.is-danger {
+    background: rgba(209, 92, 73, 0.15);
+    border-color: rgba(209, 92, 73, 0.4);
+    color: #ff8573;
+}
+
+/* Tables & Table Cells */
+[data-theme="dark"] th {
+    border-top-color: var(--line);
+    border-bottom-color: var(--line);
+    color: #8da4a2;
+}
+
+[data-theme="dark"] td {
+    color: #d1dedc;
+    border-bottom-color: #162a29;
+}
+
+[data-theme="dark"] td strong {
+    color: #ffffff;
+}
+
+[data-theme="dark"] .table-secondary {
+    color: #799391;
+}
+
+[data-theme="dark"] tr:hover td {
+    background-color: rgba(25, 118, 108, 0.08);
+}
+
+/* Metric Tiles */
+[data-theme="dark"] .metric-tile {
+    background: #112222;
+    border-color: var(--line);
+}
+
+[data-theme="dark"] .metric-tile > span {
+    color: #9cb2b0;
+}
+
+[data-theme="dark"] .metric-tile strong {
+    color: #ffffff;
+}
+
+[data-theme="dark"] .metric-tile small {
+    color: #718a88;
+}
+
+/* Tab Controls */
+[data-theme="dark"] .segmented {
+    background: #091515;
+    border: 1px solid var(--line);
+}
+
+[data-theme="dark"] .segment {
+    color: #829a98;
+}
+
+[data-theme="dark"] .segment.is-selected {
+    background: #173231;
+    color: #ffffff;
+}
+
+/* Status Pills (Toned for Dark Mode) */
+[data-theme="dark"] .pill {
+    background: #1b2f2f;
+    color: #b0c7c4;
+}
+
+[data-theme="dark"] .pill-active,
+[data-theme="dark"] .pill-authorized {
+    background: rgba(40, 112, 72, 0.28);
+    color: #5ed694;
+    border: 1px solid rgba(40, 112, 72, 0.45);
+}
+
+[data-theme="dark"] .pill-pending,
+[data-theme="dark"] .pill-pending_verification {
+    background: rgba(180, 133, 46, 0.25);
+    color: #ffd077;
+    border: 1px solid rgba(180, 133, 46, 0.45);
+}
+
+[data-theme="dark"] .pill-rejected,
+[data-theme="dark"] .pill-inactive,
+[data-theme="dark"] .pill-deactivated {
+    background: rgba(209, 92, 73, 0.25);
+    color: #ff9182;
+    border: 1px solid rgba(209, 92, 73, 0.45);
+}
+
+/* Modals / Dialogs */
+[data-theme="dark"] .admin-dialog {
+    background: #112222;
+    border-color: #24413f;
+    color: var(--ink);
+}
+
+[data-theme="dark"] .icon-button {
+    background: #152b2b;
+    border-color: #24413f;
+    color: #d1dedc;
+}
+
+[data-theme="dark"] .detail-field strong {
+    color: #ffffff;
+}
+
+[data-theme="dark"] .detail-field span {
+    color: #829a98;
+}
+
+[data-theme="dark"] .parameter-row {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04); 
+    padding: 8px 6px;
+    border-radius: 4px;
+    transition: background 0.15s ease;
+}
+
+[data-theme="dark"] .parameter-row:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="dark"] .inline-add {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+
+[data-theme="dark"] .password-card .panel-heading,
+[data-theme="dark"] .profile-meta-grid,
+[data-theme="dark"] .history-entry {
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme="dark"] .content-panel,
+[data-theme="dark"] .metric-tile {
+    border-color: rgba(255, 255, 255, 0.06);
+}
