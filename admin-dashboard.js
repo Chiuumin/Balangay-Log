@@ -475,11 +475,11 @@ function applyTheme(theme) {
     if (theme === 'dark') {
         document.documentElement.setAttribute('data-theme', 'dark');
         localStorage.setItem('balangay_theme', 'dark');
-        if (themeToggleLabel) themeToggleLabel.textContent = 'Light Mode';
+        if (themeToggleLabel) themeToggleLabel.textContent = 'Toggle Light Mode';
     } else {
         document.documentElement.removeAttribute('data-theme');
         localStorage.setItem('balangay_theme', 'light');
-        if (themeToggleLabel) themeToggleLabel.textContent = 'Dark Mode';
+        if (themeToggleLabel) themeToggleLabel.textContent = 'Toggle Dark Mode';
     }
 }
 
