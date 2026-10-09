@@ -21,6 +21,35 @@ const state = {
     selectedResident: null
 };
 
+// -------------------------------------------------------------
+// MOBILE DRAWER CONTROLLER (Event Delegation - Guaranteed to Run)
+// -------------------------------------------------------------
+(function initMobileDrawer() {
+    function toggleDrawer(open) {
+        const sidebar = document.getElementById('adminSidebar');
+        const backdrop = document.getElementById('sidebarBackdrop');
+        if (sidebar) sidebar.classList.toggle('is-open', open);
+        if (backdrop) backdrop.classList.toggle('is-open', open);
+        document.body.style.overflow = open ? 'hidden' : '';
+    }
+
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('#mobileMenuBtn')) {
+            e.preventDefault();
+            toggleDrawer(true);
+            return;
+        }
+        if (e.target.closest('#sidebarCloseBtn') || e.target.closest('#sidebarBackdrop')) {
+            e.preventDefault();
+            toggleDrawer(false);
+            return;
+        }
+        if (e.target.closest('.admin-nav-link') && window.innerWidth <= 768) {
+            toggleDrawer(false);
+        }
+    });
+})();
+
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[character]));
@@ -168,6 +197,7 @@ function renderAudit() {
 
 function renderAuditFilters() {
     const actionSelect = document.getElementById('auditActionFilter');
+    if (!actionSelect) return;
     const currentAction = actionSelect.value;
     const actions = [...new Set(state.logs.map((log) => log.action))].sort();
     actionSelect.innerHTML = '<option value="">All actions</option>' + actions.map((action) => `<option value="${escapeHtml(action)}">${escapeHtml(statusLabel(action))}</option>`).join('');
@@ -198,33 +228,34 @@ async function refreshData() {
         renderEquipment();
         renderAuditFilters();
         renderAudit();
-if (data.admin) {
+
+        if (data.admin) {
             const adminName = data.admin.full_name || 'System Administrator';
-            document.getElementById('adminName').textContent = adminName;
+            const adminNameEl = document.getElementById('adminName');
+            if (adminNameEl) adminNameEl.textContent = adminName;
             
             if (document.getElementById('settingsName')) document.getElementById('settingsName').value = adminName;
             if (document.getElementById('settingsContact')) document.getElementById('settingsContact').value = data.admin.contact_number || '';
             if (document.getElementById('settingsProfileName')) document.getElementById('settingsProfileName').textContent = adminName;
 
-            const initials = adminName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join('');
+            const initials = adminName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join('') || 'AD';
             const avatar = document.getElementById('adminAvatar');
             if (avatar && avatar.firstChild) avatar.firstChild.textContent = initials;
             const cardAvatar = document.getElementById('settingsAvatarInitials');
             if (cardAvatar) cardAvatar.textContent = initials;
 
-
             const pic = data.admin.profile_picture;
             const profilePicture = document.getElementById('adminProfilePicture');
             if (profilePicture) {
                 profilePicture.hidden = !pic;
-                if (pic) profilePicture.src = pic;
+                if (pic) profilePicture.src = pic + '?v=' + Date.now();
             }
 
             const settingsPreview = document.getElementById('settingsAvatarPreview');
             if (settingsPreview) {
                 settingsPreview.hidden = !pic;
                 if (pic) {
-                    settingsPreview.src = pic;
+                    settingsPreview.src = pic + '?v=' + Date.now();
                     settingsPreview.style.display = 'block';
                     if (cardAvatar) cardAvatar.style.display = 'none';
                 } else {
@@ -294,7 +325,8 @@ function openEquipment(item = null) {
 function updateEquipmentFields(category) {
     const isVehicle = category === 'VEHICLE';
     document.querySelectorAll('#equipmentForm .vehicle-field').forEach((field) => { field.hidden = !isVehicle; });
-    document.querySelector('#equipmentForm .serial-field').hidden = isVehicle;
+    const serialField = document.querySelector('#equipmentForm .serial-field');
+    if (serialField) serialField.hidden = isVehicle;
 }
 
 function openReasonDialog(action, id, title, status = '') {
@@ -322,27 +354,28 @@ document.querySelectorAll('[data-user-filter]').forEach((button) => button.addEv
     document.querySelectorAll('[data-user-filter]').forEach((tab) => tab.classList.toggle('is-selected', tab === button));
     renderUsers();
 }));
-document.getElementById('userSearch').addEventListener('input', renderUsers);
-document.getElementById('equipmentSearch').addEventListener('input', renderEquipment);
-document.getElementById('equipmentCategoryFilter').addEventListener('change', renderEquipment);
-document.getElementById('auditFilterForm').addEventListener('submit', (event) => { event.preventDefault(); renderAudit(); });
+
+document.getElementById('userSearch')?.addEventListener('input', renderUsers);
+document.getElementById('equipmentSearch')?.addEventListener('input', renderEquipment);
+document.getElementById('equipmentCategoryFilter')?.addEventListener('change', renderEquipment);
+document.getElementById('auditFilterForm')?.addEventListener('submit', (event) => { event.preventDefault(); renderAudit(); });
 ['auditSearch', 'auditActionFilter', 'auditUserFilter', 'auditFrom', 'auditTo'].forEach((id) => document.getElementById(id)?.addEventListener(id === 'auditSearch' ? 'input' : 'change', renderAudit));
 
-document.getElementById('addOfficialBtn').addEventListener('click', () => openOfficial(null));
-document.getElementById('addEquipmentBtn').addEventListener('click', () => openEquipment());
-document.querySelector('#equipmentForm [name="category"]').addEventListener('change', (event) => updateEquipmentFields(event.currentTarget.value));
-document.getElementById('approveResidentBtn').addEventListener('click', async () => {
+document.getElementById('addOfficialBtn')?.addEventListener('click', () => openOfficial(null));
+document.getElementById('addEquipmentBtn')?.addEventListener('click', () => openEquipment());
+document.querySelector('#equipmentForm [name="category"]')?.addEventListener('change', (event) => updateEquipmentFields(event.currentTarget.value));
+document.getElementById('approveResidentBtn')?.addEventListener('click', async () => {
     if (!state.selectedResident || !window.confirm(`Approve ${state.selectedResident.full_name}?`)) return;
     try { const result = await requestAdmin('resident_approve', { id: state.selectedResident.id }); document.getElementById('detailDialog').close(); showNotice(result.message); await refreshData(); }
     catch (error) { showNotice(error.message, true); }
 });
-document.getElementById('rejectResidentBtn').addEventListener('click', () => {
+document.getElementById('rejectResidentBtn')?.addEventListener('click', () => {
     if (!state.selectedResident) return;
     document.getElementById('detailDialog').close();
     openReasonDialog('resident_reject', state.selectedResident.id, 'Reject resident registration');
 });
 
-document.getElementById('officialForm').addEventListener('submit', async (event) => {
+document.getElementById('officialForm')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const editing = Boolean(form.elements.id.value);
@@ -352,13 +385,13 @@ document.getElementById('officialForm').addEventListener('submit', async (event)
         document.getElementById('accountDialog').close(); showNotice(result.message); await refreshData();
     } catch (error) { showNotice(error.message, true); }
 });
-document.getElementById('equipmentForm').addEventListener('submit', async (event) => {
+document.getElementById('equipmentForm')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
     try { const result = await requestAdmin('equipment_save', payload); document.getElementById('equipmentDialog').close(); showNotice(result.message); await refreshData(); }
     catch (error) { showNotice(error.message, true); }
 });
-document.getElementById('reasonForm').addEventListener('submit', async (event) => {
+document.getElementById('reasonForm')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
     const action = payload.action; delete payload.action;
@@ -372,8 +405,8 @@ async function addParameter(type, form) {
     try { const result = await requestAdmin('parameter_add', { type, name }); form.reset(); showNotice(result.message); await refreshData(); }
     catch (error) { showNotice(error.message, true); }
 }
-document.getElementById('addPurokForm').addEventListener('submit', (event) => { event.preventDefault(); addParameter('purok', event.currentTarget); });
-document.getElementById('addCategoryForm').addEventListener('submit', (event) => { event.preventDefault(); addParameter('category', event.currentTarget); });
+document.getElementById('addPurokForm')?.addEventListener('submit', (event) => { event.preventDefault(); addParameter('purok', event.currentTarget); });
+document.getElementById('addCategoryForm')?.addEventListener('submit', (event) => { event.preventDefault(); addParameter('category', event.currentTarget); });
 
 document.addEventListener('click', async (event) => {
     const target = event.target.closest('button');
@@ -417,29 +450,31 @@ document.addEventListener('click', async (event) => {
     } catch (error) { showNotice(error.message, true); }
 });
 
-document.getElementById('profileForm').addEventListener('submit', async (event) => {
+document.getElementById('profileForm')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     formData.set('action', 'profile_update');
     try { const result = await requestAdmin('profile_update', {}, { formData }); showNotice(result.message); await refreshData(); }
     catch (error) { showNotice(error.message, true); }
 });
-document.getElementById('passwordForm').addEventListener('submit', async (event) => {
+document.getElementById('passwordForm')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
     try { const result = await requestAdmin('password_update', payload); event.currentTarget.reset(); showNotice(result.message); }
     catch (error) { showNotice(error.message, true); }
 });
 
-document.getElementById('logoutBtn').addEventListener('click', async () => {
-    try { await fetch('api/logout.php', { method: 'POST', credentials: 'same-origin' }); } catch { /* Clear local session even if logout logging fails. */ }
+document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+    try { await fetch('api/logout.php', { method: 'POST', credentials: 'same-origin' }); } catch { /* Clear local session */ }
     sessionStorage.clear();
     localStorage.removeItem('currentUser');
     localStorage.removeItem('authToken');
     window.location.replace('index.html');
 });
 
-document.getElementById('todayLabel').textContent = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+const todayLabel = document.getElementById('todayLabel');
+if (todayLabel) todayLabel.textContent = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
 const initialView = location.hash.slice(1);
 if (viewTitles[initialView]) setView(initialView);
 refreshData();
@@ -475,15 +510,14 @@ function applyTheme(theme) {
     if (theme === 'dark') {
         document.documentElement.setAttribute('data-theme', 'dark');
         localStorage.setItem('balangay_theme', 'dark');
-        if (themeToggleLabel) themeToggleLabel.textContent = 'Toggle Light Mode';
+        if (themeToggleLabel) themeToggleLabel.textContent = 'Light Mode';
     } else {
         document.documentElement.removeAttribute('data-theme');
         localStorage.setItem('balangay_theme', 'light');
-        if (themeToggleLabel) themeToggleLabel.textContent = 'Toggle Dark Mode';
+        if (themeToggleLabel) themeToggleLabel.textContent = 'Dark Mode';
     }
 }
 
-// Set initial label state on load
 if (localStorage.getItem('balangay_theme') === 'dark') {
     applyTheme('dark');
 }
