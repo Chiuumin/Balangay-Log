@@ -536,3 +536,654 @@ button.avatar-upload-trigger:hover {
 [data-theme="dark"] .metric-tile {
     border-color: rgba(255, 255, 255, 0.06);
 }
+
+/* ==========================================================================
+   Restore Metric Tile Top Colored Accent Bars in Dark Mode
+   ========================================================================== */
+
+/* 1. Ensure the base tile keeps its dark background and side/bottom border */
+[data-theme="dark"] .metric-tile {
+    background: #112222;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* 2. By nth-child (1st = Red, 2nd = Green, 3rd = Blue, 4th = Amber, 5th = Slate) */
+[data-theme="dark"] .metric-tile:nth-child(1),
+[data-theme="dark"] .metric-tile.is-pending {
+    border-top: 3px solid #e05d44 !important; /* Coral Red */
+}
+
+[data-theme="dark"] .metric-tile:nth-child(2),
+[data-theme="dark"] .metric-tile.is-residents {
+    border-top: 3px solid #38a169 !important; /* Emerald Green */
+}
+
+[data-theme="dark"] .metric-tile:nth-child(3),
+[data-theme="dark"] .metric-tile.is-officers {
+    border-top: 3px solid #3b82f6 !important; /* Blue */
+}
+
+[data-theme="dark"] .metric-tile:nth-child(4),
+[data-theme="dark"] .metric-tile.is-active {
+    border-top: 3px solid #f59e0b !important; /* Amber / Yellow */
+}
+
+[data-theme="dark"] .metric-tile:nth-child(5),
+[data-theme="dark"] .metric-tile.is-equipment {
+    border-top: 3px solid #64748b !important; /* Slate / Grey */
+}
+
+/* ==========================================================================
+   FORCE HIGH CONTRAST IN DARK MODE (All forms, modals & labels)
+   ========================================================================== */
+
+/* 1. All labels across the entire document in dark mode */
+html[data-theme="dark"] label,
+body[data-theme="dark"] label,
+[data-theme="dark"] form label,
+[data-theme="dark"] .form-group label,
+[data-theme="dark"] .field-label,
+[data-theme="dark"] .dialog-card label,
+[data-theme="dark"] .admin-dialog label,
+[data-theme="dark"] dialog label {
+    color: #e2eceb !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
+}
+
+/* 2. All section subtext & helper paragraphs */
+html[data-theme="dark"] p,
+[data-theme="dark"] .form-group small,
+[data-theme="dark"] .field-help,
+[data-theme="dark"] .panel-heading p,
+[data-theme="dark"] dialog p,
+[data-theme="dark"] .dialog-card p {
+    color: #9cb2b0 !important;
+    opacity: 1 !important;
+}
+
+/* 3. Modal eyebrow tag (INVENTORY, OFFICIAL ACCOUNT) */
+[data-theme="dark"] .eyebrow,
+[data-theme="dark"] .dialog-card .eyebrow,
+[data-theme="dark"] .admin-dialog .eyebrow {
+    color: #5ed694 !important;
+    opacity: 1 !important;
+}
+
+/* 4. Inputs, selects, and textareas - crisp border and readable text */
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea,
+[data-theme="dark"] dialog input,
+[data-theme="dark"] dialog select,
+[data-theme="dark"] dialog textarea {
+    background-color: #0c1a1b !important;
+    border: 1px solid #2e4a48 !important;
+    color: #ffffff !important;
+    opacity: 1 !important;
+}
+
+/* 5. Placeholder text inside inputs */
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+    color: #718a88 !important;
+    opacity: 1 !important;
+}
+
+/* ==========================================================================
+   Dashboard Metric Tiles: Subtle Accent Reflection (Light & Dark)
+   ========================================================================== */
+
+/* Base transitions for all tiles */
+.metric-tile {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+/* ----------------------------------------------------
+   LIGHT MODE (Soft ambient colored shadow beneath border)
+   ---------------------------------------------------- */
+.metric-tile:nth-child(1), .metric-tile.is-pending {
+    border-top: 3px solid #e05d44 !important;
+    box-shadow: 0 -2px 8px rgba(224, 93, 68, 0.12), 0 4px 12px rgba(15, 23, 42, 0.05);
+}
+.metric-tile:nth-child(2), .metric-tile.is-residents {
+    border-top: 3px solid #38a169 !important;
+    box-shadow: 0 -2px 8px rgba(56, 161, 105, 0.12), 0 4px 12px rgba(15, 23, 42, 0.05);
+}
+.metric-tile:nth-child(3), .metric-tile.is-officers {
+    border-top: 3px solid #3b82f6 !important;
+    box-shadow: 0 -2px 8px rgba(59, 130, 246, 0.12), 0 4px 12px rgba(15, 23, 42, 0.05);
+}
+.metric-tile:nth-child(4), .metric-tile.is-active {
+    border-top: 3px solid #f59e0b !important;
+    box-shadow: 0 -2px 8px rgba(245, 158, 11, 0.12), 0 4px 12px rgba(15, 23, 42, 0.05);
+}
+.metric-tile:nth-child(5), .metric-tile.is-equipment {
+    border-top: 3px solid #64748b !important;
+    box-shadow: 0 -2px 8px rgba(100, 116, 139, 0.12), 0 4px 12px rgba(15, 23, 42, 0.05);
+}
+
+.metric-tile:hover {
+    transform: translateY(-2px);
+}
+
+/* ----------------------------------------------------
+   DARK MODE (Soft restrained glow against dark background)
+   ---------------------------------------------------- */
+[data-theme="dark"] .metric-tile {
+    background: #112222;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .metric-tile:nth-child(1),
+[data-theme="dark"] .metric-tile.is-pending {
+    border-top: 3px solid #e05d44 !important;
+    box-shadow: 0 -2px 10px rgba(224, 93, 68, 0.18), 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .metric-tile:nth-child(2),
+[data-theme="dark"] .metric-tile.is-residents {
+    border-top: 3px solid #38a169 !important;
+    box-shadow: 0 -2px 10px rgba(56, 161, 105, 0.18), 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .metric-tile:nth-child(3),
+[data-theme="dark"] .metric-tile.is-officers {
+    border-top: 3px solid #3b82f6 !important;
+    box-shadow: 0 -2px 10px rgba(59, 130, 246, 0.18), 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .metric-tile:nth-child(4),
+[data-theme="dark"] .metric-tile.is-active {
+    border-top: 3px solid #f59e0b !important;
+    box-shadow: 0 -2px 10px rgba(245, 158, 11, 0.18), 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .metric-tile:nth-child(5),
+[data-theme="dark"] .metric-tile.is-equipment {
+    border-top: 3px solid #64748b !important;
+    box-shadow: 0 -2px 10px rgba(100, 116, 139, 0.18), 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+/* ==========================================================================
+   ELEVATED TRACKING STEPPER & TIMELINE (Institutional Minimalist)
+   ========================================================================== */
+
+.tracking-stepper {
+    display: flex;
+    justify-content: space-between;
+    position: relative;
+    padding: 10px 14px 22px;
+    margin-bottom: 22px;
+    border-bottom: 1px solid var(--line);
+}
+
+.tracking-stepper::before {
+    content: '';
+    position: absolute;
+    top: 27px;
+    left: 45px;
+    right: 45px;
+    height: 2px;
+    background: var(--line);
+    z-index: 1;
+}
+
+.stepper-step {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    text-align: center;
+}
+
+.stepper-node {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--white);
+    border: 2px solid var(--line);
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    transition: all 0.25s ease;
+}
+
+.stepper-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: var(--muted);
+    text-transform: uppercase;
+}
+
+/* Completed Phase */
+.stepper-step.is-done .stepper-node {
+    background: #e6f3e9;
+    border-color: #38a169;
+    color: #287048;
+}
+.stepper-step.is-done .stepper-label {
+    color: var(--ink);
+}
+
+/* Current Active Phase (Brand Teal Accent Glow) */
+.stepper-step.is-active .stepper-node {
+    background: var(--teal);
+    border-color: var(--teal);
+    color: #ffffff;
+    box-shadow: 0 0 0 4px rgba(25, 118, 108, 0.2);
+}
+.stepper-step.is-active .stepper-label {
+    color: var(--teal);
+    font-weight: 800;
+}
+
+/* Refined Milestone Timeline */
+.tracking-timeline {
+    position: relative;
+    padding-left: 24px;
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.tracking-timeline::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    left: 6px;
+    width: 2px;
+    background: var(--line);
+}
+
+.timeline-event {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.timeline-node {
+    position: absolute;
+    left: -24px;
+    top: 5px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--line);
+    border: 2px solid var(--white);
+}
+
+/* Topmost latest event */
+.timeline-event:first-child .timeline-node {
+    background: var(--teal);
+    box-shadow: 0 0 0 3px rgba(25, 118, 108, 0.22);
+}
+
+.timeline-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.timeline-time {
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.timeline-note {
+    font-size: 12px;
+    color: var(--ink);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* Dark mode compatibility */
+[data-theme="dark"] .tracking-stepper::before,
+[data-theme="dark"] .tracking-timeline::before {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .stepper-node {
+    background: #0f2222;
+    border-color: #203d3c;
+}
+
+[data-theme="dark"] .stepper-step.is-done .stepper-node {
+    background: rgba(56, 161, 105, 0.2);
+    border-color: #5ed694;
+    color: #5ed694;
+}
+
+[data-theme="dark"] .stepper-step.is-active .stepper-node {
+    background: var(--teal);
+    border-color: #5ed694;
+    color: #ffffff;
+    box-shadow: 0 0 0 4px rgba(94, 214, 148, 0.2);
+}
+
+[data-theme="dark"] .timeline-node {
+    border-color: #0e1e1f;
+    background: #24413f;
+}
+
+[data-theme="dark"] .timeline-note {
+    color: #d1dedc;
+}
+
+/* ==========================================================================
+   SLIDE-OUT SIDEBAR DRAWER (Mobile & Tablet < 768px)
+   ========================================================================== */
+
+/* Desktop defaults: hide mobile elements */
+.mobile-top-header {
+    display: none;
+}
+.sidebar-backdrop {
+    display: none;
+}
+.sidebar-close-btn {
+    display: none;
+}
+.sidebar-header-row {
+    display: contents;
+}
+
+@media (max-width: 768px) {
+    body {
+        overflow-x: hidden;
+        width: 100%;
+    }
+
+    .admin-shell {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        min-width: 0;
+    }
+
+    /* 1. Sleek Mobile App Top Bar */
+    .mobile-top-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--sidebar);
+        padding: 10px 16px;
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .mobile-hamburger-btn {
+        background: transparent;
+        border: 0;
+        color: #ffffff;
+        padding: 6px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    .mobile-hamburger-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .mobile-brand-inline {
+        margin: 0 !important;
+    }
+
+    /* 2. Slide-out Off-Canvas Drawer */
+    .admin-sidebar {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        width: 280px !important;
+        max-width: 85vw !important;
+        height: 100vh !important;
+        z-index: 100 !important;
+        background: var(--sidebar) !important;
+        box-shadow: 4px 0 28px rgba(0, 0, 0, 0.4) !important;
+        transform: translateX(-100%);
+        transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex !important;
+        flex-direction: column !important;
+        padding: 18px 16px 20px !important;
+        overflow-y: auto;
+    }
+
+    .admin-sidebar.is-open {
+        transform: translateX(0);
+    }
+
+    .sidebar-header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+    }
+    .sidebar-header-row .admin-brand {
+        margin: 0;
+    }
+
+    .sidebar-close-btn {
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #ffffff;
+        font-size: 22px;
+        border-radius: 6px;
+        cursor: pointer;
+        line-height: 1;
+    }
+
+    /* Inside the drawer: restore original vertical elements */
+    .admin-identity {
+        display: flex !important;
+        margin-bottom: 16px !important;
+    }
+
+    .admin-nav {
+        display: grid !important;
+        flex-direction: column !important;
+        gap: 6px !important;
+    }
+
+    .admin-nav-link {
+        min-height: 40px;
+        padding: 0 10px;
+        font-size: 12px;
+    }
+
+    .nav-symbol {
+        display: inline-block !important;
+    }
+
+    .sidebar-bottom {
+        display: grid !important;
+        margin-top: auto !important;
+        padding-top: 14px !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+        gap: 6px !important;
+    }
+
+    .sidebar-bottom .back-link,
+    .sidebar-bottom .logout-link {
+        display: flex !important;
+        width: 100% !important;
+        padding: 9px 12px !important;
+        font-size: 12px !important;
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* 3. Dark Dimmer Backdrop */
+    .sidebar-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(10, 24, 24, 0.65);
+        backdrop-filter: blur(2px);
+        z-index: 90;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.28s ease;
+    }
+    .sidebar-backdrop.is-open {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* 4. Main Workspace Layout */
+    .admin-main {
+        width: 100%;
+        max-width: 100vw;
+        padding: 16px 14px 40px !important;
+        overflow-x: hidden;
+        box-sizing: border-box;
+    }
+
+    .admin-topbar {
+        min-height: auto;
+        padding-bottom: 12px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+
+    .admin-topbar h1 {
+        font-size: 20px;
+    }
+
+    .section-heading {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        margin: 18px 0 14px;
+    }
+
+    .section-heading > .button,
+    .section-heading > .button-primary {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* 2x2 Metric Grid */
+    .metric-grid,
+    .metric-grid.resident-grid {
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .metric-tile {
+        min-height: 105px !important;
+        padding: 12px !important;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .metric-tile strong {
+        font-size: 22px !important;
+        margin: 8px 0 2px !important;
+    }
+
+    /* Panels & Tables */
+    .content-panel {
+        width: 100%;
+        max-width: 100%;
+        padding: 14px 12px !important;
+        margin-top: 14px;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+
+    .table-scroll {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin-top: 8px;
+    }
+
+    table {
+        min-width: 540px;
+    }
+
+    /* Hotlines Deck */
+    .hotlines-deck {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+        width: 100%;
+    }
+
+    /* Modals */
+    .admin-dialog {
+        width: calc(100vw - 20px) !important;
+        max-width: 100% !important;
+        margin: 10px auto;
+        padding: 16px 14px !important;
+        border-radius: 8px;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+    }
+}
+
+/* Extra Small Phones (< 480px) */
+@media (max-width: 480px) {
+    .hotlines-deck {
+        grid-template-columns: 1fr !important;
+    }
+
+    .toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .segmented {
+        width: 100%;
+        overflow-x: auto;
+        justify-content: flex-start;
+    }
+
+    .search-field {
+        max-width: 100% !important;
+        width: 100%;
+    }
+
+    .profile-header-group {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .profile-save-action {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .profile-save-action button {
+        width: 100%;
+    }
+
+    .profile-meta-grid {
+        grid-template-columns: 1fr !important;
+        gap: 14px;
+    }
+}
