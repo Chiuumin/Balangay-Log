@@ -17,15 +17,37 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
         document.documentElement.setAttribute('data-theme', 'dark');
     }
 </script>
-	<link rel="stylesheet" href="admin-dashboard.css">
+	<link rel="stylesheet" href="admin-dashboard.css?v=<?= time() ?>" />
 </head>
 <body>
-	<div class="admin-shell">
-		<aside class="admin-sidebar">
-			<a class="admin-brand" href="admin_dashboard.php" aria-label="BalangayLog System Overview">
-				<span class="admin-brand-mark">B</span>
-				<span><strong>BalangayLog</strong><small>BARANGAY DUALE</small></span>
-			</a>
+<div class="admin-shell">
+        <!-- Backdrop Dimmer Overlay -->
+        <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+        <!-- Sticky Mobile Header Bar -->
+        <header class="mobile-top-header">
+            <button class="mobile-hamburger-btn" id="mobileMenuBtn" type="button" aria-label="Open Navigation">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
+            <a class="admin-brand mobile-brand-inline" href="admin_dashboard.php">
+                <span class="admin-brand-mark">B</span>
+                <span><strong>BalangayLog</strong><small>BARANGAY DUALE</small></span>
+            </a>
+        </header>
+
+        <!-- Sliding Sidebar Drawer -->
+        <aside class="admin-sidebar" id="adminSidebar">
+            <div class="sidebar-header-row">
+                <a class="admin-brand" href="admin_dashboard.php" aria-label="BalangayLog System Administration">
+                    <span class="admin-brand-mark">B</span>
+                    <span><strong>BalangayLog</strong><small>BARANGAY DUALE</small></span>
+                </a>
+                <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close Navigation">×</button>
+            </div>
 
 			<div class="admin-identity">
 				<span class="identity-avatar" id="adminAvatar">AD<img id="adminProfilePicture" alt="" hidden></span>
@@ -43,7 +65,7 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 
 		<div class="sidebar-bottom">
    		 <button class="back-link" id="themeToggleBtn" type="button" style="display: flex; align-items: center; justify-content: space-between;">
-   	     	<span id="themeToggleLabel">🌙 Dark Mode</span>
+   	     	<span id="themeToggleLabel">Dark Mode</span>
    		 </button>
     <button class="logout-link" id="logoutBtn" type="button">Log out</button>
 		</div>
@@ -210,6 +232,6 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 	<dialog class="admin-dialog" id="reasonDialog"><form id="reasonForm" method="dialog"><div class="dialog-heading"><div><p class="eyebrow">REASON REQUIRED</p><h2 id="reasonDialogTitle">Add a reason</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div><input type="hidden" name="action"><input type="hidden" name="id"><input type="hidden" name="status"><label>Reason<textarea name="reason" rows="4" required></textarea></label><div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog>Cancel</button><button class="button button-danger" type="submit">Confirm</button></div></form></dialog>
 
 	<dialog class="admin-dialog" id="historyDialog"><div class="dialog-heading"><div><p class="eyebrow">INVENTORY RECORD</p><h2>Equipment history</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div><div id="equipmentHistoryRows" class="history-list"></div></dialog>
-	<script src="admin-dashboard.js" defer></script>
+	<script src="admin-dashboard.js?v=<?= time() ?>"></script>
 </body>
 </html>
