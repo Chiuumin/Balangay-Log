@@ -1,21 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root {
+    --ink: #172b35;
+    --muted: #687b83;
+    --line: #dce5e6;
+    --paper: #f3f7f6;
+    --sidebar: #173d3b;
+    --sidebar-soft: #26524e;
+    --teal: #19766c;
+    --teal-dark: #125b54;
+    --coral: #d15c49;
+    --gold: #b4852e;
+    --blue: #407792;
+    --green: #48835f;
+}
+
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-family: 'DM Sans', 'Plus Jakarta Sans', sans-serif;
 }
 
 body {
     min-height: 100vh;
-    background-color: #07152d;
+    background-color: #081717 !important;
     background-image: 
-        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-    background-size: 40px 40px;
+        linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px) !important;
+    background-size: 38px 38px !important;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #ffffff;
+    color: #f1f7f5;
 }
 
 .page-container {
@@ -41,22 +58,24 @@ body {
     display: flex;
     align-items: center;
     gap: 16px;
-    margin-bottom: 28px;
+    margin-bottom: 24px;
 }
 
 .brand-logo {
     position: relative;
     width: 52px;
     height: 52px;
-    background: linear-gradient(135deg, #4f46e5 0%, #db2777 100%);
+    background: #173d3b;
+    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
+    font-family: 'Manrope', sans-serif;
     font-size: 26px;
     font-weight: 800;
-    color: #ffffff;
-    box-shadow: 0 10px 25px -5px rgba(219, 39, 119, 0.4);
+    color: #c8e0cb;
+    box-shadow: 0 10px 25px -5px rgba(23, 61, 59, 0.6);
 }
 
 .brand-logo-fallback {
@@ -64,6 +83,7 @@ body {
 }
 
 .brand-text h1 {
+    font-family: 'Manrope', sans-serif;
     font-size: 32px;
     font-weight: 800;
     letter-spacing: -0.5px;
@@ -75,18 +95,18 @@ body {
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 2px;
-    color: #64748b;
+    color: #8da49e;
 }
 
 .hero-description {
     font-size: 15px;
     line-height: 1.6;
-    color: #94a3b8;
-    margin-bottom: 40px;
+    color: #a4beba;
+    margin-bottom: 38px;
     max-width: 460px;
 }
 
-/* Metric Cards */
+/* Metric Cards Base */
 .metrics-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -95,17 +115,47 @@ body {
 }
 
 .metric-card {
-    background: rgba(15, 23, 42, 0.6);
+    background: #112222;
     border: 1px solid rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(8px);
-    border-radius: 16px;
-    padding: 20px;
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 20px 22px;
     display: flex;
     flex-direction: column;
     gap: 6px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+}
+
+/* 1. Active Cases (Coral Red) */
+.metric-card:nth-child(1) {
+    border-top: 3px solid #e05d44 !important;
+    box-shadow: 0 -2px 10px rgba(224, 93, 68, 0.2), 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* 2. Resolved This Month (Emerald Green) */
+.metric-card:nth-child(2) {
+    border-top: 3px solid #38a169 !important;
+    box-shadow: 0 -2px 10px rgba(56, 161, 105, 0.2), 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* 3. Residents Served (Blue) */
+.metric-card:nth-child(3) {
+    border-top: 3px solid #3b82f6 !important;
+    box-shadow: 0 -2px 10px rgba(59, 130, 246, 0.2), 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* 4. Avg. Resolution (Amber / Yellow) */
+.metric-card:nth-child(4) {
+    border-top: 3px solid #f59e0b !important;
+    box-shadow: 0 -2px 10px rgba(245, 158, 11, 0.2), 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
 .metric-value {
+    font-family: 'Manrope', sans-serif;
     font-size: 28px;
     font-weight: 800;
     color: #ffffff;
@@ -113,9 +163,9 @@ body {
 }
 
 .metric-label {
-    font-size: 13px;
-    color: #64748b;
-    font-weight: 500;
+    font-size: 12.5px;
+    color: #8da4a2;
+    font-weight: 600;
 }
 
 /* --- RIGHT SIDE: AUTH CARD --- */
@@ -128,19 +178,20 @@ body {
 
 .auth-card {
     background: #ffffff;
-    border-radius: 24px;
+    border-radius: 20px;
     padding: 38px 34px;
     width: 100%;
-    color: #0f172a;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    color: #172b35;
+    box-shadow: 0 25px 50px -12px rgba(4, 16, 16, 0.6);
 }
 
 .register-page {
-    max-width: 1000px;
+    max-width: 900px;
+    justify-content: center;
 }
 
 .register-card {
-    max-width: 800px;
+    max-width: 760px;
     margin: 32px auto;
 }
 
@@ -148,7 +199,7 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 28px;
+    margin-bottom: 26px;
 }
 
 .register-brand .brand-logo {
@@ -159,8 +210,9 @@ body {
 }
 
 .register-brand-name {
-    color: #0f172a;
-    font-size: 17px;
+    color: #172b35;
+    font-family: 'Manrope', sans-serif;
+    font-size: 18px;
     font-weight: 800;
 }
 
@@ -174,52 +226,48 @@ body {
     grid-column: 1 / -1;
 }
 
-.register-grid .form-group input[type="file"] {
-    height: auto;
-    min-height: 46px;
-    padding: 9px 12px;
-}
-
 .register-footer {
     margin-top: 18px;
     text-align: center;
-    color: #64748b;
+    color: #687b83;
     font-size: 13px;
 }
 
 .register-footer a {
-    color: #2563eb;
-    font-weight: 600;
+    color: #19766c;
+    font-weight: 700;
     text-decoration: none;
 }
 
 .register-footer a:hover {
+    color: #125b54;
     text-decoration: underline;
 }
 
 .auth-header h2 {
+    font-family: 'Manrope', sans-serif;
     font-size: 26px;
     font-weight: 800;
-    color: #0f172a;
+    color: #172b35;
     margin-bottom: 6px;
     letter-spacing: -0.5px;
 }
 
 .auth-header p {
-    font-size: 14px;
-    color: #64748b;
+    font-size: 13.5px;
+    color: #687b83;
     margin-bottom: 24px;
 }
 
 .error-banner {
-    background: #fef2f2;
-    border: 1px solid #fecaca;
-    color: #dc2626;
+    background: #fff0ed;
+    border: 1px solid #eac2bc;
+    color: #9c4034;
     padding: 10px 14px;
-    border-radius: 10px;
+    border-radius: 8px;
     font-size: 13px;
     margin-bottom: 20px;
-    font-weight: 500;
+    font-weight: 600;
 }
 
 .form-group {
@@ -228,31 +276,46 @@ body {
 
 .form-group label {
     display: block;
-    font-size: 13px;
-    font-weight: 600;
-    color: #0f172a;
+    font-size: 12px;
+    font-weight: 700;
+    color: #2b454e;
     margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
 }
 
-.form-group input {
+.form-group input,
+.form-group select {
     width: 100%;
     height: 46px;
     padding: 0 16px;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
     font-size: 14px;
-    color: #0f172a;
+    color: var(--ink);
+    background: #ffffff;
     outline: none;
     transition: all 0.2s ease;
 }
 
-.form-group input:focus {
-    border-color: #0f172a;
-    box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+.form-group select {
+    cursor: pointer;
+}
+
+.form-group input[type="file"] {
+    height: auto;
+    min-height: 46px;
+    padding: 10px 14px;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    border-color: #19766c;
+    box-shadow: 0 0 0 3px rgba(25, 118, 108, 0.15);
 }
 
 .form-group input::placeholder {
-    color: #94a3b8;
+    color: #8fa1a8;
 }
 
 .password-input-wrapper {
@@ -275,7 +338,7 @@ body {
     background: none;
     border: none;
     cursor: pointer;
-    color: #94a3b8;
+    color: #8fa1a8;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -283,117 +346,59 @@ body {
 }
 
 .eye-btn:focus-visible {
-    outline: 2px solid #2563eb;
+    outline: 2px solid #19766c;
     outline-offset: 2px;
     border-radius: 4px;
 }
 
 .eye-btn:hover {
-    color: #0f172a;
+    color: var(--ink);
 }
 
 .primary-btn {
     width: 100%;
     height: 48px;
-    background: #0b1528;
+    background: #173d3b;
     color: #ffffff;
     border: none;
-    border-radius: 12px;
-    font-size: 15px;
-    font-weight: 600;
+    border-radius: 8px;
+    font-family: 'Manrope', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
     cursor: pointer;
-    transition: background 0.2s;
-    margin-top: 4px;
+    transition: background 0.2s ease, transform 0.15s ease;
+    margin-top: 6px;
 }
 
 .primary-btn:hover {
-    background: #1e293b;
+    background: #122d2b;
+}
+
+.primary-btn:active {
+    transform: translateY(1px);
 }
 
 .primary-btn:disabled {
-    opacity: 0.7;
+    opacity: 0.65;
     cursor: not-allowed;
 }
 
 .forgot-link {
     display: block;
     text-align: center;
-    color: #2563eb;
-    font-size: 13px;
-    font-weight: 600;
+    color: #19766c;
+    font-size: 12.5px;
+    font-weight: 700;
     text-decoration: none;
-    margin: 18px 0 24px;
+    margin: 18px 0 22px;
 }
 
 .forgot-link:hover {
+    color: #125b54;
     text-decoration: underline;
 }
 
-/* Demo Accounts */
-.demo-divider {
-    position: relative;
-    text-align: center;
-    margin-bottom: 14px;
-}
-
-.demo-divider::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: #f1f5f9;
-    z-index: 1;
-}
-
-.demo-divider span {
-    position: relative;
-    background: #ffffff;
-    padding: 0 12px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    color: #94a3b8;
-    z-index: 2;
-}
-
-.demo-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-}
-
-.demo-chip {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    text-align: left;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.demo-chip:hover {
-    border-color: #cbd5e1;
-    background: #f8fafc;
-}
-
-.demo-chip .demo-name {
-    font-size: 13px;
-    font-weight: 700;
-    color: #0f172a;
-}
-
-.demo-chip .demo-role {
-    font-size: 11px;
-    color: #64748b;
-}
-
-/* Stacks vertically ONLY on narrow mobile screens (under 720px) */
-@media (max-width: 720px) {
+@media (max-width: 768px) {
     .page-container {
         flex-direction: column;
         padding: 32px 20px;
