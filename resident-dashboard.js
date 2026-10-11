@@ -21,9 +21,19 @@ const escapeHtml = (val) => String(val ?? '').replace(/[&<>"']/g, (c) => ({
 const formatDate = (val) => val ? new Date(String(val).replace(' ', 'T')).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
 
 function statusPill(status) {
-    const s = String(status || '').toUpperCase();
-    if (s === 'RESOLVED') return `<span class="pill pill-active">Resolved</span>`;
-    if (s === 'IN_PROGRESS' || s === 'IN PROGRESS') return `<span class="pill pill-blue">In Progress</span>`;
+    const s = String(status || '').toUpperCase().trim();
+    if (s === 'RESOLVED' || s === 'CLOSED') {
+        return `<span class="pill pill-active">Resolved</span>`;
+    }
+    if (s === 'DISPATCHED' || s === 'UNIT DISPATCHED') {
+        return `<span class="pill pill-blue">Unit Dispatched</span>`;
+    }
+    if (s === 'IN_PROGRESS' || s === 'IN PROGRESS') {
+        return `<span class="pill pill-blue">In Progress</span>`;
+    }
+    if (s === 'FOR_RESOLUTION' || s === 'LUPON') {
+        return `<span class="pill pill-pending">Lupon Mediation</span>`;
+    }
     return `<span class="pill pill-pending">Under Review</span>`;
 }
 
@@ -44,7 +54,6 @@ async function requestResident(action, payload = {}, options = {}) {
     let body;
 
     if (options.formData) {
-        // DO NOT set 'Content-Type' header here; fetch sets multipart/form-data with the boundary automatically
         body = options.formData;
         if (action && !body.has('action')) {
             body.append('action', action);
@@ -78,9 +87,9 @@ function setView(view) {
 
 function renderOverview() {
     const total = state.reports.length;
-    const review = state.reports.filter(r => ['PENDING', 'UNDER_REVIEW'].includes(String(r.status).toUpperCase())).length;
-    const progress = state.reports.filter(r => ['IN_PROGRESS', 'FOR_RESOLUTION'].includes(String(r.status).toUpperCase())).length;
-    const resolved = state.reports.filter(r => String(r.status).toUpperCase() === 'RESOLVED').length;
+    const review = state.reports.filter(r => ['PENDING', 'UNDER_REVIEW', 'UNDER REVIEW'].includes(String(r.status).toUpperCase().trim())).length;
+    const progress = state.reports.filter(r => ['IN_PROGRESS', 'IN PROGRESS', 'DISPATCHED', 'UNIT DISPATCHED', 'FOR_RESOLUTION'].includes(String(r.status).toUpperCase().trim())).length;
+    const resolved = state.reports.filter(r => ['RESOLVED', 'CLOSED'].includes(String(r.status).toUpperCase().trim())).length;
 
     document.getElementById('metricTotal').textContent = total;
     document.getElementById('metricReview').textContent = review;
@@ -112,7 +121,22 @@ function renderReports() {
     });
 
     if (state.filter !== 'all') {
-        reports = reports.filter(r => String(r.status).toUpperCase() === state.filter);
+        reports = reports.filter(r => {
+            const st = String(r.status).toUpperCase().trim();
+            // "Under Review" filter matches PENDING or UNDER_REVIEW
+            if (state.filter === 'UNDER_REVIEW') {
+                return st === 'PENDING' || st === 'UNDER_REVIEW' || st === 'UNDER REVIEW';
+            }
+            // "In Progress" filter matches active investigation, dispatched units, and Lupon
+            if (state.filter === 'IN_PROGRESS') {
+                return st === 'IN_PROGRESS' || st === 'IN PROGRESS' || st === 'DISPATCHED' || st === 'UNIT DISPATCHED' || st === 'FOR_RESOLUTION';
+            }
+            // "Resolved" filter matches RESOLVED and CLOSED
+            if (state.filter === 'RESOLVED') {
+                return st === 'RESOLVED' || st === 'CLOSED';
+            }
+            return st === state.filter;
+        });
     }
 
     const tbody = document.getElementById('allReportRows');
@@ -130,7 +154,7 @@ function renderReports() {
     document.getElementById('allReportsEmpty').hidden = reports.length > 0;
 }
 
-// 1. Double-Submission Lock on Submit
+// Double-Submission Lock on Submit
 document.getElementById('incidentForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const submitBtn = e.currentTarget.querySelector('button[type="submit"]');
@@ -153,7 +177,7 @@ document.getElementById('incidentForm')?.addEventListener('submit', async (e) =>
     }
 });
 
-// 2. Parcel-Style Milestone Detail Viewer
+// Parcel-Style Milestone Detail Viewer
 async function openReportDetails(reportId) {
     const report = state.reports.find(r => String(r.id) === String(reportId));
     if (!report) return;
@@ -161,34 +185,60 @@ async function openReportDetails(reportId) {
     const ref = report.reference_number || 'TRK-' + report.id;
     document.getElementById('detailDialogTitle').textContent = `Tracking #${ref}`;
 
-    // Update 4-Phase Stepper
-    const st = String(report.status || '').toUpperCase();
+    const stepReported = document.getElementById('step-reported');
     const stepReview = document.getElementById('step-review');
     const stepAction = document.getElementById('step-action');
     const stepResolved = document.getElementById('step-resolved');
+    const timelineEl = document.getElementById('trackingTimeline');
 
-    stepReview.className = 'stepper-step';
-    stepAction.className = 'stepper-step';
-    stepResolved.className = 'stepper-step';
-
-    if (st === 'PENDING' || st === 'UNDER_REVIEW') {
-        stepReview.classList.add('is-active');
-    } else if (st === 'IN_PROGRESS' || st === 'FOR_RESOLUTION' || st === 'CRITICAL') {
-        stepReview.classList.add('is-done');
-        stepAction.classList.add('is-active');
-    } else if (st === 'RESOLVED') {
-        stepReview.classList.add('is-done');
-        stepAction.classList.add('is-done');
-        stepResolved.classList.add('is-done');
+    // Fetch live milestones from database
+    let milestones = [];
+    try {
+        const res = await requestResident('get_milestones', { reference_number: ref });
+        milestones = res.milestones || [];
+    } catch (err) {
+        console.error('Milestone fetch error:', err);
     }
 
-    // Static Case Details
+    // Determine current status: latest milestone snapshot takes precedence
+    const latestSnapshot = milestones.length > 0 ? milestones[0].status_snapshot : report.status;
+    const currentStatus = String(latestSnapshot || report.status || '').toUpperCase().trim();
+
+    // Reset stepper
+    [stepReported, stepReview, stepAction, stepResolved].forEach(s => {
+        if (s) s.className = 'stepper-step';
+    });
+
+    if (stepReported) stepReported.classList.add('is-done');
+
+    if (currentStatus === 'PENDING' || currentStatus === 'UNDER_REVIEW' || currentStatus === 'UNDER REVIEW') {
+        if (stepReview) stepReview.classList.add('is-active');
+    } else if (currentStatus === 'IN_PROGRESS' || currentStatus === 'IN PROGRESS') {
+        if (stepReview) stepReview.classList.add('is-done');
+        if (stepAction) stepAction.classList.add('is-active');
+    } else if (currentStatus === 'DISPATCHED' || currentStatus === 'UNIT DISPATCHED') {
+        // Dispatched marks both review and field action as active/done
+        if (stepReview) stepReview.classList.add('is-done');
+        if (stepAction) stepAction.classList.add('is-done');
+    } else if (currentStatus === 'FOR_RESOLUTION' || currentStatus === 'LUPON') {
+        if (stepReview) stepReview.classList.add('is-done');
+        if (stepAction) stepAction.classList.add('is-done');
+        if (stepResolved) stepResolved.classList.add('is-active');
+    } else if (currentStatus === 'RESOLVED' || currentStatus === 'CLOSED') {
+        if (stepReview) stepReview.classList.add('is-done');
+        if (stepAction) stepAction.classList.add('is-done');
+        if (stepResolved) stepResolved.classList.add('is-done');
+    } else {
+        if (stepReview) stepReview.classList.add('is-active');
+    }
+
+    // Details view
     const fields = [
         ['Incident Type', report.incident_type],
         ['Purok / Location', report.purok || '—'],
         ['Date Filed', formatDate(report.incident_datetime || report.created_at)],
         ['Priority Level', report.priority_level || 'Moderate'],
-        ['Current Status', statusPill(report.status)],
+        ['Current Status', statusPill(currentStatus)],
         ['Recommendation', report.ai_recommendation || 'Under administrative assessment.'],
         ['Narrative Notes', report.narrative_description || 'No description provided.']
     ];
@@ -200,13 +250,7 @@ async function openReportDetails(reportId) {
         </div>
     `).join('');
 
-    // Fetch and render Milestone Timeline
-const timelineEl = document.getElementById('trackingTimeline');
-
-try {
-    const res = await requestResident('get_milestones', { reference_number: ref });
-    const milestones = res.milestones || [];
-
+    // Timeline entries
     if (milestones.length === 0) {
         timelineEl.innerHTML = `
             <div class="timeline-event">
@@ -230,11 +274,10 @@ try {
             </div>
         `).join('');
     }
-} catch (err) {
-    timelineEl.innerHTML = '<p class="timeline-note">Unable to load milestones.</p>';
-}
+
     document.getElementById('reportDetailDialog').showModal();
 }
+
 async function refreshData() {
     try {
         const data = await requestResident();
@@ -242,7 +285,6 @@ async function refreshData() {
         renderOverview();
         renderReports();
 
-        // Mirror Admin Dashboard profile sync
         if (data.resident) {
             const residentName = data.resident.full_name || 'Resident';
             const nameEl = document.getElementById('residentName');
@@ -288,7 +330,7 @@ async function refreshData() {
     }
 }
 
-// Event Listeners
+// Navigation & Filters
 navLinks.forEach((link) => link.addEventListener('click', () => setView(link.dataset.view)));
 
 document.querySelectorAll('[data-open-view]').forEach(btn => {
@@ -325,7 +367,7 @@ document.addEventListener('click', (e) => {
     if (btn) openReportDetails(btn.dataset.viewReport);
 });
 
-document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+document.getElementById('passwordForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = Object.fromEntries(new FormData(e.currentTarget).entries());
     try {
@@ -337,8 +379,7 @@ document.getElementById('passwordForm').addEventListener('submit', async (e) => 
     }
 });
 
-// Logout
-document.getElementById('logoutBtn').addEventListener('click', async () => {
+document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     try { await fetch('api/logout.php', { method: 'POST', credentials: 'same-origin' }); } catch {}
     sessionStorage.clear();
     localStorage.removeItem('currentUser');
@@ -346,7 +387,7 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
     window.location.replace('index.html');
 });
 
-// Theme Sync
+// Theme handling
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const themeToggleLabel = document.getElementById('themeToggleLabel');
 
@@ -368,10 +409,7 @@ themeToggleBtn?.addEventListener('click', () => {
     applyTheme(isDark ? 'light' : 'dark');
 });
 
-const initialView = location.hash.slice(1);
-if (viewTitles[initialView]) setView(initialView);
-refreshData();
-
+// Profile upload
 const photoInput = document.getElementById('residentPhotoInput');
 const avatarPreview = document.getElementById('residentAvatarPreview');
 const avatarInitials = document.getElementById('settingsAvatarInitials');
@@ -414,7 +452,7 @@ document.getElementById('profileForm')?.addEventListener('submit', async (e) => 
     }
 });
 
-// Mobile Sliding Drawer Logic
+// Off-canvas mobile drawer
 const mobileMenuBtn = document.getElementById('mobileMenuBtn');
 const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
 const sidebarBackdrop = document.getElementById('sidebarBackdrop');
@@ -436,7 +474,6 @@ mobileMenuBtn?.addEventListener('click', openDrawer);
 sidebarCloseBtn?.addEventListener('click', closeDrawer);
 sidebarBackdrop?.addEventListener('click', closeDrawer);
 
-// Close drawer automatically when clicking any nav item on mobile
 document.querySelectorAll('.admin-nav-link').forEach(link => {
     link.addEventListener('click', () => {
         if (window.innerWidth <= 768) {
@@ -444,3 +481,7 @@ document.querySelectorAll('.admin-nav-link').forEach(link => {
         }
     });
 });
+
+const initialView = location.hash.slice(1);
+if (viewTitles[initialView]) setView(initialView);
+refreshData();
