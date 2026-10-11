@@ -1,0 +1,61 @@
+/* Captain additions. Load AFTER admin-dashboard.css so the shared shell is reused. */
+.metric-grid-4 { grid-template-columns: repeat(4, minmax(130px, 1fr)); }
+.topbar-right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: flex-end; }
+.captain-badge { display: flex; align-items: center; gap: 9px; }
+.captain-badge strong { font: 700 13px 'Manrope', sans-serif; }
+.role-badge { padding: 4px 9px; border-radius: 3px; color: #125b54; background: #e2eee5; font-size: 11px; font-weight: 700; }
+.nav-count { margin-left: auto; min-width: 20px; padding: 2px 6px; border-radius: 10px; color: #fff; background: var(--coral); font-size: 10px; font-weight: 700; text-align: center; }
+.admin-nav-link { flex-wrap: nowrap; }
+
+.alert-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; padding: 11px 14px; border: 1px solid #eac2bc; border-left: 4px solid var(--coral); border-radius: 4px; color: #8f3a2d; background: #fff0ed; font-size: 12px; }
+.alert-banner strong { font: 800 15px 'Manrope', sans-serif; margin-right: 4px; }
+
+.analytics-grid { display: grid; grid-template-columns: 1.4fr 1.2fr .8fr; gap: 16px; margin-top: 16px; align-items: stretch; }
+.analytics-grid .content-panel { margin-top: 0; }
+.analytics-grid-2 { grid-template-columns: 1fr 1fr; }
+.quick-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.chart-box svg { width: 100%; height: auto; display: block; }
+.chart-box text { fill: #6c7b81; font-size: 10px; font-family: 'DM Sans', sans-serif; }
+.chart-line { fill: none; stroke: var(--teal); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.chart-area { fill: #19766c1a; }
+.chart-dot { fill: #fff; stroke: var(--teal); stroke-width: 2; }
+.chart-grid { stroke: #edf1f1; stroke-width: 1; }
+
+.bar-list { display: grid; gap: 11px; }
+.bar-row { display: grid; grid-template-columns: 96px 1fr 30px; gap: 9px; align-items: center; font-size: 11px; color: #42565d; }
+.bar-track { height: 10px; border-radius: 3px; background: #edf3f2; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 3px; background: var(--blue); }
+.bar-row strong { text-align: right; color: var(--ink); }
+
+.rate-ring { display: grid; place-items: center; min-height: 160px; }
+.rate-ring svg { width: 140px; height: 140px; }
+.ring-track { fill: none; stroke: #edf3f2; stroke-width: 12; }
+.ring-fill { fill: none; stroke: var(--green); stroke-width: 12; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; }
+.rate-ring text { fill: var(--ink); font: 800 24px 'Manrope', sans-serif; }
+
+.heat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.heat-tile { display: grid; gap: 4px; padding: 16px 14px; border-radius: 5px; color: var(--ink); background: rgb(209 92 73 / var(--heat, .08)); border: 1px solid var(--line); }
+.heat-tile strong { font: 800 26px 'Manrope', sans-serif; }
+.heat-tile span { font-size: 11px; font-weight: 600; }
+.heat-tile.is-hot { color: #fff; }
+
+.admin-nav-link:focus-visible, .button:focus-visible, .small-button:focus-visible, .segment:focus-visible,
+.text-button:focus-visible, .logout-link:focus-visible, .icon-button:focus-visible { outline: 2px solid #58a69b; outline-offset: 2px; }
+.admin-sidebar { overflow-y: auto; }
+
+@media (max-width: 1080px) { .metric-grid-4 { grid-template-columns: repeat(2, minmax(130px, 1fr)); } .analytics-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+    /* Keep logout reachable on phones (the admin CSS hides .sidebar-bottom). */
+    .sidebar-bottom { display: block; border-top: 0; padding-top: 6px; }
+    .analytics-grid-2 { grid-template-columns: 1fr; }
+    .topbar-right { justify-content: flex-start; }
+    .admin-topbar { flex-wrap: wrap; }
+}
+
+/* Priority and case-status pills used by incident_reports */
+.pill-critical { color: #9d4538; background: #f9e8e4; }
+.pill-high { color: #a35a1b; background: #fbe9d6; }
+.pill-moderate, .pill-in_progress, .pill-for_resolution { color: #946619; background: #fbf1d9; }
+.pill-low { color: #52676f; background: #eef2f2; }
+.pill-resolved, .pill-endorsed, .pill-ongoing { color: #287048; background: #e6f3e9; }

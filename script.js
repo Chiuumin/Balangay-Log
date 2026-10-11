@@ -39,18 +39,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     const headerTitle = document.querySelector('.auth-header h2');
     const headerText = document.querySelector('.auth-header p');
 
+        let setupRequired = false;
+
     try {
         const response = await fetch('api/check_setup.php', { cache: 'no-store' });
         const data = await response.json();
-
-        if (data && data.setup_required) {
-            if (loginForm) loginForm.style.display = 'none';
-            if (setupForm) setupForm.style.display = 'block';
-            if (headerTitle) headerTitle.textContent = 'Initial System Setup';
-            if (headerText) headerText.textContent = 'Create the first System Administrator account.';
-        }
+        setupRequired = Boolean(data && data.setup_required);
     } catch (error) {
         // Ignore and show the normal login form if setup check fails.
+    }
+
+    function showSetupForm() {
+        if (loginForm) loginForm.style.display = 'none';
+        if (setupForm) setupForm.style.display = 'block';
+        if (headerTitle) headerTitle.textContent = 'Initial System Setup';
+        if (headerText) headerText.textContent = 'Create the first System Administrator account.';
+        document.getElementById('setup_first_name')?.focus();
+    }
+
+    if (setupRequired) showSetupForm();
+
+    const initialSetupLink = document.getElementById('initialSetupLink');
+    if (initialSetupLink) {
+        if (!setupRequired) initialSetupLink.style.display = 'none';
+        initialSetupLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            showSetupForm();
+        });
     }
 
     // Element selections

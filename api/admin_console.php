@@ -115,7 +115,8 @@ try {
             $role = strtoupper(trim((string) ($input['role'] ?? '')));
             $contact = optionalText($input, 'contact_number', 30);
             $password = (string) ($input['password'] ?? '');
-            if (!in_array($role, ['OFFICER', 'CAPTAIN'], true)) adminRespond(['success' => false, 'message' => 'Choose Officer or Captain.'], 422);
+            if (!in_array($role, ['OFFICER', 'CAPTAIN', 'SYSTEM_ADMIN'], true)) adminRespond(['success' => false, 'message' => 'Choose Officer, Captain, or System Administrator.'], 422);
+            if ($role === 'SYSTEM_ADMIN' && getUserRole() !== 'SYSTEM_ADMIN') adminRespond(['success' => false, 'message' => 'Only a System Administrator can create another administrator.'], 403);
             if (strlen($password) < 8) adminRespond(['success' => false, 'message' => 'Temporary password must be at least 8 characters.'], 422);
             ensureUsernameAvailable($pdo, $username);
             $stmt = $pdo->prepare("INSERT INTO users (full_name, username, email_or_phone, password_hash, contact_number, user_type, status, authorization_status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', 'AUTHORIZED', NOW())");

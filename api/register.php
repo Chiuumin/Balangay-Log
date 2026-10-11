@@ -1,77 +1,190 @@
 <?php
-header('Content-Type: application/json; charset=UTF-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST');
-header('Access-Control-Allow-Headers: Content-Type');
+require_once __DIR__ . '/auth.php';
 
-mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-
-try {
-    $conn = new mysqli("127.0.0.1", "root", "", "balangaylog_db", 3306);
-    $conn->set_charset("utf8mb4");
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Hindi makakonekta sa database.']);
-    exit();
+if (isLoggedIn()) {
+    redirectTo(getRoleDashboardPath(getUserRole()));
 }
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Register as Resident</title>
+    <link rel="stylesheet" href="style.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <main class="page-container register-page">
+        <section class="auth-card register-card">
+            <div class="register-brand">
+                <div class="brand-logo">
+                    <span class="brand-logo-fallback" aria-hidden="true">B</span>
+                </div>
+                <span class="register-brand-name">BalangayLog</span>
+            </div>
 
-$input = json_decode(file_get_contents('php://input'), true);
-if (!$input) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Maling JSON data.']);
-    exit();
-}
+            <div class="auth-header">
+                <h2>Register as Resident</h2>
+                <p>Submit your profile for verification by the System Administrator.</p>
+            </div>
 
-$fullName      = trim($input['fullName'] ?? '');
-$email         = trim($input['email'] ?? '');
-$phone         = trim($input['phone'] ?? '');
-$password      = trim($input['password'] ?? '');
-$role          = trim($input['role'] ?? 'RESIDENT');
-$purok         = trim($input['purok'] ?? '');
-$streetAddress = trim($input['streetAddress'] ?? '');
-$idProofNumber = trim($input['idProofNumber'] ?? '');
+            <div id="errorBanner" class="error-banner" style="display: none;"></div>
 
-if (strlen($fullName) < 3 || empty($email) || strlen($password) < 6) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'Punan ang lahat ng kailangang impormasyon (minimum 6 characters ang password).']);
-    exit();
-}
+            <form id="registerForm" enctype="multipart/form-data">
+                <div class="register-grid">
+                    <div class="form-group">
+                        <label for="first_name">First Name</label>
+                        <input type="text" id="first_name" name="first_name" required />
+                    </div>
 
-if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'Hindi wastong format ng email.']);
-    exit();
-}
+                    <div class="form-group">
+                        <label for="last_name">Last Name</label>
+                        <input type="text" id="last_name" name="last_name" required />
+                    </div>
 
-// Check kung may existing user na gamit ang email na ito
-$stmtCheck = $conn->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
-$stmtCheck->bind_param("s", $email);
-$stmtCheck->execute();
-if ($stmtCheck->get_result()->num_rows > 0) {
-    http_response_code(409);
-    echo json_encode(['success' => false, 'message' => 'May account na gamit ang email na ito.']);
-    exit();
-}
-$stmtCheck->close();
+                    <div class="form-group">
+                        <label for="date_of_birth">Date of Birth</label>
+                        <input type="date" id="date_of_birth" name="date_of_birth" required />
+                    </div>
 
-$hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-// Laging 'PENDING' para kailangan muna i-verify at i-authorize ng Admin bago makapasok
-$authStatus     = 'PENDING';
-$userType       = ($role === 'RESIDENT') ? 'RESIDENT' : 'OFFICER';
-$emailOrPhone   = !empty($phone) ? $phone : $email;
+                    <div class="form-group">
+                        <label for="contact_number">Contact Number</label>
+                        <input type="text" id="contact_number" name="contact_number" required />
+                    </div>
 
-$stmt = $conn->prepare("INSERT INTO users (full_name, email, purok, street_address, id_proof_number, role, email_or_phone, password_hash, user_type, authorization_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("ssssssssss", $fullName, $email, $purok, $streetAddress, $idProofNumber, $role, $emailOrPhone, $hashedPassword, $userType, $authStatus);
+                    <div class="form-group form-group--wide">
+                        <label for="address">Address</label>
+                        <input type="text" id="address" name="address" required />
+                    </div>
 
-if ($stmt->execute()) {
-    echo json_encode([
-        'success' => true,
-        'message' => 'Naipasa na ang iyong pagpaparehistro. Kasalukuyang PENDING ang status para sa pagsusuri ng Barangay Admin.'
-    ]);
-} else {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Nagka-aberya sa pag-save ng account records.']);
-}
+                    <div class="form-group">
+                        <label for="purok">Purok</label>
+                        <select id="purok" name="purok" required>
+                            <option value="">Choose your Purok</option>
+                        </select>
+                    </div>
 
-$stmt->close();
-$conn->close();
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" required autocomplete="off" />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="confirm_password">Confirm Password</label>
+                        <input type="password" id="confirm_password" name="confirm_password" required />
+                    </div>
+
+                    <div class="form-group form-group--wide">
+                        <label for="proof_of_residency">Proof of Residency / Valid ID</label>
+                        <input type="file" id="proof_of_residency" name="proof_of_residency" accept=".jpg,.jpeg,.png,.pdf" />
+                    </div>
+                </div>
+
+                <button type="submit" class="primary-btn" id="registerBtn">Register</button>
+                <p class="register-footer">
+                    Already have an account? <a href="index.html">Log In</a>
+                </p>
+            </form>
+        </section>
+    </main>
+
+    <script>
+        const registerForm = document.getElementById('registerForm');
+        const registerBtn = document.getElementById('registerBtn');
+        const errorBanner = document.getElementById('errorBanner');
+
+        function showError(message) {
+            errorBanner.textContent = message;
+            errorBanner.style.display = 'block';
+        }
+
+        fetch('api/get_system_parameters.php')
+            .then((response) => response.json())
+            .then((result) => {
+                if (!result.success) return;
+                const purokSelect = document.getElementById('purok');
+                result.puroks.forEach((purok) => purokSelect.add(new Option(purok, purok)));
+            })
+            .catch(() => showError('Unable to load the Purok list. Please refresh the page.'));
+
+        if (registerForm) {
+            registerForm.addEventListener('submit', async function (event) {
+                event.preventDefault();
+                errorBanner.style.display = 'none';
+                errorBanner.textContent = '';
+
+                const payload = {
+                    first_name: document.getElementById('first_name').value.trim(),
+                    last_name: document.getElementById('last_name').value.trim(),
+                    date_of_birth: document.getElementById('date_of_birth').value,
+                    address: document.getElementById('address').value.trim(),
+                    purok: document.getElementById('purok').value.trim(),
+                    contact_number: document.getElementById('contact_number').value.trim(),
+                    username: document.getElementById('username').value.trim(),
+                    password: document.getElementById('password').value,
+                    confirm_password: document.getElementById('confirm_password').value,
+                    proof_of_residency: document.getElementById('proof_of_residency').files[0]?.name || ''
+                };
+
+                const requiredFields = [
+                    payload.first_name,
+                    payload.last_name,
+                    payload.date_of_birth,
+                    payload.address,
+                    payload.purok,
+                    payload.contact_number,
+                    payload.username,
+                    payload.password,
+                    payload.confirm_password
+                ];
+
+                if (requiredFields.some((value) => value === '')) {
+                    showError('Please complete all required fields.');
+                    return;
+                }
+
+                if (payload.password.length < 6) {
+                    showError('Password must be at least 6 characters long.');
+                    return;
+                }
+
+                if (payload.password !== payload.confirm_password) {
+                    showError('Passwords do not match.');
+                    return;
+                }
+
+                registerBtn.disabled = true;
+                registerBtn.textContent = 'Submitting...';
+
+                try {
+                    const response = await fetch('api/signup.php', {
+                        method: 'POST',
+                        body: new FormData(registerForm)
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        alert(result.message || 'Registration submitted.');
+                        window.location.href = 'index.html';
+                        return;
+                    }
+
+                    showError(result.message || 'Resident registration failed.');
+                } catch (error) {
+                    showError('Unable to submit your registration right now. Please try again.');
+                } finally {
+                    registerBtn.disabled = false;
+                    registerBtn.textContent = 'Register';
+                }
+            });
+        }
+    </script>
+</body>
+</html>

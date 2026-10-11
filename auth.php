@@ -88,24 +88,37 @@ function requireRole(array $allowedRoles): void
     }
 }
 
-function getCurrentUser(): ?array
-{
-    if (!isLoggedIn()) {
+function getCurrentUser() {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+
+    $userId = $_SESSION['user_id'] ?? null;
+    if (!$userId) {
         return null;
     }
 
-    $pdo = getDatabaseConnection();
-    $stmt = $pdo->prepare('SELECT id, full_name, username, email_or_phone, user_type, status, authorization_status, contact_number, address, purok, date_of_birth FROM users WHERE id = :id LIMIT 1');
-    $stmt->execute(['id' => $_SESSION['user_id']]);
-    $user = $stmt->fetch();
+    try {
+        $pdo = getDatabaseConnection();
+        $stmt = $pdo->prepare('
+            SELECT 
+                id, 
+                full_name, 
+                username, 
+                email_or_phone, 
+                user_type AS role, 
+                status 
+            FROM users 
+            WHERE id = :id 
+            LIMIT 1
+        ');
+        $stmt->execute(['id' => $userId]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$user) {
-        session_unset();
-        session_destroy();
+        return $user ?: null;
+    } catch (PDOException $e) {
         return null;
     }
-
-    return $user;
 }
 
 function hasSystemAdmin(): bool
