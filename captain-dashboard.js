@@ -7,7 +7,8 @@ const viewTitles = {
     endorsements: 'Awaiting Captain Endorsement',
     lupon: 'Lupon / Mediation Registry',
     heatmap: 'Purok Incident Heatmaps',
-    analytics: 'Analytics & Official Reports'
+    analytics: 'Analytics & Official Reports',
+    settings: 'Settings'
 };
 const state = { cases: [], endorsements: [], lupon: [], trend: [], byPurok: [], byPurokAll: [], byCategory: [], puroks: [], selected: null };
 
@@ -19,6 +20,7 @@ const statusPill = (v) => `<span class="pill pill-${escapeHtml(String(v || '').t
 const endorseTypeLabel = (v) => ({ LUPON_CERTIFICATION: 'Lupon certification', PNP_TRANSMITTAL: 'PNP transmittal' }[v] || statusLabel(v));
 
 function showNotice(message, isError = false) {
+    if (!pageNotice) return;
     pageNotice.textContent = message;
     pageNotice.classList.toggle('is-error', isError);
     pageNotice.setAttribute('role', isError ? 'alert' : 'status');
@@ -27,18 +29,30 @@ function showNotice(message, isError = false) {
     showNotice.timeout = setTimeout(() => { pageNotice.hidden = true; }, 4500);
 }
 
-const csrf = () => document.querySelector('meta[name="csrf-token"]').content;
+const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
 
-async function requestCaptain(action, payload = {}) {
+async function requestCaptain(action, payload = {}, options = {}) {
+    const headers = { 'X-CSRF-Token': csrf() };
+    if (!options.formData) headers['Content-Type'] = 'application/json';
     const response = await fetch(captainApi, {
         method: action ? 'POST' : 'GET',
         credentials: 'same-origin',
-        headers: { 'X-CSRF-Token': csrf(), 'Content-Type': 'application/json' },
-        body: action ? JSON.stringify({ action, ...payload }) : undefined,
+        headers,
+        body: action ? (options.formData || JSON.stringify({ action, ...payload })) : undefined,
     });
-    if (response.status === 401 || response.status === 403) { window.location.replace('index.html'); throw new Error('Your session has ended. Please sign in again.'); }
+    if (response.status === 401 || response.status === 403) { 
+        window.location.replace('index.html'); 
+        throw new Error('Your session has ended. Please sign in again.'); 
+    }
+    
+    const rawText = await response.text();
     let result;
-    try { result = await response.json(); } catch { throw new Error('The server sent an unexpected response.'); }
+    try { 
+        result = JSON.parse(rawText); 
+    } catch { 
+        const cleanMsg = rawText.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+        throw new Error(cleanMsg.slice(0, 160) || 'The server sent an unexpected response.'); 
+    }
     if (!response.ok || !result.success) throw new Error(result.message || 'The request could not be completed.');
     return result;
 }
@@ -51,13 +65,14 @@ function setView(view) {
         if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
     });
     document.querySelectorAll('.admin-view').forEach((s) => { s.hidden = s.id !== `view-${view}`; });
-    document.getElementById('viewTitle').textContent = viewTitles[view];
+    const titleEl = document.getElementById('viewTitle');
+    if (titleEl) titleEl.textContent = viewTitles[view];
     history.replaceState(null, '', `#${view}`);
 }
 
 /* ---------- charts (inline SVG, no libraries) ---------- */
 function trendSvg(points) {
-    if (!points.length) return '<p class="empty-message">No trend data yet.</p>';
+    if (!points || !points.length) return '<p class="empty-message">No trend data yet.</p>';
     const W = 480, H = 170, pl = 28, pr = 12, pt = 12, pb = 26;
     const max = Math.max(1, ...points.map((p) => Number(p.count)));
     const x = (i) => pl + (points.length === 1 ? (W - pl - pr) / 2 : i * (W - pl - pr) / (points.length - 1));
@@ -82,14 +97,18 @@ function ringSvg(rate) {
 }
 
 function renderHeatmap() {
-    const period = document.getElementById('heatPeriod').value;
+    const period = document.getElementById('heatPeriod')?.value || 'month';
     const items = period === 'all' ? state.byPurokAll : state.byPurok;
     const max = Math.max(1, ...items.map((i) => Number(i.count)));
-    document.getElementById('heatGrid').innerHTML = items.map((i) => {
-        const level = Number(i.count) / max;
-        return `<div class="heat-tile ${level > .6 ? 'is-hot' : ''}" style="--heat:${(0.08 + level * 0.82).toFixed(2)}"><span>${escapeHtml(i.purok)}</span><strong>${Number(i.count)}</strong><span>${Number(i.count) === 1 ? 'incident' : 'incidents'}</span></div>`;
-    }).join('');
-    document.getElementById('heatEmpty').hidden = items.some((i) => Number(i.count) > 0);
+    const heatGrid = document.getElementById('heatGrid');
+    if (heatGrid) {
+        heatGrid.innerHTML = items.map((i) => {
+            const level = Number(i.count) / max;
+            return `<div class="heat-tile ${level > .6 ? 'is-hot' : ''}" style="--heat:${(0.08 + level * 0.82).toFixed(2)}"><span>${escapeHtml(i.purok)}</span><strong>${Number(i.count)}</strong><span>${Number(i.count) === 1 ? 'incident' : 'incidents'}</span></div>`;
+        }).join('');
+    }
+    const heatEmpty = document.getElementById('heatEmpty');
+    if (heatEmpty) heatEmpty.hidden = items.some((i) => Number(i.count) > 0);
 }
 
 /* ---------- tables ---------- */
@@ -100,81 +119,160 @@ const endorseRow = (e) => `<tr>
     <td><div class="row-actions"><button class="small-button" data-view-case="${Number(e.case_id)}">View</button><button class="small-button" data-endorse="${Number(e.id)}">Endorse / Sign</button></div></td></tr>`;
 
 function renderEndorsements() {
-    document.getElementById('overviewEndorseRows').innerHTML = state.endorsements.slice(0, 5).map(endorseRow).join('');
-    document.getElementById('overviewEndorseEmpty').hidden = state.endorsements.length > 0;
-    document.getElementById('endorseRows').innerHTML = state.endorsements.map(endorseRow).join('');
-    document.getElementById('endorseEmpty').hidden = state.endorsements.length > 0;
+    const ov = document.getElementById('overviewEndorseRows');
+    if (ov) ov.innerHTML = state.endorsements.slice(0, 5).map(endorseRow).join('');
+    const ovEmp = document.getElementById('overviewEndorseEmpty');
+    if (ovEmp) ovEmp.hidden = state.endorsements.length > 0;
+
+    const en = document.getElementById('endorseRows');
+    if (en) en.innerHTML = state.endorsements.map(endorseRow).join('');
+    const enEmp = document.getElementById('endorseEmpty');
+    if (enEmp) enEmp.hidden = state.endorsements.length > 0;
+
     const badge = document.getElementById('navEndorseCount');
-    badge.textContent = state.endorsements.length;
-    badge.hidden = state.endorsements.length === 0;
+    if (badge) {
+        badge.textContent = state.endorsements.length;
+        badge.hidden = state.endorsements.length === 0;
+    }
 }
 
 function renderCases() {
-    const search = document.getElementById('caseSearch').value.trim().toLowerCase();
-    const status = document.getElementById('caseStatusFilter').value;
+    const search = document.getElementById('caseSearch')?.value.trim().toLowerCase() || '';
+    const status = document.getElementById('caseStatusFilter')?.value || '';
     const rows = state.cases.filter((c) => (!status || c.status === status)
         && (!search || [c.case_no, c.title, c.purok, c.severity, c.category].some((v) => String(v || '').toLowerCase().includes(search))));
-    document.getElementById('caseRows').innerHTML = rows.map((c) => `<tr>
-        <td><strong>${escapeHtml(c.case_no)}</strong></td>
-        <td>${escapeHtml(c.title)}<span class="table-secondary">${escapeHtml(c.complainant || '')}</span></td>
-        <td>${escapeHtml(c.purok || '—')}</td><td>${statusPill(c.severity)}</td><td>${statusPill(c.status)}</td>
-        <td>${escapeHtml(formatDate(c.incident_datetime))}</td>
-        <td><div class="row-actions"><button class="small-button" data-view-case="${Number(c.id)}">View</button></div></td></tr>`).join('');
-    document.getElementById('caseEmpty').hidden = rows.length > 0;
+    const tbody = document.getElementById('caseRows');
+    if (tbody) {
+        tbody.innerHTML = rows.map((c) => `<tr>
+            <td><strong>${escapeHtml(c.case_no)}</strong></td>
+            <td>${escapeHtml(c.title)}<span class="table-secondary">${escapeHtml(c.complainant || '')}</span></td>
+            <td>${escapeHtml(c.purok || '—')}</td><td>${statusPill(c.severity)}</td><td>${statusPill(c.status)}</td>
+            <td>${escapeHtml(formatDate(c.incident_datetime))}</td>
+            <td><div class="row-actions"><button class="small-button" data-view-case="${Number(c.id)}">View</button></div></td></tr>`).join('');
+    }
+    const emptyEl = document.getElementById('caseEmpty');
+    if (emptyEl) emptyEl.hidden = rows.length > 0;
 }
 
 function renderStatusFilter() {
-    const select = document.getElementById('caseStatusFilter'), current = select.value;
+    const select = document.getElementById('caseStatusFilter');
+    if (!select) return;
+    const current = select.value;
     const statuses = [...new Set(state.cases.map((c) => c.status))].sort();
     select.innerHTML = '<option value="">All statuses</option>' + statuses.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(statusLabel(s))}</option>`).join('');
     select.value = current;
 }
 
 function renderLupon() {
-    document.getElementById('luponRows').innerHTML = state.lupon.map((l) => `<tr>
-        <td><strong>${escapeHtml(l.case_no)}</strong><span class="table-secondary">${escapeHtml(l.title || '')}</span></td>
-        <td>${escapeHtml(l.parties || '—')}</td><td>${escapeHtml(l.purok || '—')}</td>
-        <td>${escapeHtml(statusLabel(l.stage))}</td><td>${escapeHtml(formatDate(l.next_hearing))}</td><td>${statusPill(l.status)}</td></tr>`).join('');
-    document.getElementById('luponEmpty').hidden = state.lupon.length > 0;
+    const tbody = document.getElementById('luponRows');
+    if (tbody) {
+        tbody.innerHTML = state.lupon.map((l) => `<tr>
+            <td><strong>${escapeHtml(l.case_no)}</strong><span class="table-secondary">${escapeHtml(l.title || '')}</span></td>
+            <td>${escapeHtml(l.parties || '—')}</td><td>${escapeHtml(l.purok || '—')}</td>
+            <td>${escapeHtml(statusLabel(l.stage))}</td><td>${escapeHtml(formatDate(l.next_hearing))}</td><td>${statusPill(l.status)}</td></tr>`).join('');
+    }
+    const emptyEl = document.getElementById('luponEmpty');
+    if (emptyEl) emptyEl.hidden = state.lupon.length > 0;
 }
 
 function renderAll(data) {
     const m = data.overview || {};
-    document.getElementById('metricIncidents').textContent = m.monthly_incidents ?? 0;
-    document.getElementById('metricMediation').textContent = m.under_mediation ?? 0;
-    document.getElementById('metricEndorse').textContent = m.endorsements_needed ?? state.endorsements.length;
-    document.getElementById('metricRate').textContent = `${Number(m.resolution_rate ?? 0)}%`;
+    const mi = document.getElementById('metricIncidents');
+    if (mi) mi.textContent = m.monthly_incidents ?? 0;
+    const mm = document.getElementById('metricMediation');
+    if (mm) mm.textContent = m.under_mediation ?? 0;
+    const me = document.getElementById('metricEndorse');
+    if (me) me.textContent = m.endorsements_needed ?? state.endorsements.length;
+    const mr = document.getElementById('metricRate');
+    if (mr) mr.textContent = `${Number(m.resolution_rate ?? 0)}%`;
+
     const critical = Number(m.critical_incidents ?? 0);
-    document.getElementById('criticalCount').textContent = critical;
-    document.getElementById('criticalBanner').hidden = critical === 0;
-    document.getElementById('trendChart').innerHTML = trendSvg(state.trend);
-    document.getElementById('trendChart2').innerHTML = trendSvg(state.trend);
-    document.getElementById('purokBars').innerHTML = barsHtml(state.byPurok, 'purok');
-    document.getElementById('categoryBars').innerHTML = barsHtml(state.byCategory, 'category');
-    document.getElementById('rateRing').innerHTML = ringSvg(m.resolution_rate);
-    document.getElementById('advisoryPurok').innerHTML = '<option value="">Whole barangay</option>' + state.puroks.map((p) => `<option value="${Number(p.id)}">${escapeHtml(p.name)}</option>`).join('');
-    renderEndorsements(); renderStatusFilter(); renderCases(); renderLupon(); renderHeatmap();
+    const critEl = document.getElementById('criticalCount');
+    if (critEl) critEl.textContent = critical;
+    const critBanner = document.getElementById('criticalBanner');
+    if (critBanner) critBanner.hidden = critical === 0;
+
+    const t1 = document.getElementById('trendChart');
+    if (t1) t1.innerHTML = trendSvg(state.trend);
+    const t2 = document.getElementById('trendChart2');
+    if (t2) t2.innerHTML = trendSvg(state.trend);
+
+    const pb = document.getElementById('purokBars');
+    if (pb) pb.innerHTML = barsHtml(state.byPurok, 'purok');
+    const cb = document.getElementById('categoryBars');
+    if (cb) cb.innerHTML = barsHtml(state.byCategory, 'category');
+    const rr = document.getElementById('rateRing');
+    if (rr) rr.innerHTML = ringSvg(m.resolution_rate);
+
+    const advPur = document.getElementById('advisoryPurok');
+    if (advPur) {
+        advPur.innerHTML = '<option value="">Whole barangay</option>' + state.puroks.map((p) => `<option value="${Number(p.id)}">${escapeHtml(p.name)}</option>`).join('');
+    }
+
+    renderEndorsements();
+    renderStatusFilter();
+    renderCases();
+    renderLupon();
+    renderHeatmap();
 
     if (data.captain) {
-        const name = `Capt. ${data.captain.full_name || ''}`.trim();
-        document.getElementById('captainName').textContent = name;
-        document.getElementById('captainSideName').textContent = name;
-        const initials = (data.captain.full_name || 'CP').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
-        document.getElementById('captainAvatar').firstChild.textContent = initials;
-        const pic = document.getElementById('captainPicture');
-        pic.hidden = !data.captain.profile_picture;
-        if (data.captain.profile_picture) pic.src = data.captain.profile_picture;
+        const rawName = data.captain.full_name || '';
+        const name = `Capt. ${rawName}`.trim();
+        const cName = document.getElementById('captainName');
+        if (cName) cName.textContent = name;
+        const cSide = document.getElementById('captainSideName');
+        if (cSide) cSide.textContent = name;
+
+        const settingsProfileName = document.getElementById('settingsProfileName');
+        if (settingsProfileName) settingsProfileName.textContent = name;
+        const settingsName = document.getElementById('settingsName');
+        if (settingsName) settingsName.value = rawName;
+        const settingsContact = document.getElementById('settingsContact');
+        if (settingsContact) settingsContact.value = data.captain.contact_number || '';
+
+        const initials = (rawName || 'CP').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
+        const avatar = document.getElementById('captainAvatar');
+        if (avatar && avatar.firstChild) avatar.firstChild.textContent = initials;
+        const cardAvatar = document.getElementById('settingsAvatarInitials');
+        if (cardAvatar) cardAvatar.textContent = initials;
+
+        const pic = data.captain.profile_picture;
+        const sidePic = document.getElementById('captainPicture');
+        if (sidePic) {
+            sidePic.hidden = !pic;
+            if (pic) sidePic.src = pic + '?v=' + Date.now();
+        }
+
+        const settingsPreview = document.getElementById('settingsAvatarPreview');
+        if (settingsPreview) {
+            settingsPreview.hidden = !pic;
+            if (pic) {
+                settingsPreview.src = pic + '?v=' + Date.now();
+                settingsPreview.style.display = 'block';
+                if (cardAvatar) cardAvatar.style.display = 'none';
+            } else {
+                settingsPreview.style.display = 'none';
+                if (cardAvatar) cardAvatar.style.display = 'block';
+            }
+        }
     }
 }
 
 async function refreshData() {
     try {
         const data = await requestCaptain();
-        state.cases = data.cases || []; state.endorsements = data.endorsements || []; state.lupon = data.lupon || [];
-        state.trend = data.trend || []; state.byPurok = data.by_purok || []; state.byPurokAll = data.by_purok_all || data.by_purok || [];
-        state.byCategory = data.by_category || []; state.puroks = data.puroks || [];
+        state.cases = data.cases || []; 
+        state.endorsements = data.endorsements || []; 
+        state.lupon = data.lupon || [];
+        state.trend = data.trend || []; 
+        state.byPurok = data.by_purok || []; 
+        state.byPurokAll = data.by_purok_all || data.by_purok || [];
+        state.byCategory = data.by_category || []; 
+        state.puroks = data.puroks || [];
         renderAll(data);
-    } catch (error) { showNotice(error.message, true); }
+    } catch (error) { 
+        showNotice(error.message, true); 
+    }
 }
 
 /* ---------- dialogs ---------- */
@@ -215,11 +313,14 @@ document.querySelectorAll('[data-open-view]').forEach((b) => b.addEventListener(
 document.querySelectorAll('[data-refresh]').forEach((b) => b.addEventListener('click', refreshData));
 document.querySelectorAll('[data-close-dialog]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
 document.querySelectorAll('[data-open-advisory]').forEach((b) => b.addEventListener('click', () => { document.getElementById('advisoryForm').reset(); document.getElementById('advisoryDialog').showModal(); }));
-document.getElementById('caseSearch').addEventListener('input', renderCases);
-document.getElementById('caseStatusFilter').addEventListener('change', renderCases);
-document.getElementById('heatPeriod').addEventListener('change', renderHeatmap);
-document.getElementById('criticalReview').addEventListener('click', () => {
-    document.getElementById('caseSearch').value = 'critical'; renderCases(); setView('registry');
+document.getElementById('caseSearch')?.addEventListener('input', renderCases);
+document.getElementById('caseStatusFilter')?.addEventListener('change', renderCases);
+document.getElementById('heatPeriod')?.addEventListener('change', renderHeatmap);
+document.getElementById('criticalReview')?.addEventListener('click', () => {
+    const cs = document.getElementById('caseSearch');
+    if (cs) cs.value = 'critical'; 
+    renderCases(); 
+    setView('registry');
 });
 
 document.addEventListener('click', (event) => {
@@ -238,7 +339,7 @@ document.querySelectorAll('[data-generate-report]').forEach((button) => button.a
     } catch (error) { showNotice(error.message, true); } finally { button.disabled = false; }
 }));
 
-document.getElementById('advisoryForm').addEventListener('submit', (event) => {
+document.getElementById('advisoryForm')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const form = event.currentTarget, payload = Object.fromEntries(new FormData(form).entries());
     submitting(form, async () => {
@@ -247,7 +348,7 @@ document.getElementById('advisoryForm').addEventListener('submit', (event) => {
     });
 });
 
-document.getElementById('endorseForm').addEventListener('submit', (event) => {
+document.getElementById('endorseForm')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const form = event.currentTarget, payload = Object.fromEntries(new FormData(form).entries());
     submitting(form, async () => {
@@ -256,8 +357,78 @@ document.getElementById('endorseForm').addEventListener('submit', (event) => {
     });
 });
 
-document.getElementById('logoutBtn').addEventListener('click', async () => {
-    try { await fetch('api/logout.php', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf() } }); } catch { /* still leave the page */ }
+/* Settings profile & password handlers */
+document.getElementById('profileForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    formData.set('action', 'profile_update');
+    try {
+        const result = await requestCaptain('profile_update', {}, { formData });
+        showNotice(result.message || 'Profile updated.');
+        await refreshData();
+    } catch (error) { showNotice(error.message, true); }
+});
+
+document.getElementById('passwordForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
+    try {
+        const result = await requestCaptain('password_update', payload);
+        event.currentTarget.reset();
+        showNotice(result.message || 'Password changed.');
+    } catch (error) { showNotice(error.message, true); }
+});
+
+const photoInput = document.getElementById('settingsPhotoInput');
+const avatarPreview = document.getElementById('settingsAvatarPreview');
+const avatarInitials = document.getElementById('settingsAvatarInitials');
+
+if (photoInput) {
+    photoInput.addEventListener('change', function () {
+        const file = this.files && this.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            if (avatarPreview) {
+                avatarPreview.src = e.target.result;
+                avatarPreview.style.display = 'block';
+            }
+            if (avatarInitials) {
+                avatarInitials.style.display = 'none';
+            }
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+/* Dark Theme Toggle */
+const themeToggleBtn = document.getElementById('themeToggleBtn');
+const themeToggleLabel = document.getElementById('themeToggleLabel');
+
+function applyTheme(theme) {
+    if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('balangay_theme', 'dark');
+        if (themeToggleLabel) themeToggleLabel.textContent = 'Light Mode';
+    } else {
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('balangay_theme', 'light');
+        if (themeToggleLabel) themeToggleLabel.textContent = 'Dark Mode';
+    }
+}
+
+if (localStorage.getItem('balangay_theme') === 'dark') {
+    applyTheme('dark');
+}
+
+themeToggleBtn?.addEventListener('click', () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    applyTheme(isDark ? 'light' : 'dark');
+});
+
+document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+    try { await fetch('api/logout.php', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf() } }); } catch {}
     sessionStorage.clear();
     localStorage.removeItem('currentUser');
     localStorage.removeItem('authToken');
