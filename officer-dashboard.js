@@ -2,6 +2,16 @@ const officerApi = 'api/officer_console.php';
 const pageNotice = document.getElementById('pageNotice');
 const navLinks = [...document.querySelectorAll('.admin-nav-link[data-view]')];
 
+const viewTitles = {
+    dashboard: 'Desk Operations',
+    blotter: 'Official Blotter Records',
+    triage: 'Incoming Triage Queue',
+    emergency: 'Urgent & Emergency Incidents',
+    lupon: 'Lupon / Mediation Registry',
+    dispatch: 'Tanod Dispatch Board',
+    settings: 'Profile & Settings'
+};
+
 const state = {
     cases: [],
     triageQueue: [],
@@ -57,16 +67,18 @@ function showNotice(msg, isError = false) {
     showNotice.timeout = setTimeout(() => { pageNotice.hidden = true; }, 4500);
 }
 
-async function requestOfficer(action, payload = {}) {
+async function requestOfficer(action, payload = {}, options = {}) {
     const headers = { 
-        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content,
-        'Content-Type': 'application/json'
+        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
     };
+    if (!options.formData) {
+        headers['Content-Type'] = 'application/json';
+    }
     const response = await fetch(officerApi, {
         method: action ? 'POST' : 'GET',
         credentials: 'same-origin',
         headers,
-        body: action ? JSON.stringify({ action, ...payload }) : undefined
+        body: action ? (options.formData || JSON.stringify({ action, ...payload })) : undefined
     });
     const result = await response.json();
     if (!response.ok || !result.success) throw new Error(result.message || 'Operation failed.');
@@ -76,14 +88,14 @@ async function requestOfficer(action, payload = {}) {
 function setView(view) {
     navLinks.forEach(link => link.classList.toggle('is-active', link.dataset.view === view));
     document.querySelectorAll('.admin-view').forEach(sec => { sec.hidden = sec.id !== `view-${view}`; });
+    const viewTitle = document.getElementById('viewTitle');
+    if (viewTitle && viewTitles[view]) viewTitle.textContent = viewTitles[view];
     history.replaceState(null, '', `#${view}`);
 }
 
 // -------------------------------------------------------------
-// TAB RENDERERS (Deep Green-Slate Component Mapping)
+// TAB RENDERERS
 // -------------------------------------------------------------
-
-// 1. Triage Queue (Desk + Dedicated)
 function renderTriageQueue() {
     const container = document.getElementById('triageQueueContainer');
     const dedicated = document.getElementById('dedicatedTriageContainer');
@@ -131,7 +143,6 @@ function renderTriageQueue() {
     if (dedicated) dedicated.innerHTML = html;
 }
 
-// 2. Urgent & Emergency Cases Tab
 function renderUrgentCases() {
     const container = document.getElementById('emergencyCardsContainer');
     const cases = state.urgentCases;
@@ -171,7 +182,6 @@ function renderUrgentCases() {
     `).join('');
 }
 
-// 3. Lupon / Mediation Tab
 function renderLuponCases() {
     const container = document.getElementById('luponCardsContainer');
     const cases = state.luponCases;
@@ -207,7 +217,6 @@ function renderLuponCases() {
     `).join('');
 }
 
-// 4. Tanod Dispatch Board Tab
 function renderTanodBoard() {
     const container = document.getElementById('tanodRosterContainer');
     const tanods = state.tanods;
@@ -236,7 +245,6 @@ function renderTanodBoard() {
     }).join('');
 }
 
-// 5. All Blotter Records Table
 function renderBlotterTable() {
     const search = document.getElementById('blotterSearchInput')?.value.trim().toLowerCase() || '';
     let cases = state.cases.filter(c => {
@@ -272,7 +280,6 @@ function renderBlotterTable() {
     document.getElementById('blotterEmptyMsg').hidden = cases.length > 0;
 }
 
-// 6. Dynamic Notifications
 function renderNotifications() {
     const notifs = state.notifications || [];
     const notifBadge = document.getElementById('topbarNotifCount');
@@ -377,6 +384,46 @@ async function refreshOperationsData() {
         renderLuponCases();
         renderTanodBoard();
         renderBlotterTable();
+
+        // Sync Officer Profile in UI
+        if (data.officer) {
+            const officerName = data.officer.full_name || 'Barangay Officer';
+            const nameEl = document.getElementById('officerDisplayName');
+            if (nameEl) nameEl.textContent = officerName;
+
+            const settingsName = document.getElementById('settingsName');
+            if (settingsName) settingsName.value = officerName;
+            const settingsProfileName = document.getElementById('settingsProfileName');
+            if (settingsProfileName) settingsProfileName.textContent = officerName;
+
+            const settingsContact = document.getElementById('settingsContact');
+            if (settingsContact) settingsContact.value = data.officer.contact_number || '';
+
+            const initials = officerName.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('') || 'OF';
+            const initialsEl = document.getElementById('officerInitials');
+            if (initialsEl) initialsEl.textContent = initials;
+            const cardAvatar = document.getElementById('settingsAvatarInitials');
+            if (cardAvatar) cardAvatar.textContent = initials;
+
+            const pic = data.officer.profile_picture;
+            const profilePicEl = document.getElementById('officerProfilePic');
+            if (profilePicEl) {
+                profilePicEl.hidden = !pic;
+                if (pic) profilePicEl.src = pic + '?v=' + Date.now();
+            }
+
+            const settingsPreview = document.getElementById('settingsAvatarPreview');
+            if (settingsPreview) {
+                if (pic) {
+                    settingsPreview.src = pic + '?v=' + Date.now();
+                    settingsPreview.style.display = 'block';
+                    if (cardAvatar) cardAvatar.style.display = 'none';
+                } else {
+                    settingsPreview.style.display = 'none';
+                    if (cardAvatar) cardAvatar.style.display = 'block';
+                }
+            }
+        }
     } catch (err) {
         showNotice(err.message, true);
     }
@@ -508,6 +555,55 @@ document.getElementById('encodeCaseForm')?.addEventListener('submit', async (e) 
         showNotice(err.message, true);
     }
 });
+
+// Profile and Password Form Submissions
+document.getElementById('profileForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    formData.set('action', 'profile_update');
+    try {
+        const result = await requestOfficer('profile_update', {}, { formData });
+        showNotice(result.message || 'Profile updated successfully.');
+        await refreshOperationsData();
+    } catch (error) { 
+        showNotice(error.message, true); 
+    }
+});
+
+document.getElementById('passwordForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
+    try {
+        const result = await requestOfficer('password_update', payload);
+        event.currentTarget.reset();
+        showNotice(result.message || 'Password updated successfully.');
+    } catch (error) { 
+        showNotice(error.message, true); 
+    }
+});
+
+const photoInput = document.getElementById('settingsPhotoInput');
+const avatarPreview = document.getElementById('settingsAvatarPreview');
+const avatarInitials = document.getElementById('settingsAvatarInitials');
+
+if (photoInput) {
+    photoInput.addEventListener('change', function () {
+        const file = this.files && this.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            if (avatarPreview) {
+                avatarPreview.src = e.target.result;
+                avatarPreview.style.display = 'block';
+            }
+            if (avatarInitials) {
+                avatarInitials.style.display = 'none';
+            }
+        };
+        reader.readAsDataURL(file);
+    });
+}
 
 // Blotter filters & refresh
 document.querySelectorAll('[data-blotter-filter]').forEach(tab => {

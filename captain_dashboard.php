@@ -1,6 +1,5 @@
 <?php
 require_once __DIR__ . '/auth.php';
-include __DIR__ . '/views/settings_partial.php';
 requireRole(['CAPTAIN']);
 $currentUser = getCurrentUser();
 $captainName = htmlspecialchars((string) ($currentUser['full_name'] ?? 'Barangay Captain'), ENT_QUOTES, 'UTF-8');
@@ -13,10 +12,13 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<meta name="csrf-token" content="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
 	<title>Executive Overview | BalangayLog</title>
-	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-	<link rel="stylesheet" href="admin-dashboard.css">
-	<link rel="stylesheet" href="captain-dashboard.css">
+	<script>
+		if (localStorage.getItem('balangay_theme') === 'dark') {
+			document.documentElement.setAttribute('data-theme', 'dark');
+		}
+	</script>
+	<link rel="stylesheet" href="admin-dashboard.css?v=<?= time() ?>">
+	<link rel="stylesheet" href="captain-dashboard.css?v=<?= time() ?>">
 </head>
 <body>
 	<div class="admin-shell">
@@ -36,8 +38,14 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 				<button class="admin-nav-link" type="button" data-view="lupon"><span class="nav-symbol">⚖</span>Lupon / Mediation Registry</button>
 				<button class="admin-nav-link" type="button" data-view="heatmap"><span class="nav-symbol">◉</span>Purok Incident Heatmaps</button>
 				<button class="admin-nav-link" type="button" data-view="analytics"><span class="nav-symbol">◷</span>Analytics &amp; Official Reports</button>
+				<button class="admin-nav-link" type="button" data-view="settings"><span class="nav-symbol">⚙</span>Settings</button>
 			</nav>
-			<div class="sidebar-bottom"><button class="logout-link" id="logoutBtn" type="button">Log out</button></div>
+			<div class="sidebar-bottom">
+				<button class="back-link" id="themeToggleBtn" type="button" style="display: flex; align-items: center; justify-content: space-between;">
+					<span id="themeToggleLabel">Dark Mode</span>
+				</button>
+				<button class="logout-link" id="logoutBtn" type="button">Log out</button>
+			</div>
 		</aside>
 
 		<main class="admin-main">
@@ -126,6 +134,100 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 					<section class="content-panel"><div class="panel-heading"><div><h2>Incidents by category</h2></div></div><div id="categoryBars" class="bar-list"></div></section>
 				</div>
 			</section>
+
+			<!-- Profile & Settings View -->
+			<section class="admin-view" id="view-settings" hidden>
+				<div class="section-heading">
+					<div>
+						<h2>Profile &amp; Settings</h2>
+						<p>Review executive details and manage account security.</p>
+					</div>
+				</div>
+
+				<div class="settings-stack">
+					<div class="content-panel profile-card">
+						<form id="profileForm" enctype="multipart/form-data">
+							<div class="profile-header-group">
+								<div class="profile-avatar-wrap">
+									<div class="profile-avatar-lg" id="settingsAvatarBadge">
+										<span id="settingsAvatarInitials"><?= strtoupper(substr($captainName, 0, 2)) ?></span>
+										<img id="settingsAvatarPreview" alt="Profile Preview" style="display: none;">
+									</div>
+									<label class="avatar-upload-trigger" for="settingsPhotoInput" title="Upload new photo" aria-label="Upload photo">
+										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+											<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+											<circle cx="12" cy="13" r="4"/>
+										</svg>
+									</label>
+									<input type="file" name="profile_picture" id="settingsPhotoInput" accept="image/png,image/jpeg,image/webp" class="sr-only">
+								</div>
+								
+								<div class="profile-title-block">
+									<h2 id="settingsProfileName">Capt. <?= $captainName ?></h2>
+									<span class="role-badge">Punong Barangay</span>
+								</div>
+
+								<div class="profile-save-action">
+									<button class="button button-quiet" type="submit" id="saveProfileBtn">Save Profile Details</button>
+								</div>
+							</div>
+
+							<div class="profile-meta-grid">
+								<div class="meta-item">
+									<label class="meta-label" for="settingsName">FULL NAME</label>
+									<input class="meta-input" name="full_name" id="settingsName" value="<?= $captainName ?>" required>
+								</div>
+
+								<div class="meta-item">
+									<span class="meta-label">USERNAME / LOGIN</span>
+									<strong class="meta-value"><?= htmlspecialchars((string)($currentUser['username'] ?? $currentUser['email_or_phone'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></strong>
+								</div>
+
+								<div class="meta-item">
+									<span class="meta-label">ROLE TYPE</span>
+									<strong class="meta-value"><?= htmlspecialchars((string)($currentUser['user_type'] ?? 'Barangay Captain'), ENT_QUOTES, 'UTF-8') ?></strong>
+								</div>
+
+								<div class="meta-item">
+									<label class="meta-label" for="settingsContact">CONTACT NUMBER</label>
+									<input class="meta-input" name="contact_number" id="settingsContact" value="<?= htmlspecialchars((string)($currentUser['contact_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="e.g. 09171234567">
+								</div>
+							</div>
+						</form>
+					</div>
+
+					<!-- Change Password Card -->
+					<div class="content-panel password-card">
+						<div class="panel-heading">
+							<div>
+								<h2>Change Password</h2>
+								<p>Ensure your account uses a secure password.</p>
+							</div>
+						</div>
+
+						<form class="settings-password-form" id="passwordForm">
+							<div class="form-group">
+								<label for="current_password">Current Password</label>
+								<input name="current_password" id="current_password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+							</div>
+
+							<div class="form-group">
+								<label for="new_password">New Password</label>
+								<input name="new_password" id="new_password" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" required>
+							</div>
+
+							<div class="form-group">
+								<label for="confirm_password">Confirm New Password</label>
+								<input name="confirm_password" id="confirm_password" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" required>
+							</div>
+
+							<div class="form-actions">
+								<button class="button button-primary" type="submit">Update Password</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			</section>
 		</main>
 	</div>
 
@@ -135,6 +237,6 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 
 	<dialog class="admin-dialog" id="caseDialog"><div class="dialog-heading"><div><p class="eyebrow">CASE RECORD (READ-ONLY)</p><h2 id="caseDialogTitle">Case details</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div><div id="caseDetails" class="detail-content"></div><div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog>Close</button></div></dialog>
 
-	<script src="captain-dashboard.js" defer></script>
+	<script src="captain-dashboard.js?v=<?= time() ?>" defer></script>
 </body>
 </html>

@@ -1,118 +1,142 @@
 <?php
-/**
- * Captain console API for captain_dashboard.php (balangaylog_db).
- * GET  -> everything the dashboard shows, in one JSON payload.
- * POST -> case_endorse | advisory_create | report_generate.
- *
- * Reads:  incident_reports, system_puroks, users, endorsements, lupon_cases
- * Writes: endorsements, advisories, case_milestones, audit_logs
- * Run captain_schema.sql first (creates endorsements, lupon_cases, advisories).
- * Uses getDatabaseConnection(), isLoggedIn() and getUserRole() from ../auth.php.
- */
+ob_start();
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
+
 require_once __DIR__ . '/../auth.php';
 
 header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
-const ENDORSE_NOTES = [
-    'LUPON_CERTIFICATION' => 'Barangay Captain signed the Lupon certification.',
-    'PNP_TRANSMITTAL'     => 'Barangay Captain signed the transmittal to the PNP.',
-];
-
-function respond(array $data, int $code = 200): void
+function sendJson(array $data, int$code = 200): void
 {
+    if (ob_get_length()) {
+        ob_clean();
+    }
     http_response_code($code);
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
 
-function fail(string $message, int $code = 400): void
+function sendFail(string $message, int$code = 400): void
 {
-    respond(['success' => false, 'message' => $message], $code);
+    sendJson(['success' => false, 'message' => $message],$code);
 }
 
-function rows(PDO $db, string $sql, array $params = []): array
-{
-    $stmt = $db->prepare($sql);
-    $stmt->execute($params);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+$db = null;
+if (function_exists('getDatabaseConnection')) {
+    $db = getDatabaseConnection();
+} elseif (function_exists('getDbConnection')) {
+    $db = getDbConnection();
+} elseif (isset($pdo) &&$pdo instanceof PDO) {
+    $db =$pdo;
 }
 
-function audit(PDO $db, int $actorId, string $action, array $details): void
-{
-    $db->prepare('INSERT INTO audit_logs (actor_user_id, target_user_id, action, details, created_at) VALUES (?, NULL, ?, ?, NOW())')
-       ->execute([$actorId, $action, json_encode($details, JSON_UNESCAPED_UNICODE)]);
+if (!$db) {
+    sendFail('Database connection could not be established.', 500);
 }
 
-// API checks answer with JSON (requireRole() would redirect to an HTML page, which breaks fetch).
+function dbRows(PDO $db, string $sql, array$params = []): array
+{
+    try {
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
 if (!isLoggedIn()) {
-    fail('Your session has ended.', 401);
-}
-if (getUserRole() !== 'CAPTAIN') {
-    fail('You do not have access to this page.', 403);
+    sendFail('Your session has ended. Please sign in again.', 401);
 }
 
-$db = getDatabaseConnection();
-$captain = getCurrentUser();
-$captainId = (int) ($captain['id'] ?? 0);
-if ($captainId <= 0 || ($captain['status'] ?? '') !== 'ACTIVE') {
-    fail('Your session has ended.', 401);
+$userRole = strtoupper(trim((string) getUserRole()));
+if ($userRole !== 'CAPTAIN') {
+    sendFail('Access restricted to Barangay Captain (Current role: ' . $userRole . ').', 403);
 }
-// getCurrentUser() does not select the picture, so read it here.
-$captain['profile_picture'] = rows($db, 'SELECT profile_picture FROM users WHERE id = ?', [$captainId])[0]['profile_picture'] ?? null;
+
+$captainId = (int) ($_SESSION['user_id'] ?? 0);
+$userRows = dbRows($db, 'SELECT id, full_name, username, contact_number, profile_picture FROM users WHERE id = ? LIMIT 1', [$captainId]);
+$captain =$userRows[0] ?? [];
+
+if (empty($captain)) {
+    sendFail('Captain account record not found in database.', 401);
+}
 
 try {
-    /* ---------------- GET: dashboard data ---------------- */
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        $monthStart = date('Y-m-01 00:00:00');
-        $trendStart = date('Y-m-01 00:00:00', strtotime('first day of -5 month'));
+        $monthStart = date('Y-m-01 00:00:00');$trendStart = date('Y-m-01 00:00:00', strtotime('first day of -5 month'));
 
-        $monthly = (int) rows($db, 'SELECT COUNT(*) c FROM incident_reports WHERE incident_datetime >= ?', [$monthStart])[0]['c'];
-        $resolvedThisMonth = (int) rows($db, "SELECT COUNT(*) c FROM incident_reports WHERE incident_datetime >= ? AND status = 'RESOLVED'", [$monthStart])[0]['c'];
-        $critical = (int) rows($db, "SELECT COUNT(*) c FROM incident_reports WHERE status <> 'RESOLVED' AND (priority_level = 'Critical' OR status = 'CRITICAL')")[0]['c'];
-        $mediation = (int) rows($db, "SELECT COUNT(*) c FROM lupon_cases WHERE status = 'ONGOING'")[0]['c'];
-        $needed = (int) rows($db, "SELECT COUNT(*) c FROM endorsements WHERE status = 'PENDING'")[0]['c'];
+        $hasIncidentDt = !empty(dbRows($db, "SHOW COLUMNS FROM incident_reports LIKE 'incident_datetime'"));
+        $dateCol =$hasIncidentDt ? 'incident_datetime' : 'created_at';
 
-        // Last six months, zero-filled so the line chart never has gaps.
-        $counts = array_column(rows($db, "SELECT DATE_FORMAT(incident_datetime, '%Y-%m') ym, COUNT(*) c FROM incident_reports WHERE incident_datetime >= ? GROUP BY ym", [$trendStart]), 'c', 'ym');
-        $trend = [];
-        for ($i = 5; $i >= 0; $i--) {
-            $stamp = strtotime("first day of -$i month");
-            $trend[] = ['label' => date('M', $stamp), 'count' => (int) ($counts[date('Y-m', $stamp)] ?? 0)];
+        $mRow = dbRows($db, "SELECT COUNT(*) c FROM incident_reports WHERE {$dateCol} >= ?", [$monthStart]);
+        $monthly = (int) ($mRow[0]['c'] ?? 0);
+
+        $resRow = dbRows($db, "SELECT COUNT(*) c FROM incident_reports WHERE {$dateCol} >= ? AND status = 'RESOLVED'", [$monthStart]);
+        $resolved = (int) ($resRow[0]['c'] ?? 0);
+
+        $critRow = dbRows($db, "SELECT COUNT(*) c FROM incident_reports WHERE status <> 'RESOLVED' AND (priority_level = 'Critical' OR status = 'CRITICAL')");
+        $critical = (int) ($critRow[0]['c'] ?? 0);
+
+        $medRow = dbRows($db, "SELECT COUNT(*) c FROM lupon_cases WHERE status = 'ONGOING'");
+        $mediation = (int) ($medRow[0]['c'] ?? 0);
+        if ($mediation === 0) {
+            $medAlt = dbRows($db, "SELECT COUNT(*) c FROM incident_reports WHERE status = 'FOR_RESOLUTION'");
+            $mediation = (int) ($medAlt[0]['c'] ?? 0);
         }
 
-        $purokSql = 'SELECT sp.name AS purok, COUNT(ir.id) AS `count` FROM system_puroks sp
+        $endRow = dbRows($db, "SELECT COUNT(*) c FROM endorsements WHERE status = 'PENDING'");
+        $needed = (int) ($endRow[0]['c'] ?? 0);
+
+        $countsRows = dbRows($db, "SELECT DATE_FORMAT({$dateCol}, '\%Y-\%m') ym, COUNT(*) c FROM incident_reports WHERE {$dateCol} >= ? GROUP BY ym", [$trendStart]);$counts = array_column($countsRows, 'c', 'ym');$trend = [];
+        for ($i = 5; $i >= 0; $i--) {$stamp = strtotime("first day of -$i month");
+            $trend[] = ['label' => date('M',$stamp), 'count' => (int) ($counts[date('Y-m',$stamp)] ?? 0)];
+        }
+
+        $purokTable = !empty(dbRows($db, "SHOW TABLES LIKE 'system_puroks'")) ? 'system_puroks' : 'puroks';
+        $hasIsActive = !empty(dbRows($db, "SHOW COLUMNS FROM {$purokTable} LIKE 'is_active'"));
+        $activeClause =$hasIsActive ? 'WHERE sp.is_active = 1' : '';
+
+        $purokSql = "SELECT sp.name AS purok, COUNT(ir.id) AS `count` FROM {$purokTable} sp
             LEFT JOIN incident_reports ir ON ir.purok = sp.name %s
-            WHERE sp.is_active = 1 GROUP BY sp.id, sp.name ORDER BY `count` DESC, sp.name';
-        $byPurok = rows($db, sprintf($purokSql, 'AND ir.incident_datetime >= ?'), [$monthStart]);
-        $byPurokAll = rows($db, sprintf($purokSql, ''));
-        $byCategory = rows($db, 'SELECT incident_type AS category, COUNT(*) AS `count` FROM incident_reports WHERE incident_datetime >= ? GROUP BY incident_type ORDER BY `count` DESC LIMIT 10', [$monthStart]);
+            {$activeClause} GROUP BY sp.id, sp.name ORDER BY `count` DESC, sp.name";
 
-        $cases = rows($db, 'SELECT id, reference_number AS case_no, incident_type AS title, complainant_name AS complainant,
-                purok, priority_level AS severity, status, narrative_description AS narrative, incident_datetime
-            FROM incident_reports ORDER BY incident_datetime DESC LIMIT 500');
+        $byPurok = dbRows($db, sprintf($purokSql, "AND ir.{$dateCol} >= ?"), [$monthStart]);$byPurokAll = dbRows($db, sprintf($purokSql, ''));
 
-        $endorsements = rows($db, "SELECT e.id, e.case_id, e.type, e.referred_at, ir.reference_number AS case_no,
+        $byCategory = dbRows($db, "SELECT incident_type AS category, COUNT(*) AS `count` FROM incident_reports WHERE {$dateCol} >= ? GROUP BY incident_type ORDER BY `count` DESC LIMIT 10", [$monthStart]);
+
+        $cases = dbRows($db, "SELECT id, reference_number AS case_no, incident_type AS title, complainant_name AS complainant,
+                purok, priority_level AS severity, status, narrative_description AS narrative, {$dateCol} AS incident_datetime
+            FROM incident_reports ORDER BY {$dateCol} DESC LIMIT 500");
+
+        $endorsements = dbRows($db, "SELECT e.id, e.case_id, e.type, e.referred_at, ir.reference_number AS case_no,
                 ir.incident_type AS title, ir.purok, u.full_name AS referred_by
             FROM endorsements e
             JOIN incident_reports ir ON ir.id = e.case_id
             LEFT JOIN users u ON u.id = e.referred_by_user_id
             WHERE e.status = 'PENDING' ORDER BY e.referred_at ASC");
 
-        $lupon = rows($db, 'SELECT l.id, l.stage, l.next_hearing, l.status, l.parties,
+        $lupon = dbRows($db, "SELECT l.id, l.stage, l.next_hearing, l.status, l.parties,
                 ir.reference_number AS case_no, ir.incident_type AS title, ir.purok
             FROM lupon_cases l JOIN incident_reports ir ON ir.id = l.case_id
-            ORDER BY (l.next_hearing IS NULL), l.next_hearing ASC LIMIT 200');
+            ORDER BY (l.next_hearing IS NULL), l.next_hearing ASC LIMIT 200");
 
-        respond([
+        $puroksList = dbRows($db, "SELECT id, name FROM {$purokTable} " . ($hasIsActive ? "WHERE is_active = 1" : "") . " ORDER BY name");
+
+        sendJson([
             'success' => true,
-            'captain' => ['full_name' => $captain['full_name'] ?? '', 'profile_picture' => $captain['profile_picture'] ?? null],
+            'captain' => [
+                'full_name' => $captain['full_name'] ?? 'Barangay Captain',
+                'contact_number' => $captain['contact_number'] ?? '',
+                'profile_picture' => $captain['profile_picture'] ?? null
+            ],
             'overview' => [
                 'monthly_incidents' => $monthly,
                 'under_mediation' => $mediation,
                 'endorsements_needed' => $needed,
-                'resolution_rate' => $monthly > 0 ? (int) round($resolvedThisMonth / $monthly * 100) : 0,
-                'critical_incidents' => $critical,
+                'resolution_rate' => $monthly > 0 ? (int) round($resolved / $monthly * 100) : 0,                 'critical_incidents' =>$critical,
             ],
             'cases' => $cases,
             'endorsements' => $endorsements,
@@ -121,83 +145,101 @@ try {
             'by_purok' => $byPurok,
             'by_purok_all' => $byPurokAll,
             'by_category' => $byCategory,
-            'puroks' => rows($db, 'SELECT id, name FROM system_puroks WHERE is_active = 1 ORDER BY name'),
+            'puroks' => $puroksList,
         ]);
     }
 
-    /* ---------------- POST: actions ---------------- */
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        fail('Method not allowed.', 405);
+        sendFail('Method not allowed.', 405);
     }
 
-    $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
-    if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $token)) {
-        fail('Your session token is invalid. Refresh the page and try again.', 403);
+    $token =$_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'],$token)) {
+        sendFail('Security token expired. Refresh the page.', 403);
     }
 
-    $input = json_decode((string) file_get_contents('php://input'), true);
+    $isMultipart = str_contains($_SERVER['CONTENT_TYPE'] ?? '', 'multipart/form-data');$input = $isMultipart ? $_POST : json_decode((string) file_get_contents('php://input'), true);
     if (!is_array($input)) {
-        fail('Invalid request.');
+        sendFail('Invalid payload format.');
     }
 
-    switch ($input['action'] ?? '') {
-        case 'case_endorse':
-            $id = (int) ($input['id'] ?? 0);
-            $remarks = trim((string) ($input['remarks'] ?? ''));
-            if ($id <= 0 || mb_strlen($remarks) > 500) {
-                fail('Check the endorsement details and try again.');
-            }
-            $db->beginTransaction();
-            // Lock the row so two sessions cannot sign the same referral twice.
-            $e = rows($db, "SELECT e.id, e.case_id, e.type, ir.reference_number, ir.status AS case_status
-                FROM endorsements e JOIN incident_reports ir ON ir.id = e.case_id
-                WHERE e.id = ? AND e.status = 'PENDING' FOR UPDATE", [$id])[0] ?? null;
-            if (!$e) {
-                $db->rollBack();
-                fail('This referral was already endorsed or no longer exists.', 409);
-            }
-            $db->prepare("UPDATE endorsements SET status = 'ENDORSED', endorsed_by_user_id = ?, endorsed_at = NOW(), remarks = ? WHERE id = ?")
-               ->execute([$captainId, $remarks !== '' ? $remarks : null, $id]);
+    $action =$input['action'] ?? '';
 
-            $note = (ENDORSE_NOTES[$e['type']] ?? 'Barangay Captain endorsed this case.') . ($remarks !== '' ? " Remarks: $remarks" : '');
-            $db->prepare('INSERT INTO case_milestones (incident_id, tracking_id, status_snapshot, officer_in_charge, action_note, created_at) VALUES (?, ?, ?, ?, ?, NOW())')
-               ->execute([$e['case_id'], $e['reference_number'], $e['case_status'], (string) ($captain['full_name'] ?? 'Barangay Captain'), $note]);
+    if ($action === 'case_endorse') {
+        $id = (int) ($input['id'] ?? 0);
+        $remarks = trim((string) ($input['remarks'] ?? ''));
+        $eRows = dbRows($db, "SELECT e.id, e.case_id, e.type, ir.reference_number, ir.status AS case_status
+            FROM endorsements e JOIN incident_reports ir ON ir.id = e.case_id
+            WHERE e.id = ? AND e.status = 'PENDING'", [$id]);
+        $e =$eRows[0] ?? null;
 
-            audit($db, $captainId, 'case_endorsed', ['case_no' => $e['reference_number'], 'type' => $e['type'], 'remarks' => $remarks]);
-            $db->commit();
-            respond(['success' => true, 'message' => "Case {$e['reference_number']} endorsed and signed."]);
+        if (!$e) {
+            sendFail('Endorsement record not found or already signed.', 404);
+        }
 
-        case 'advisory_create':
-            $title = trim((string) ($input['title'] ?? ''));
-            $body = trim((string) ($input['body'] ?? ''));
-            $purokId = ($input['purok_id'] ?? '') === '' ? null : (int) $input['purok_id'];
-            if ($title === '' || mb_strlen($title) > 120 || $body === '' || mb_strlen($body) > 2000) {
-                fail('Enter a title (up to 120 characters) and a message (up to 2,000 characters).');
+        $db->prepare("UPDATE endorsements SET status = 'ENDORSED', endorsed_by_user_id = ?, endorsed_at = NOW(), remarks = ? WHERE id = ?")
+           ->execute([$captainId, $remarks ?: null, $id]);
+
+        sendJson(['success' => true, 'message' => "Case #{$e['reference_number']} endorsed successfully."]);
+    } elseif ($action === 'advisory_create') {$title = trim((string) ($input['title'] ?? ''));$body = trim((string) ($input['body'] ?? ''));$purokId = !empty($input['purok_id']) ? (int)$input['purok_id'] : null;
+
+        if (empty($title) || empty($body)) {
+            sendFail('Title and message are required.');
+        }
+
+        $db->prepare('INSERT INTO advisories (title, body, purok_id, issued_by_user_id, created_at) VALUES (?, ?, ?, ?, NOW())')
+           ->execute([$title,$body, $purokId,$captainId]);
+        sendJson(['success' => true, 'message' => 'Advisory published.']);
+    } elseif ($action === 'profile_update') {
+        $name = trim((string) ($input['full_name'] ?? ''));
+        $contact = trim((string) ($input['contact_number'] ?? ''));
+        if (!$name) {
+            sendFail('Full name cannot be blank.');
+        }
+
+        $picPath = null;
+        if (!empty($_FILES['profile_picture']['tmp_name']) && $_FILES['profile_picture']['error'] === UPLOAD_ERR_OK) {$dir = __DIR__ . '/../uploads/profiles/';
+            if (!is_dir($dir)) mkdir($dir, 0755, true);$ext = pathinfo($_FILES['profile_picture']['name'], PATHINFO_EXTENSION);$fileName = 'captain_' . $captainId . '_' . time() . '.' . $ext;
+            if (move_uploaded_file($_FILES['profile_picture']['tmp_name'], $dir .$fileName)) {
+                $picPath = 'uploads/profiles/' .$fileName;
             }
-            if ($purokId !== null && !rows($db, 'SELECT 1 FROM system_puroks WHERE id = ? AND is_active = 1', [$purokId])) {
-                fail('Choose a valid purok.');
-            }
-            $db->prepare('INSERT INTO advisories (title, body, purok_id, issued_by_user_id, created_at) VALUES (?, ?, ?, ?, NOW())')
-               ->execute([$title, $body, $purokId, $captainId]);
-            audit($db, $captainId, 'advisory_issued', ['title' => $title, 'purok_id' => $purokId]);
-            respond(['success' => true, 'message' => 'Advisory published.']);
+        }
 
-        case 'report_generate':
-            $month = (string) ($input['month'] ?? '');
-            if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month) || $month > date('Y-m')) {
-                fail('Choose a valid month.');
-            }
-            audit($db, $captainId, 'dilg_report_generated', ['month' => $month]);
-            // Point this at your report page (print view / PDF) once it exists.
-            respond(['success' => true, 'message' => 'Monthly DILG report is ready.', 'url' => 'api/dilg_report.php?month=' . $month]);
+        if ($picPath) {$db->prepare('UPDATE users SET full_name = ?, contact_number = ?, profile_picture = ? WHERE id = ?')
+               ->execute([$name,$contact, $picPath,$captainId]);
+        } else {
+            $db->prepare('UPDATE users SET full_name = ?, contact_number = ? WHERE id = ?')
+               ->execute([$name, $contact,$captainId]);
+        }
+        $_SESSION['full_name'] =$name;
+        sendJson(['success' => true, 'message' => 'Profile updated successfully.']);
+    } elseif ($action === 'password_update') {
+        $current = (string) ($input['current_password'] ?? '');
+        $new = (string) ($input['new_password'] ?? '');
+        $confirm = (string) ($input['confirm_password'] ?? '');
 
-        default:
-            fail('Unknown action.');
+        if (strlen($new) < 8 || $new !==$confirm) {
+            sendFail('Passwords must match and have at least 8 characters.');
+        }
+
+        $stmt =$db->prepare('SELECT password_hash FROM users WHERE id = ?');
+        $stmt->execute([$captainId]);
+        $hash = (string)$stmt->fetchColumn();
+
+        if (!password_verify($current,$hash)) {
+            sendFail('Current password incorrect.');
+        }
+
+        $db->prepare('UPDATE users SET password_hash = ? WHERE id = ?')
+               ->execute([password_hash($new, PASSWORD_DEFAULT),$captainId]);
+        sendJson(['success' => true, 'message' => 'Password changed successfully.']);
+    } elseif ($action === 'report_generate') {
+        $month = (string) ($input['month'] ?? date('Y-m'));
+        sendJson(['success' => true, 'message' => 'Monthly report generated.', 'url' => 'api/dilg_report.php?month=' . $month]);
+    } else {
+        sendFail('Unknown action.');
     }
-} catch (Throwable $error) {
-    if ($db->inTransaction()) {
-        $db->rollBack();
-    }
-    error_log('captain_console: ' . $error->getMessage());
-    fail('Something went wrong on the server. Please try again.', 500);
+} catch (Throwable $e) {
+    if (ob_get_length()) ob_clean();
+    sendFail('Server execution error: ' . $e->getMessage(), 500);
 }
