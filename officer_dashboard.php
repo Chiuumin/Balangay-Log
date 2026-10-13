@@ -5,13 +5,15 @@ requireRole(['OFFICER', 'CAPTAIN']);
 $pdo = getDatabaseConnection();
 $userId = (int) ($_SESSION['user_id'] ?? 0);
 
-$stmt = $pdo->prepare('SELECT full_name, user_type, profile_picture FROM users WHERE id = ? LIMIT 1');
+$stmt = $pdo->prepare('SELECT full_name, username, email_or_phone, contact_number, user_type, profile_picture FROM users WHERE id = ? LIMIT 1');
 $stmt->execute([$userId]);
 $userRecord = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
 $officerName = htmlspecialchars((string) ($userRecord['full_name'] ?? 'Barangay Officer'), ENT_QUOTES, 'UTF-8');
 $roleLabel = ($userRecord['user_type'] ?? 'OFFICER') === 'CAPTAIN' ? 'Barangay Captain' : 'Desk Officer';
 $profilePic = !empty($userRecord['profile_picture']) ? htmlspecialchars((string) $userRecord['profile_picture'], ENT_QUOTES, 'UTF-8') : null;
+$usernameVal = htmlspecialchars((string) ($userRecord['username'] ?? $userRecord['email_or_phone'] ?? '—'), ENT_QUOTES, 'UTF-8');
+$contactVal = htmlspecialchars((string) ($userRecord['contact_number'] ?? ''), ENT_QUOTES, 'UTF-8');
 
 $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 
@@ -392,8 +394,16 @@ if (!$initials) $initials = 'OF';
                     <span class="nav-symbol">⚖</span>Lupon / Mediation
                     <span class="pill pill-blue" id="luponNavBadge" style="margin-left: auto; padding: 2px 6px;">0</span>
                 </button>
+                <!-- Clean Shield/Patrol SVG Icon instead of emoji -->
                 <button class="admin-nav-link" type="button" data-view="dispatch">
-                    <span class="nav-symbol">🚔</span>Tanod Dispatch Board
+                    <span class="nav-symbol" style="display: inline-flex; align-items: center; justify-content: center;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                    </span>Tanod Dispatch Board
+                </button>
+                <button class="admin-nav-link" type="button" data-view="settings">
+                    <span class="nav-symbol">⚙</span>Settings
                 </button>
             </nav>
 
@@ -410,7 +420,7 @@ if (!$initials) $initials = 'OF';
             <!-- Top Navigation & Desk Controls -->
             <header class="admin-topbar">
                 <div>
-                    <h1 style="font-size: 22px; font-weight: 800; margin: 0; font-family: 'Manrope', sans-serif;">Desk Operations</h1>
+                    <h1 id="viewTitle" style="font-size: 22px; font-weight: 800; margin: 0; font-family: 'Manrope', sans-serif;">Desk Operations</h1>
                     <p style="margin: 3px 0 0; color: var(--muted); font-size: 12px;">Live triage, blotter intake, and field dispatch</p>
                 </div>
                 <div class="topbar-right-controls" style="display: flex; align-items: center; gap: 12px;">
@@ -595,6 +605,100 @@ if (!$initials) $initials = 'OF';
                         <span class="pill pill-active" id="activeTanodCount">2 Available</span>
                     </div>
                     <div class="tanod-grid" id="tanodRosterContainer"></div>
+                </div>
+            </section>
+
+            <!-- VIEW 7: PROFILE & SETTINGS -->
+            <section class="admin-view" id="view-settings" hidden>
+                <div class="section-heading">
+                    <div>
+                        <h2>Profile &amp; Settings</h2>
+                        <p>Review administrative details and manage account security.</p>
+                    </div>
+                </div>
+
+                <div class="settings-stack">
+                    <div class="content-panel profile-card">
+                        <form id="profileForm" enctype="multipart/form-data">
+                            <div class="profile-header-group">
+                                <div class="profile-avatar-wrap">
+                                    <div class="profile-avatar-lg" id="settingsAvatarBadge">
+                                        <span id="settingsAvatarInitials"><?= $initials ?></span>
+                                        <img id="settingsAvatarPreview" src="<?= $profilePic ?? '' ?>" alt="Profile Preview" <?= $profilePic ? '' : 'style="display: none;"' ?>>
+                                    </div>
+                                    <label class="avatar-upload-trigger" for="settingsPhotoInput" title="Upload new photo" aria-label="Upload photo">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                                            <circle cx="12" cy="13" r="4"/>
+                                        </svg>
+                                    </label>
+                                    <input type="file" name="profile_picture" id="settingsPhotoInput" accept="image/png,image/jpeg,image/webp" class="sr-only">
+                                </div>
+                                
+                                <div class="profile-title-block">
+                                    <h2 id="settingsProfileName"><?= $officerName ?></h2>
+                                    <span class="role-badge"><?= $roleLabel ?></span>
+                                </div>
+
+                                <div class="profile-save-action">
+                                    <button class="button button-quiet" type="submit" id="saveProfileBtn">Save Profile Details</button>
+                                </div>
+                            </div>
+
+                            <div class="profile-meta-grid">
+                                <div class="meta-item">
+                                    <label class="meta-label" for="settingsName">FULL NAME</label>
+                                    <input class="meta-input" name="full_name" id="settingsName" value="<?= $officerName ?>" required>
+                                </div>
+
+                                <div class="meta-item">
+                                    <span class="meta-label">USERNAME / LOGIN</span>
+                                    <strong class="meta-value"><?= $usernameVal ?></strong>
+                                </div>
+
+                                <div class="meta-item">
+                                    <span class="meta-label">ROLE TYPE</span>
+                                    <strong class="meta-value"><?= $roleLabel ?></strong>
+                                </div>
+
+                                <div class="meta-item">
+                                    <label class="meta-label" for="settingsContact">CONTACT NUMBER</label>
+                                    <input class="meta-input" name="contact_number" id="settingsContact" value="<?= $contactVal ?>" placeholder="e.g. 09171234567">
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Change Password Card -->
+                    <div class="content-panel password-card">
+                        <div class="panel-heading">
+                            <div>
+                                <h2>Change Password</h2>
+                                <p>Ensure your account uses a secure password.</p>
+                            </div>
+                        </div>
+
+                        <form class="settings-password-form" id="passwordForm">
+                            <div class="form-group">
+                                <label for="current_password">Current Password</label>
+                                <input name="current_password" id="current_password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="new_password">New Password</label>
+                                <input name="new_password" id="new_password" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="confirm_password">Confirm New Password</label>
+                                <input name="confirm_password" id="confirm_password" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" required>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="button button-primary" type="submit">Update Password</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </section>
         </main>

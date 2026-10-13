@@ -21,13 +21,18 @@ try {
     $actorId = (int) $_SESSION['user_id'];
 
     if ($method === 'GET') {
-        // 1. Metric Counts (Safe: uses created_at)
+        // 1. Fetch current officer user data for profile sync
+        $officerStmt = $pdo->prepare('SELECT full_name, username, email_or_phone, contact_number, user_type, profile_picture FROM users WHERE id = ? LIMIT 1');
+        $officerStmt->execute([$actorId]);
+        $officerProfile = $officerStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        // 2. Metric Counts (Safe: uses created_at)
         $pendingTriageCount = (int) $pdo->query("SELECT COUNT(*) FROM incident_reports WHERE status IN ('PENDING', 'UNDER_REVIEW')")->fetchColumn();
         $activeDispatchedCount = (int) $pdo->query("SELECT COUNT(*) FROM incident_reports WHERE status = 'DISPATCHED' OR (deployed_unit IS NOT NULL AND status NOT IN ('RESOLVED', 'CLOSED'))")->fetchColumn();
         $underInvestigationCount = (int) $pdo->query("SELECT COUNT(*) FROM incident_reports WHERE status = 'IN_PROGRESS'")->fetchColumn();
         $resolvedTodayCount = (int) $pdo->query("SELECT COUNT(*) FROM incident_reports WHERE status = 'RESOLVED' AND DATE(created_at) = CURDATE()")->fetchColumn();
 
-        // 2. Critical Alert Banner
+        // 3. Critical Alert Banner
         $criticalStmt = $pdo->query("
             SELECT reference_number, complainant_name, incident_type, purok, narrative_description 
             FROM incident_reports 
@@ -39,7 +44,7 @@ try {
         ");
         $criticalCase = $criticalStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
-        // 3. Triage Queue (Pending)
+        // 4. Triage Queue (Pending)
         $triageStmt = $pdo->query("
             SELECT id, reference_number, complainant_name, complainant_phone, incident_type, narrative_description, purok, priority_level, status, ai_urgency_score, created_at 
             FROM incident_reports 
@@ -49,7 +54,7 @@ try {
         ");
         $triageQueue = $triageStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        // 4. Urgent / Emergency Cases (Critical + High priority)
+        // 5. Urgent / Emergency Cases (Critical + High priority)
         $urgentStmt = $pdo->query("
             SELECT id, reference_number, complainant_name, complainant_phone, incident_type, narrative_description, purok, priority_level, status, deployed_unit, created_at 
             FROM incident_reports 
@@ -58,7 +63,7 @@ try {
         ");
         $urgentCases = $urgentStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        // 5. Lupon / Mediation Cases (Maps deployed_unit to assigned_officer)
+        // 6. Lupon / Mediation Cases (Maps deployed_unit to assigned_officer)
         $luponStmt = $pdo->query("
             SELECT id, reference_number, complainant_name, incident_type, narrative_description, purok, status, deployed_unit AS assigned_officer, created_at 
             FROM incident_reports 
@@ -67,7 +72,7 @@ try {
         ");
         $luponCases = $luponStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        // 6. Tanod Responders Roster
+        // 7. Tanod Responders Roster
         $tanods = [
             ['id' => 1, 'name' => 'Ramon Diaz', 'station' => 'Barangay Base', 'status' => 'AVAILABLE'],
             ['id' => 2, 'name' => 'Elena Flores', 'station' => 'Patrol 1', 'status' => 'AVAILABLE'],
@@ -76,7 +81,7 @@ try {
             ['id' => 5, 'name' => 'Mario Aquino', 'station' => 'Base Station', 'status' => 'OFF_DUTY']
         ];
 
-        // 7. All Blotter Cases
+        // 8. All Blotter Cases
         $allStmt = $pdo->query("
             SELECT id, reference_number, complainant_name, complainant_phone, incident_type, purok, priority_level, status, ai_recommendation, deployed_unit, created_at 
             FROM incident_reports 
@@ -85,7 +90,7 @@ try {
         ");
         $allCases = $allStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        // 8. Notifications
+        // 9. Notifications
         $notifStmt = $pdo->query("
             SELECT reference_number, incident_type, complainant_name, purok, priority_level, status, created_at 
             FROM incident_reports 
@@ -97,6 +102,11 @@ try {
 
         officerRespond([
             'success' => true,
+            'officer' => [
+                'full_name' => $officerProfile['full_name'] ?? 'Barangay Officer',
+                'contact_number' => $officerProfile['contact_number'] ?? '',
+                'profile_picture' => $officerProfile['profile_picture'] ?? null
+            ],
             'metrics' => [
                 'pending_triage' => $pendingTriageCount,
                 'active_dispatched' => $activeDispatchedCount,
@@ -132,7 +142,7 @@ try {
     $refNumber = trim((string) ($input['reference_number'] ?? ''));
 
     switch ($action) {
-        // Triage: Move into active blotter (Phase 2 for Resident)
+        // Triage: Move into active blotter
         case 'accept_blotter':
             if (!$refNumber) officerRespond(['success' => false, 'message' => 'Reference number required.'], 422);
             $stmt = $pdo->prepare("UPDATE incident_reports SET status = 'IN_PROGRESS' WHERE reference_number = ?");
@@ -143,7 +153,7 @@ try {
 
             officerRespond(['success' => true, 'message' => "Case #{$refNumber} accepted into active blotter."]);
 
-        // Urgent / Tanod: Dispatch responders (Phase 3 for Resident)
+        // Urgent / Tanod: Dispatch responders
         case 'dispatch_tanod':
             if (!$refNumber) officerRespond(['success' => false, 'message' => 'Reference number required.'], 422);
             $unit = trim((string) ($input['deployed_unit'] ?? 'Tanod Patrol Unit'));
@@ -158,7 +168,7 @@ try {
 
             officerRespond(['success' => true, 'message' => "Tanod unit successfully dispatched for #{$refNumber}."]);
 
-        // Lupon: Endorse case for mediation (Uses deployed_unit instead of assigned_officer)
+        // Lupon: Endorse case for mediation
         case 'endorse_lupon':
             if (!$refNumber) officerRespond(['success' => false, 'message' => 'Reference number required.'], 422);
             $mediator = trim((string) ($input['mediator'] ?? 'Barangay Lupon Panel'));
@@ -173,7 +183,7 @@ try {
 
             officerRespond(['success' => true, 'message' => "Case #{$refNumber} endorsed to Lupon mediation."]);
 
-        // Lupon: Mark mediation settled (Phase 4 "Resolved" for Resident)
+        // Lupon: Mark mediation settled
         case 'settle_lupon':
             if (!$refNumber) officerRespond(['success' => false, 'message' => 'Reference number required.'], 422);
             $resolutionNotes = trim((string) ($input['notes'] ?? 'Amicable settlement reached under Katarungang Pambarangay.'));
@@ -227,6 +237,75 @@ try {
             $stmtM->execute([$newId, $newTracking, $status, $actorId, $note]);
 
             officerRespond(['success' => true, 'message' => "Blotter recorded successfully with Tracking #{$newTracking}."]);
+
+        // Profile details & photo upload
+        case 'profile_update':
+            $name = trim((string) ($input['full_name'] ?? ''));
+            $contact = trim((string) ($input['contact_number'] ?? ''));
+
+            if ($name === '') {
+                officerRespond(['success' => false, 'message' => 'Full name cannot be blank.'], 422);
+            }
+
+            $picturePath = null;
+            if (!empty($_FILES['profile_picture']['tmp_name'])) {
+                $picture = $_FILES['profile_picture'];
+                if ($picture['error'] !== UPLOAD_ERR_OK || $picture['size'] > 2 * 1024 * 1024) {
+                    officerRespond(['success' => false, 'message' => 'Profile picture must be smaller than 2 MB.'], 422);
+                }
+
+                $finfo = new finfo(FILEINFO_MIME_TYPE);
+                $mime = $finfo->file($picture['tmp_name']);
+                $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+                if (!isset($extensions[$mime])) {
+                    officerRespond(['success' => false, 'message' => 'Use a JPG, PNG, or WebP profile picture.'], 422);
+                }
+
+                $directory = __DIR__ . '/../uploads/profiles';
+                if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+                    officerRespond(['success' => false, 'message' => 'Could not create profile images directory.'], 500);
+                }
+
+                $filename = 'officer_' . $actorId . '_' . bin2hex(random_bytes(6)) . '.' . $extensions[$mime];
+                if (!move_uploaded_file($picture['tmp_name'], $directory . '/' . $filename)) {
+                    officerRespond(['success' => false, 'message' => 'Could not save the profile picture.'], 500);
+                }
+                $picturePath = 'uploads/profiles/' . $filename;
+            }
+
+            if ($picturePath !== null) {
+                $stmt = $pdo->prepare('UPDATE users SET full_name = ?, contact_number = ?, profile_picture = ? WHERE id = ?');
+                $stmt->execute([$name, $contact, $picturePath, $actorId]);
+            } else {
+                $stmt = $pdo->prepare('UPDATE users SET full_name = ?, contact_number = ? WHERE id = ?');
+                $stmt->execute([$name, $contact, $actorId]);
+            }
+
+            $_SESSION['full_name'] = $name;
+            officerRespond(['success' => true, 'message' => 'Profile information updated successfully.']);
+
+        // Password change
+        case 'password_update':
+            $currentPassword = (string) ($input['current_password'] ?? '');
+            $newPassword = (string) ($input['new_password'] ?? '');
+            $confirmPassword = (string) ($input['confirm_password'] ?? '');
+
+            if (strlen($newPassword) < 8 || $newPassword !== $confirmPassword) {
+                officerRespond(['success' => false, 'message' => 'New passwords must match and be at least 8 characters.'], 422);
+            }
+
+            $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = ?');
+            $stmt->execute([$actorId]);
+            $hash = (string) $stmt->fetchColumn();
+
+            if (!password_verify($currentPassword, $hash)) {
+                officerRespond(['success' => false, 'message' => 'Current password is incorrect.'], 422);
+            }
+
+            $stmt = $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+            $stmt->execute([password_hash($newPassword, PASSWORD_DEFAULT), $actorId]);
+
+            officerRespond(['success' => true, 'message' => 'Password changed successfully.']);
 
         default:
             officerRespond(['success' => false, 'message' => 'Unknown officer action.'], 422);
