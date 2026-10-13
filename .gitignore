@@ -12,3 +12,5 @@ Thumbs.db
 # Node / Vendor (if applicable)
 node_modules/
 vendor/
+
+config/secrets.php

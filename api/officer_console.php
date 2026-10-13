@@ -1,5 +1,10 @@
 <?php
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+date_default_timezone_set('Asia/Manila');
+
 require_once __DIR__ . '/../auth.php';
+require_once __DIR__ . '/../lib/case_intake.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -11,14 +16,69 @@ function officerRespond(array $payload, int $status = 200): void
     exit;
 }
 
-if (!isLoggedIn() || !in_array(getUserRole(), ['OFFICER', 'CAPTAIN'], true)) {
-    officerRespond(['success' => false, 'message' => 'Officer access required.'], 403);
+/**
+ * One status change = one transaction: case update + milestone + outbox event.
+ * $t keys: status, milestone_status, officer, note
+ *          optional: unit (sets deployed_unit), recommendation (sets ai_recommendation), milestone_unit
+ */
+function officerTransition(PDO $pdo, string $ref, array $t): void
+{
+    $pdo->beginTransaction();
+    try {
+        $st = $pdo->prepare('SELECT id, status FROM incident_reports WHERE reference_number = ? LIMIT 1 FOR UPDATE');
+        $st->execute([$ref]);
+        $case = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$case) {
+            $pdo->rollBack();
+            officerRespond(['success' => false, 'message' => 'Incident record not found.'], 404);
+        }
+        $incidentId = (int) $case['id'];
+        $oldStatus  = (string) $case['status'];
+
+        $sets   = ['status = ?'];
+        $params = [$t['status']];
+        if (array_key_exists('unit', $t)) {
+            $sets[] = 'deployed_unit = ?';
+            $params[] = $t['unit'];
+        }
+        if (array_key_exists('recommendation', $t)) {
+            $sets[] = 'ai_recommendation = ?';
+            $params[] = $t['recommendation'];
+        }
+        $params[] = $incidentId;
+        $pdo->prepare('UPDATE incident_reports SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($params);
+
+        $pdo->prepare('INSERT INTO case_milestones
+                (incident_id, tracking_id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, NOW())')
+            ->execute([$incidentId, $ref, $t['milestone_status'], $t['officer'], $t['milestone_unit'] ?? null, $t['note']]);
+        $milestoneId = (int) $pdo->lastInsertId();
+
+        $pdo->prepare("INSERT INTO outbox_events (event_type, incident_id, payload) VALUES ('STATUS_CHANGED', ?, ?)")
+            ->execute([$incidentId, json_encode([
+                'milestone_id' => $milestoneId,
+                'old_status'   => $oldStatus,
+                'new_status'   => $t['status'],
+            ])]);
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
 }
+
+// Role is verified against the database, not just the session.
+$actor     = requireApiRole(['OFFICER', 'CAPTAIN']);
+$actorId   = (int) $actor['id'];
+$actorName = (string) ($actor['full_name'] ?? '');
+session_write_close();   // release the session lock; $_SESSION stays readable below
 
 try {
     $pdo = getDatabaseConnection();
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-    $actorId = (int) $_SESSION['user_id'];
 
     if ($method === 'GET') {
         // 1. Metric Counts (Safe: uses created_at)
@@ -128,111 +188,131 @@ try {
         officerRespond(['success' => false, 'message' => 'Invalid request data.'], 400);
     }
 
-    $action = trim((string) ($input['action'] ?? ''));
+    $action    = trim((string) ($input['action'] ?? ''));
     $refNumber = trim((string) ($input['reference_number'] ?? ''));
+
+    $needRef = function () use ($refNumber): void {
+        if ($refNumber === '') {
+            officerRespond(['success' => false, 'message' => 'Reference number required.'], 422);
+        }
+    };
+    $tooLong = function (string $value, int $max, string $label): void {
+        if (mb_strlen($value) > $max) {
+            officerRespond(['success' => false, 'message' => "{$label} is too long (max {$max} characters)."], 422);
+        }
+    };
 
     switch ($action) {
         // Triage: Move into active blotter (Phase 2 for Resident)
         case 'accept_blotter':
-            if (!$refNumber) officerRespond(['success' => false, 'message' => 'Reference number required.'], 422);
-            $stmt = $pdo->prepare("UPDATE incident_reports SET status = 'IN_PROGRESS' WHERE reference_number = ?");
-            $stmt->execute([$refNumber]);
-
-            $stmtM = $pdo->prepare("INSERT INTO case_milestones (incident_id, tracking_id, status_snapshot, officer_in_charge, action_note, created_at) SELECT id, reference_number, 'IN_PROGRESS', (SELECT full_name FROM users WHERE id = ?), 'Accepted from desk triage into official blotter.', NOW() FROM incident_reports WHERE reference_number = ?");
-            $stmtM->execute([$actorId, $refNumber]);
-
+            $needRef();
+            officerTransition($pdo, $refNumber, [
+                'status'           => 'IN_PROGRESS',
+                'milestone_status' => 'IN_PROGRESS',
+                'officer'          => $actorName,
+                'note'             => 'Accepted from desk triage into official blotter.',
+            ]);
             officerRespond(['success' => true, 'message' => "Case #{$refNumber} accepted into active blotter."]);
 
         // Urgent / Tanod: Dispatch responders (Phase 3 for Resident)
         case 'dispatch_tanod':
-            if (!$refNumber) officerRespond(['success' => false, 'message' => 'Reference number required.'], 422);
-            $unit = trim((string) ($input['deployed_unit'] ?? 'Tanod Patrol Unit'));
-            $notes = trim((string) ($input['dispatch_notes'] ?? 'Immediate responder unit dispatched on-site.'));
+            $needRef();
+            $unit  = trim((string) ($input['deployed_unit'] ?? ''));
+            $notes = trim((string) ($input['dispatch_notes'] ?? ''));
+            if ($unit === '')  $unit  = 'Tanod Patrol Unit';
+            if ($notes === '') $notes = 'Immediate responder unit dispatched on-site.';
+            $tooLong($unit, 100, 'Unit name');
+            $tooLong($notes, 1000, 'Dispatch notes');
 
-            $stmt = $pdo->prepare("UPDATE incident_reports SET status = 'DISPATCHED', deployed_unit = ?, ai_recommendation = ? WHERE reference_number = ?");
-            $recommendationText = "Unit Dispatched: {$unit} assigned for on-site assessment.";
-            $stmt->execute([$unit, $recommendationText, $refNumber]);
-
-            $stmtM = $pdo->prepare("INSERT INTO case_milestones (incident_id, tracking_id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at) SELECT id, reference_number, 'DISPATCHED', (SELECT full_name FROM users WHERE id = ?), ?, ?, NOW() FROM incident_reports WHERE reference_number = ?");
-            $stmtM->execute([$actorId, $unit, $notes, $refNumber]);
-
+            officerTransition($pdo, $refNumber, [
+                'status'           => 'DISPATCHED',
+                'milestone_status' => 'DISPATCHED',
+                'officer'          => $actorName,
+                'unit'             => $unit,
+                'milestone_unit'   => $unit,
+                'recommendation'   => "Unit Dispatched: {$unit} assigned for on-site assessment.",
+                'note'             => $notes,
+            ]);
             officerRespond(['success' => true, 'message' => "Tanod unit successfully dispatched for #{$refNumber}."]);
 
         // Lupon: Endorse case for mediation (Uses deployed_unit instead of assigned_officer)
         case 'endorse_lupon':
-            if (!$refNumber) officerRespond(['success' => false, 'message' => 'Reference number required.'], 422);
-            $mediator = trim((string) ($input['mediator'] ?? 'Barangay Lupon Panel'));
-            $schedule = trim((string) ($input['schedule'] ?? date('Y-m-d 10:00:00', strtotime('+3 days'))));
+            $needRef();
+            $mediator = trim((string) ($input['mediator'] ?? ''));
+            $schedule = trim((string) ($input['schedule'] ?? ''));
+            if ($mediator === '') $mediator = 'Barangay Lupon Panel';
+            if ($schedule === '') $schedule = date('Y-m-d 10:00:00', strtotime('+3 days'));
+            $tooLong($mediator, 120, 'Mediator name');
+            if (strtotime($schedule) === false) {
+                officerRespond(['success' => false, 'message' => 'Invalid mediation schedule.'], 422);
+            }
 
-            $stmt = $pdo->prepare("UPDATE incident_reports SET status = 'FOR_RESOLUTION', deployed_unit = ? WHERE reference_number = ?");
-            $stmt->execute([$mediator, $refNumber]);
-
-            $stmtM = $pdo->prepare("INSERT INTO case_milestones (incident_id, tracking_id, status_snapshot, officer_in_charge, action_note, created_at) SELECT id, reference_number, 'FOR_RESOLUTION', ?, ?, NOW() FROM incident_reports WHERE reference_number = ?");
-            $note = "Endorsed to Katarungang Pambarangay. Mediation scheduled on {$schedule} with {$mediator}.";
-            $stmtM->execute([$mediator, $note, $refNumber]);
-
+            officerTransition($pdo, $refNumber, [
+                'status'           => 'FOR_RESOLUTION',
+                'milestone_status' => 'FOR_RESOLUTION',
+                'officer'          => $mediator,
+                'unit'             => $mediator,
+                'note'             => "Endorsed to Katarungang Pambarangay. Mediation scheduled on {$schedule} with {$mediator}.",
+            ]);
             officerRespond(['success' => true, 'message' => "Case #{$refNumber} endorsed to Lupon mediation."]);
 
         // Lupon: Mark mediation settled (Phase 4 "Resolved" for Resident)
         case 'settle_lupon':
-            if (!$refNumber) officerRespond(['success' => false, 'message' => 'Reference number required.'], 422);
-            $resolutionNotes = trim((string) ($input['notes'] ?? 'Amicable settlement reached under Katarungang Pambarangay.'));
+            $needRef();
+            $resolutionNotes = trim((string) ($input['notes'] ?? ''));
+            if ($resolutionNotes === '') $resolutionNotes = 'Amicable settlement reached under Katarungang Pambarangay.';
+            $tooLong($resolutionNotes, 1000, 'Resolution notes');
 
-            $stmt = $pdo->prepare("UPDATE incident_reports SET status = 'RESOLVED', ai_recommendation = 'Case settled amicably during mediation.' WHERE reference_number = ?");
-            $stmt->execute([$refNumber]);
-
-            $stmtM = $pdo->prepare("INSERT INTO case_milestones (incident_id, tracking_id, status_snapshot, officer_in_charge, action_note, created_at) SELECT id, reference_number, 'RESOLVED', (SELECT full_name FROM users WHERE id = ?), ?, NOW() FROM incident_reports WHERE reference_number = ?");
-            $stmtM->execute([$actorId, $resolutionNotes, $refNumber]);
-
+            officerTransition($pdo, $refNumber, [
+                'status'           => 'RESOLVED',
+                'milestone_status' => 'RESOLVED',
+                'officer'          => $actorName,
+                'recommendation'   => 'Case settled amicably during mediation.',
+                'note'             => $resolutionNotes,
+            ]);
             officerRespond(['success' => true, 'message' => "Case #{$refNumber} marked as resolved and settled."]);
 
         // Flag / Reject / Spam
         case 'flag_reject':
-            if (!$refNumber) officerRespond(['success' => false, 'message' => 'Reference number required.'], 422);
-            $stmt = $pdo->prepare("UPDATE incident_reports SET status = 'RESOLVED', ai_recommendation = 'Flagged / closed as non-actionable or duplicate during triage.' WHERE reference_number = ?");
-            $stmt->execute([$refNumber]);
-
-            $stmtM = $pdo->prepare("INSERT INTO case_milestones (incident_id, tracking_id, status_snapshot, officer_in_charge, action_note, created_at) SELECT id, reference_number, 'CLOSED', (SELECT full_name FROM users WHERE id = ?), 'Case archived and closed at frontline desk.', NOW() FROM incident_reports WHERE reference_number = ?");
-            $stmtM->execute([$actorId, $refNumber]);
-
+            $needRef();
+            officerTransition($pdo, $refNumber, [
+                'status'           => 'RESOLVED',
+                'milestone_status' => 'CLOSED',
+                'officer'          => $actorName,
+                'recommendation'   => 'Flagged / closed as non-actionable or duplicate during triage.',
+                'note'             => 'Case archived and closed at frontline desk.',
+            ]);
             officerRespond(['success' => true, 'message' => "Case #{$refNumber} flagged and closed."]);
 
-        // Encode walk-in case
+        // Encode walk-in case: shared logic with api/encode_case.php (triage, downgrade gate, audit, outbox)
         case 'encode_case':
-            $name = trim((string) ($input['complainantName'] ?? ''));
-            $phone = trim((string) ($input['complainantPhone'] ?? ''));
-            $purok = trim((string) ($input['purok'] ?? ''));
+            // Keep the old form behavior: street goes into the narrative, with the same defaults as before.
             $street = trim((string) ($input['streetAddress'] ?? ''));
-            $category = trim((string) ($input['category'] ?? 'Others'));
-            $priority = trim((string) ($input['priorityLevel'] ?? 'High'));
-            $narrative = trim((string) ($input['incidentNarrative'] ?? ''));
-
-            if (!$name || !$phone || !$purok || !$narrative) {
-                officerRespond(['success' => false, 'message' => 'All required blotter fields must be filled.'], 422);
+            $narr   = trim((string) ($input['incidentNarrative'] ?? ''));
+            if ($narr !== '' && $street !== '') {
+                $input['incidentNarrative'] = $narr . "\n\n[Location: {$street}]";
+            }
+            if (trim((string) ($input['category'] ?? '')) === '' && trim((string) ($input['incidentCategory'] ?? '')) === '') {
+                $input['category'] = 'Others';
+            }
+            if (trim((string) ($input['priorityLevel'] ?? '')) === '' && trim((string) ($input['priority'] ?? '')) === '') {
+                $input['priorityLevel'] = 'High';
             }
 
-            $year = date('Y');
-            $totalCount = (int) $pdo->query("SELECT COUNT(*) FROM incident_reports")->fetchColumn();
-            $newTracking = sprintf("TRK-%s-%03d", $year, $totalCount + 1);
-
-            $status = ($priority === 'Critical') ? 'CRITICAL' : 'IN_PROGRESS';
-            $fullNarrative = $narrative . ($street ? "\n\n[Location: {$street}]" : "");
-
-            $stmt = $pdo->prepare("INSERT INTO incident_reports (reference_number, complainant_name, complainant_phone, incident_type, narrative_description, incident_datetime, purok, scenario_type, verification_level, priority_level, status, created_at) VALUES (?, ?, ?, ?, ?, NOW(), ?, 'WALK_IN', 'VERIFIED', ?, ?, NOW())");
-            $stmt->execute([$newTracking, $name, $phone, $category, $fullNarrative, $purok, $priority, $status]);
-
-            $newId = (int) $pdo->lastInsertId();
-            $stmtM = $pdo->prepare("INSERT INTO case_milestones (incident_id, tracking_id, status_snapshot, officer_in_charge, action_note, created_at) VALUES (?, ?, ?, (SELECT full_name FROM users WHERE id = ?), ?, NOW())");
-            $note = "Walk-in blotter intake recorded by desk officer. Priority: {$priority}.";
-            $stmtM->execute([$newId, $newTracking, $status, $actorId, $note]);
-
-            officerRespond(['success' => true, 'message' => "Blotter recorded successfully with Tracking #{$newTracking}."]);
+            $r = encode_case_run($input, $actor);
+            if ($r['status'] === 200 && isset($r['body']['data']['reference_number'])) {
+                // Same wording the dashboard showed before.
+                $r['body']['message'] = "Blotter recorded successfully with Tracking #{$r['body']['data']['reference_number']}.";
+            }
+            officerRespond($r['body'], $r['status']);
 
         default:
             officerRespond(['success' => false, 'message' => 'Unknown officer action.'], 422);
     }
 } catch (PDOException $e) {
-    officerRespond(['success' => false, 'message' => 'DATABASE ERROR: ' . $e->getMessage()], 500);
+    error_log('[officer_console] database error: ' . $e->getMessage());
+    officerRespond(['success' => false, 'message' => 'Database error. Please try again.'], 500);
 } catch (Throwable $e) {
-    officerRespond(['success' => false, 'message' => 'Request error: ' . $e->getMessage()], 500);
+    error_log('[officer_console] ' . $e->getMessage());
+    officerRespond(['success' => false, 'message' => 'Request error. Please try again.'], 500);
 }

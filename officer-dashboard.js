@@ -262,6 +262,7 @@ function renderBlotterTable() {
             <td>${formatDate(c.created_at)}</td>
             <td>
                 <div class="row-actions">
+                    <button class="small-button" data-action="change_severity" data-ref="${escapeHtml(c.reference_number)}" data-priority="${escapeHtml(c.priority_level)}">Severity</button>
                     <button class="small-button" data-action="dispatch" data-ref="${escapeHtml(c.reference_number)}">Dispatch</button>
                     <button class="small-button" data-action="endorse_lupon" data-ref="${escapeHtml(c.reference_number)}">Lupon</button>
                 </div>
