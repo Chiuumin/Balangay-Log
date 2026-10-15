@@ -1,0 +1,159 @@
+.registration-page-body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 18px;
+    color: #172b35;
+    background: #eef4f3 !important;
+    background-image: none !important;
+}
+
+.registration-page-body .register-page {
+    width: 100%;
+    max-width: 780px;
+    min-height: 0;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.registration-page-body .register-card {
+    width: 100%;
+    max-width: 680px;
+    margin: 0;
+    padding: 28px 36px 20px;
+    border: 1px solid #dce7e5;
+    border-radius: 16px;
+    color: #172b35;
+    background: #fff;
+    box-shadow: 0 18px 55px rgba(31, 64, 59, .1);
+}
+
+.registration-page-body .register-brand {
+    justify-content: center;
+    margin-bottom: 23px;
+}
+
+.registration-page-body .register-brand .brand-logo {
+    width: 37px;
+    height: 37px;
+    flex: 0 0 37px;
+    object-fit: cover;
+    border: 1px solid rgba(23, 61, 59, .12);
+    border-radius: 10px;
+    background: #359bd6;
+    box-shadow: none;
+}
+
+.registration-page-body .register-brand-name {
+    color: #173d3b;
+    font-size: 17px;
+}
+
+.registration-progress { margin-bottom: 25px; }
+.progress-track { height: 3px; overflow: hidden; border-radius: 4px; background: #e5edeb; }
+.progress-track span { display: block; width: 25%; height: 100%; border-radius: inherit; background: #19766c; transition: width .22s ease; }
+.step-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 15px 0 0; padding: 0; list-style: none; }
+.step-list li { min-width: 0; display: flex; align-items: center; gap: 7px; color: #879792; }
+.step-list li > span { width: 24px; height: 24px; flex: 0 0 24px; display: grid; place-items: center; border: 1px solid #d4dfdc; border-radius: 50%; color: #75847f; background: #fff; font-size: 10px; font-weight: 700; }
+.step-list li small { overflow: hidden; font-size: 9px; font-weight: 600; line-height: 1.25; text-overflow: ellipsis; }
+.step-list li.is-active { color: #155e56; }
+.step-list li.is-active > span { border-color: #19766c; color: #fff; background: #19766c; }
+.step-list li.is-complete { color: #39796e; }
+.step-list li.is-complete > span { border-color: #c5e1da; color: #176d61; background: #eaf5f1; }
+.mobile-step-count { display: none; }
+
+.step-heading { margin-bottom: 20px; }
+.step-heading h1 { margin: 0 0 6px; color: #172b35; font: 800 23px/1.25 'Manrope', 'Plus Jakarta Sans', sans-serif; letter-spacing: -.55px; }
+.step-heading p { margin: 0; color: #687b83; font-size: 12px; line-height: 1.65; }
+.registration-page-body .register-grid { column-gap: 16px; }
+.registration-page-body .form-group { margin-bottom: 17px; }
+.registration-page-body .form-group label { margin-bottom: 7px; color: #304951; font-size: 10px; letter-spacing: .35px; }
+.registration-page-body .form-group input,
+.registration-page-body .form-group select {
+    height: 44px;
+    border: 1px solid #d6e1df;
+    border-radius: 7px;
+    color: #1e343c;
+    background: #fff;
+    font-family: 'DM Sans', 'Plus Jakarta Sans', sans-serif;
+    font-size: 13px;
+}
+.registration-page-body .form-group input:focus,
+.registration-page-body .form-group select:focus { border-color: #19766c; box-shadow: 0 0 0 3px rgba(25, 118, 108, .12); }
+.registration-page-body .form-group input::placeholder { color: #9aa9a6; }
+.registration-page-body .register-grid-single { grid-template-columns: 1fr; }
+.registration-page-body .password-input-wrapper input { padding-right: 48px; }
+.registration-page-body .eye-btn { color: #71847f; }
+.registration-page-body .eye-btn:hover { color: #19766c; }
+.field-hint { display: block; margin-top: 6px; color: #73847f; font-size: 10px; line-height: 1.5; }
+.field-error { display: none; margin-top: 5px; color: #b5473e; font-size: 10px; line-height: 1.45; }
+.field-error.is-visible { display: block; }
+.registration-page-body .form-group input[aria-invalid="true"],
+.registration-page-body .form-group select[aria-invalid="true"] { border-color: #c65349; }
+.registration-page-body .error-banner { margin-bottom: 16px; }
+
+.registration-actions { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
+.registration-actions .primary-btn,
+.registration-actions .secondary-btn { width: auto; min-width: 112px; height: 44px; margin: 0; padding: 0 20px; border-radius: 7px; font: 700 12px 'Manrope', sans-serif; }
+.registration-actions .primary-btn { background: #19766c; }
+.registration-actions .primary-btn:hover { background: #125b54; }
+.registration-actions .secondary-btn { border: 1px solid #d3dfdc; color: #36514d; background: #fff; cursor: pointer; }
+.registration-actions .secondary-btn:hover { border-color: #9cbcb4; background: #f7faf9; }
+.action-spacer { flex: 1; }
+.registration-page-body .register-footer { margin: 15px 0 0; color: #778983; font-size: 10px; }
+.registration-page-body .register-footer a { color: #19766c; }
+
+.upload-group { margin-bottom: 13px !important; }
+.upload-field-label { display: block; margin-bottom: 7px; color: #304951; font-size: 10px; font-weight: 700; letter-spacing: .35px; }
+.upload-area {
+    min-height: 175px;
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px;
+    border: 1px dashed #a9c3bd;
+    border-radius: 10px;
+    color: #36514d !important;
+    background: #f8fbfa;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color .18s ease, background .18s ease;
+}
+.upload-area:hover { border-color: #19766c; background: #f1f8f6; }
+.upload-icon { width: 38px; height: 38px; display: grid; place-items: center; margin-bottom: 2px; border-radius: 50%; color: #19766c; background: #e7f3f0; }
+.upload-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.upload-area strong { color: #2f4945; font-size: 12px; }
+.upload-area > span:last-of-type { color: #788a85; font-size: 10px; font-weight: 500; }
+.upload-area input[type="file"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+.upload-area:focus-within { outline: 2px solid #19766c; outline-offset: 3px; }
+.file-preview { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 9px; border: 1px solid #dce7e5; border-radius: 8px; color: #38534d; background: #fbfdfc; font-size: 10px; }
+.file-preview[hidden] { display: none; }
+.file-preview img { width: 42px; height: 42px; object-fit: cover; border-radius: 5px; }
+.file-preview span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-preview button { margin-left: auto; border: 0; color: #19766c; background: transparent; cursor: pointer; font-size: 10px; font-weight: 700; }
+.privacy-note { margin: 12px 0 0; color: #72837e; font-size: 10px; line-height: 1.6; }
+
+@media (max-width: 600px) {
+    .registration-page-body { align-items: flex-start; padding: 16px 12px; }
+    .registration-page-body .register-page { min-height: calc(100vh - 32px); }
+    .registration-page-body .register-card { padding: 22px 19px 17px; border-radius: 12px; }
+    .registration-page-body .register-brand { margin-bottom: 20px; }
+    .registration-progress { margin-bottom: 22px; }
+    .step-list { display: none; }
+    .mobile-step-count { display: block; margin: 9px 0 0; color: #627871; font-size: 10px; font-weight: 700; text-align: right; }
+    .step-heading h1 { font-size: 21px; }
+    .step-heading p { font-size: 11px; }
+    .registration-page-body .register-grid { grid-template-columns: 1fr; }
+    .registration-page-body .register-grid .form-group--wide { grid-column: auto; }
+    .registration-actions .primary-btn,
+    .registration-actions .secondary-btn { min-width: 98px; min-height: 46px; }
+    .upload-area { min-height: 165px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .registration-page-body *, .registration-page-body *::before, .registration-page-body *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}

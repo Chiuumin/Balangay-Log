@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BalangayLog - Case Management System</title>
-    
-  <!-- Immediate Guard: If already logged in in this tab, do not render login page -->
+    <meta name="theme-color" content="#071716">
+    <title>BalangayLog - Barangay Incident Management System</title>
     <script>
         try {
             var token = sessionStorage.getItem('authToken');
@@ -15,89 +14,235 @@
             }
         } catch (e) {}
     </script>
-
     <link rel="stylesheet" href="style.css?v=20261011">
+    <link rel="stylesheet" href="homepage.css?v=20261015">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
-<body>
-    <div class="page-container">
-        <!-- LEFT SIDE: BRANDING & REAL-TIME STATS -->
-        <div class="hero-section">
-            <div class="brand-header">
-                <div class="brand-logo">
-                    <span class="brand-logo-fallback" aria-hidden="true">B</span>
+<body class="homepage">
+    <header class="site-header" id="top">
+        <div class="site-header-inner">
+            <a class="site-brand" href="#top" aria-label="BalangayLog home">
+                <img class="site-brand-mark" src="assets/balangaylog-logo.png" alt="">
+                <span class="site-brand-copy">
+                    <strong>BalangayLog</strong>
+                    <span>CASE MANAGEMENT SYSTEM</span>
+                </span>
+            </a>
+            <nav class="site-nav" aria-label="Main navigation">
+                <div class="desktop-nav">
+                    <a href="#top" aria-current="page">Home</a>
+                    <a href="#community">About</a>
+                    <a href="#how-it-works">How It Works</a>
+                    <a href="#contact">Contact</a>
+                    <a class="nav-login" href="#login">Log In <span aria-hidden="true">↗</span></a>
                 </div>
-                <div class="brand-text">
-                    <h1>BalangayLog</h1>
-                    <span class="subtext">CASE MANAGEMENT SYSTEM</span>
+                <details class="mobile-nav">
+                    <summary aria-label="Open navigation menu">Menu</summary>
+                    <div class="mobile-nav-links">
+                        <a href="#top">Home</a>
+                        <a href="#community">About</a>
+                        <a href="#how-it-works">How It Works</a>
+                        <a href="#contact">Contact</a>
+                        <a href="#login">Log In</a>
+                    </div>
+                </details>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero page-width" aria-labelledby="hero-title">
+            <div class="hero-copy">
+                <span class="eyebrow"><span class="eyebrow-dot"></span> PUBLIC SERVICE, CONNECTED</span>
+                <h1 id="hero-title">Your Community.<br>Your Voice.<br><span>Your Barangay.</span></h1>
+                <p class="hero-description">A unified digital platform for residents to report community incidents, track case progress, and stay informed through convenient online services and SMS notifications.</p>
+                <div class="hero-actions">
+                    <a class="button button-primary" href="register.php">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                        Report an Incident
+                    </a>
+                    <a class="button button-secondary" href="urgent.html">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.2 4.2"/></svg>
+                        Track My Case
+                    </a>
                 </div>
+                <p class="trust-note"><span>Secure Reporting</span><i></i><span>Case Tracking</span><i></i><span>SMS Notifications</span></p>
             </div>
 
-            <p class="hero-description">
-                A unified digital platform for barangay officials to manage community incidents, track resolutions, and serve residents effectively.
-            </p>
+            <div class="hero-visual" aria-label="Illustration of a case status update">
+                <div class="visual-orbit orbit-one"></div>
+                <div class="visual-orbit orbit-two"></div>
+                <div class="service-mark" aria-hidden="true">
+                    <span class="service-mark-inner"><svg viewBox="0 0 24 24"><path d="M4 20V9l8-5 8 5v11M8 20v-6h8v6M2 20h20"/></svg></span>
+                    <span class="service-mark-label">BARANGAY<br>SERVICES</span>
+                </div>
+                <article class="case-preview">
+                    <div class="case-preview-top">
+                        <div>
+                            <span class="case-caption">SAMPLE CASE REFERENCE</span>
+                            <strong class="case-reference">BL-2026-0000</strong>
+                        </div>
+                        <span class="status-badge"><i></i> Under Review</span>
+                    </div>
+                    <div class="case-divider"></div>
+                    <div class="progress-heading"><span>Case progress</span><span>Step 2 of 3</span></div>
+                    <div class="progress-track" aria-label="Illustrative progress: 2 of 3 steps">
+                        <span class="progress-step is-complete"></span>
+                        <span class="progress-step is-current"></span>
+                        <span class="progress-step"></span>
+                    </div>
+                    <div class="progress-labels"><span>Submitted</span><span>In review</span><span>Update</span></div>
+                    <div class="sms-preview">
+                        <span class="sms-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.5-3.7A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8.5 11.5h7M8.5 14.5h4"/></svg>
+                        </span>
+                        <span><strong>SMS update preview</strong><small>Your case status has been updated.</small></span>
+                        <span class="sms-check" aria-hidden="true">✓</span>
+                    </div>
+                    <p class="sample-disclaimer">Illustrative sample only — no resident or incident data.</p>
+                </article>
+                <span class="visual-caption">A clearer way to stay informed</span>
+            </div>
+        </section>
 
-            <!-- Real-Time Metrics Grid -->
-            <div class="metrics-grid">
-                <div class="metric-card">
-                    <span class="metric-value" id="activeCases">0</span>
-                    <span class="metric-label">Active Cases</span>
+        <section class="metrics-section page-width" aria-label="Live community service statistics">
+            <article class="metric-card">
+                <span class="metric-value" id="activeCases">—</span>
+                <span class="metric-label">Active Cases</span>
+            </article>
+            <article class="metric-card">
+                <span class="metric-value" id="resolvedMonth">—</span>
+                <span class="metric-label">Resolved This Month</span>
+            </article>
+            <article class="metric-card">
+                <span class="metric-value" id="residentsServed">—</span>
+                <span class="metric-label">Residents Served</span>
+            </article>
+            <article class="metric-card">
+                <span class="metric-value" id="avgResolution">—</span>
+                <span class="metric-label">Average Resolution</span>
+            </article>
+        </section>
+
+        <section class="section-block how-section" id="how-it-works" aria-labelledby="how-title">
+            <div class="page-width">
+                <div class="section-heading">
+                    <span class="eyebrow">HOW IT WORKS</span>
+                    <h2 id="how-title">Simple. Secure. Transparent.</h2>
+                    <p>From reporting an incident to receiving updates, BalangayLog helps keep residents informed.</p>
                 </div>
-                <div class="metric-card">
-                    <span class="metric-value" id="resolvedMonth">0</span>
-                    <span class="metric-label">Resolved This Month</span>
-                </div>
-                <div class="metric-card">
-                    <span class="metric-value" id="residentsServed">0</span>
-                    <span class="metric-label">Residents Served</span>
-                </div>
-                <div class="metric-card">
-                    <span class="metric-value" id="avgResolution">0 days</span>
-                    <span class="metric-label">Avg. Resolution</span>
+                <div class="steps-grid">
+                    <article class="info-card step-card">
+                        <div class="step-top"><span class="step-number">01</span><span class="line-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6m-3 3h6"/></svg></span></div>
+                        <h3>Submit a Report</h3>
+                        <p>Provide the incident details and attach supporting evidence when available.</p>
+                    </article>
+                    <article class="info-card step-card">
+                        <div class="step-top"><span class="step-number">02</span><span class="line-icon"><svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8 8 9 4.6-1 8-4 8-9V7z"/><path d="m9 12 2 2 4-4"/></svg></span></div>
+                        <h3>Case Processing</h3>
+                        <p>Authorized barangay personnel review reports and update their progress.</p>
+                    </article>
+                    <article class="info-card step-card">
+                        <div class="step-top"><span class="step-number">03</span><span class="line-icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v12H8l-4 4z"/><path d="M8 9h8M8 13h5"/></svg></span></div>
+                        <h3>Track Updates</h3>
+                        <p>Monitor your case status and receive SMS notifications when important updates occur.</p>
+                    </article>
                 </div>
             </div>
-        </div> 
-        
-        <!-- RIGHT SIDE: LOGIN CARD -->
-        <div class="auth-section">
+        </section>
+
+        <section class="section-block features-section" aria-labelledby="features-title">
+            <div class="page-width">
+                <div class="section-heading section-heading-left">
+                    <span class="eyebrow">RESIDENT SERVICES</span>
+                    <h2 id="features-title">Everything You Need to Stay Informed</h2>
+                </div>
+                <div class="features-grid">
+                    <article class="info-card feature-card"><span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></span><h3>Online Incident Reporting</h3><p>Submit incident reports through the website.</p></article>
+                    <article class="info-card feature-card"><span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><h3>Case Status Tracking</h3><p>View the progress and available history of your own reports.</p></article>
+                    <article class="info-card feature-card"><span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.5 8.5 0 0 1 8.7 3.9a8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/></svg></span><h3>SMS Notifications</h3><p>Receive text messages about important case updates.</p></article>
+                    <article class="info-card feature-card"><span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M3 3h18v14H8l-5 4z"/><path d="m8 10 2.5 2.5L16 7"/></svg></span><h3>Transparent Case Management</h3><p>Stay informed about case progress, resolution, and referrals to appropriate agencies.</p></article>
+                </div>
+            </div>
+        </section>
+
+        <section class="community-section" id="community" aria-labelledby="community-title">
+            <div class="page-width community-inner">
+                <div class="community-copy">
+                    <span class="eyebrow">BETTER TOGETHER</span>
+                    <h2 id="community-title">Building a More Connected Barangay</h2>
+                    <p>BalangayLog helps strengthen communication between residents and barangay personnel through organized reporting, traceable case updates, and accessible public-service information.</p>
+                    <ul class="community-highlights">
+                        <li><span>✓</span> Easier incident reporting</li>
+                        <li><span>✓</span> More organized case monitoring</li>
+                        <li><span>✓</span> Better communication between residents and barangay personnel</li>
+                    </ul>
+                </div>
+                <div class="community-art" aria-hidden="true">
+                    <div class="map-lines"></div>
+                    <span class="map-pin pin-one"><i></i></span>
+                    <span class="map-pin pin-two"><i></i></span>
+                    <span class="map-pin pin-three"><i></i></span>
+                    <div class="map-center"><span class="map-home"><svg viewBox="0 0 24 24"><path d="M3 10 12 3l9 7M5 9v11h14V9M9 20v-6h6v6"/></svg></span><strong>Your Barangay</strong><small>Connected community</small></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section-block barangay-section page-width" id="barangay-info" aria-labelledby="barangay-title">
+            <div class="barangay-seal"><img src="assets/balangaylog-logo.png" alt="BalangayLog logo"></div>
+            <div class="barangay-details">
+                <span class="eyebrow">YOUR LOCAL GOVERNMENT</span>
+                <h2 id="barangay-title">Duale</h2>
+                <p class="barangay-placeholder">Official barangay details will be provided by your barangay office.</p>
+            </div>
+            <div class="barangay-contact">
+                <div><span class="contact-label">Barangay Hall</span><span>[Barangay Hall Address]</span></div>
+                <div><span class="contact-label">Contact</span><span>[Official phone number] · [Official email]</span></div>
+                <div><span class="contact-label">Office Hours</span><span>[Office hours]</span></div>
+            </div>
+        </section>
+
+        <section class="help-section" id="contact" aria-labelledby="help-title">
+            <div class="page-width help-inner">
+                <div>
+                    <span class="eyebrow">WE'RE HERE TO HELP</span>
+                    <h2 id="help-title">Need Assistance?</h2>
+                    <p>Our barangay office is here to help you with reporting incidents and accessing BalangayLog.</p>
+                    <a class="button button-secondary" href="#barangay-info">Contact the Barangay Office <span aria-hidden="true">↗</span></a>
+                </div>
+                <aside class="emergency-note">
+                    <span class="emergency-icon" aria-hidden="true">!</span>
+                    <p><strong>For urgent incidents</strong><br>Contact the appropriate emergency services directly. BalangayLog is not an emergency response service.</p>
+                </aside>
+            </div>
+        </section>
+
+        <section class="login-section page-width" id="login" aria-labelledby="login-title">
+            <div class="login-intro">
+                <span class="eyebrow">BALANGAYLOG PORTAL</span>
+                <h2 id="login-title">Welcome back</h2>
+                <p>Sign in to access the barangay portal. New resident? Create an account to submit an incident report.</p>
+                <a class="text-link" href="register.php">Register as a resident <span aria-hidden="true">→</span></a>
+            </div>
             <div class="auth-card">
                 <div class="auth-header">
-                    <h2>Welcome back</h2>
-                    <p>Sign in to access the barangay portal</p>
+                    <h2>Portal sign in</h2>
+                    <p>Use your registered account credentials.</p>
                 </div>
-
                 <div id="errorBanner" class="error-banner" style="display: none;"></div>
-
                 <form id="setupForm" style="display: none;">
-                    <div class="form-group">
-                        <label for="setup_first_name">First Name</label>
-                        <input type="text" id="setup_first_name" required autocomplete="off">
-                    </div>
-                    <div class="form-group">
-                        <label for="setup_last_name">Last Name</label>
-                        <input type="text" id="setup_last_name" required autocomplete="off">
-                    </div>
-                    <div class="form-group">
-                        <label for="setup_username">Username</label>
-                        <input type="text" id="setup_username" required autocomplete="off">
-                    </div>
-                    <div class="form-group">
-                        <label for="setup_password">Password</label>
-                        <input type="password" id="setup_password" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="setup_confirm_password">Confirm Password</label>
-                        <input type="password" id="setup_confirm_password" required>
-                    </div>
+                    <div class="form-group"><label for="setup_first_name">First Name</label><input type="text" id="setup_first_name" required autocomplete="off"></div>
+                    <div class="form-group"><label for="setup_last_name">Last Name</label><input type="text" id="setup_last_name" required autocomplete="off"></div>
+                    <div class="form-group"><label for="setup_username">Username</label><input type="text" id="setup_username" required autocomplete="off"></div>
+                    <div class="form-group"><label for="setup_password">Password</label><input type="password" id="setup_password" required></div>
+                    <div class="form-group"><label for="setup_confirm_password">Confirm Password</label><input type="password" id="setup_confirm_password" required></div>
                     <button type="submit" id="setupBtn" class="primary-btn">Create Administrator</button>
                 </form>
-
                 <form id="loginForm">
                     <div class="form-group">
                         <label for="username">Username</label>
                         <input type="text" id="username" placeholder="Enter your username" required autocomplete="off">
                     </div>
-
                     <div class="form-group">
                         <label for="password">Password</label>
                         <div class="password-input-wrapper">
@@ -110,55 +255,52 @@
                             </button>
                         </div>
                     </div>
-
                     <button type="submit" id="loginBtn" class="primary-btn">Login</button>
                     <a href="#" id="forgotPasswordLink" class="forgot-link">Forgot password?</a>
                 </form>
-
-                <div class="auth-links" style="display: flex; justify-content: space-between; margin-top: 18px; gap: 12px; flex-wrap: wrap;">
+                <div class="auth-links">
                     <a href="register.html" class="forgot-link">Register as Resident</a>
                     <a href="#" id="initialSetupLink" class="forgot-link">Initial Setup</a>
                 </div>
             </div>
-        </div>
-    </div>
+        </section>
+    </main>
 
-  <script src="script.js?v=99"></script>
-
-   <!-- ADMINISTRATIVE PASSWORD RESET MODAL -->
-    <div class="modal-overlay" id="forgotModal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center;">
-        <div style="background: #ffffff; border-radius: 16px; max-width: 440px; width: 90%; padding: 28px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2); position: relative;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="background: #eff6ff; color: #2563eb; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                        </svg>
-                    </div>
-                    <h3 style="margin: 0; font-size: 1.15rem; color: #0f172a; font-weight: 700;">Password Reset Policy</h3>
-                </div>
-                <button type="button" id="closeForgotModal" style="background: transparent; border: none; font-size: 24px; color: #94a3b8; cursor: pointer; line-height: 1;">&times;</button>
+    <footer class="site-footer">
+        <div class="page-width footer-main">
+            <div class="footer-about">
+                <a class="site-brand" href="#top" aria-label="BalangayLog home"><img class="site-brand-mark" src="assets/balangaylog-logo.png" alt=""><span class="site-brand-copy"><strong>BalangayLog</strong><span>CASE MANAGEMENT SYSTEM</span></span></a>
+                <p>A digital service for more accessible community reporting and case updates.</p>
             </div>
+            <div class="footer-links"><strong>Explore</strong><a href="#top">Home</a><a href="#community">About</a><a href="#how-it-works">How It Works</a><a href="#contact">Contact</a></div>
+            <div class="footer-links"><strong>Resident Services</strong><a href="register.php">Report an Incident</a><a href="urgent.html">Track My Case</a><a href="#login">Log In</a></div>
+            <div class="footer-links footer-office"><strong>Barangay Office</strong><span>[Barangay Hall Address]</span><span>[Official phone number]</span><span>[Official email]</span></div>
+        </div>
+        <div class="page-width footer-bottom"><span>© <span id="copyrightYear">2026</span> BalangayLog. Barangay Case Management System.</span><span>Privacy Policy and Terms of Use: [To be provided by the barangay]</span></div>
+    </footer>
 
-            <p style="font-size: 0.9rem; color: #475569; line-height: 1.5; margin-bottom: 14px;">
-                Verified Account: <strong id="forgotModalUserDisplay" style="color: #0f172a;">Official Account</strong>
-            </p>
-
-            <p style="font-size: 0.9rem; color: #475569; line-height: 1.5; margin-bottom: 18px;">
-                Password reset requests must be submitted directly to the Barangay System Administrator.
-            </p>
-
-            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; font-size: 0.85rem; color: #334155; margin-bottom: 20px;">
-                <p style="margin: 0 0 6px 0;"><strong>Required Steps:</strong></p>
-                <ul style="margin: 0; padding-left: 18px; line-height: 1.6;">
+    <script src="script.js?v=99"></script>
+    <script>
+        document.getElementById('copyrightYear').textContent = new Date().getFullYear();
+    </script>
+    <div class="modal-overlay" id="forgotModal" style="display: none;">
+        <div class="forgot-modal">
+            <div class="forgot-modal-heading">
+                <div class="forgot-modal-icon" aria-hidden="true">⌑</div>
+                <h3>Password Reset Policy</h3>
+                <button type="button" id="closeForgotModal" class="modal-close" aria-label="Close">&times;</button>
+            </div>
+            <p>Verified Account: <strong id="forgotModalUserDisplay">Official Account</strong></p>
+            <p>Password reset requests must be submitted directly to the Barangay System Administrator.</p>
+            <div class="reset-steps">
+                <strong>Required Steps:</strong>
+                <ul>
                     <li>Contact the <strong>Barangay Secretary</strong> or ICT Administrator.</li>
                     <li>Present valid barangay identification credentials.</li>
                     <li>The administrator will generate and issue a temporary login key.</li>
                 </ul>
             </div>
-
-            <button type="button" id="dismissForgotBtn" class="primary-btn" style="width: 100%; padding: 10px; font-size: 0.95rem;">Understood</button>
+            <button type="button" id="dismissForgotBtn" class="primary-btn">Understood</button>
         </div>
     </div>
 </body>
