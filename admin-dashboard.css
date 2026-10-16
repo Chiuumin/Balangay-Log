@@ -2346,3 +2346,26 @@ html[data-theme="dark"] textarea,
         gap: 14px;
     }
 }
+
+/* Milestone Accordion Dropdown Enhancements */
+.milestone-accordion summary {
+    list-style: none;
+}
+.milestone-accordion summary::-webkit-details-marker {
+    display: none;
+}
+.milestone-accordion summary .chevron {
+    transition: transform 0.2s ease;
+}
+.milestone-accordion[open] summary .chevron {
+    transform: rotate(180deg);
+}
+.pill-critical {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fca5a5;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 9999px;
+}

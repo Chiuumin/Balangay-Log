@@ -110,26 +110,63 @@ try {
     $action = trim((string) ($input['action'] ?? ''));
 
     switch ($action) {
-        case 'get_milestones':
+       case 'get_milestones':
             $refNumber = trim((string) ($input['reference_number'] ?? ''));
             if (!$refNumber) {
                 residentRespond(['success' => false, 'message' => 'Tracking number required.'], 422);
             }
 
-            // Only the resident's own cases (tracking numbers are sequential, so they are easy to guess).
+            // Verify resident ownership
+          // Fetch milestones in chronological order
+$mStmt = $pdo->prepare('
+    SELECT id, status_snapshot, milestone_stage, officer_in_charge, deployed_unit, action_note, created_at
+    FROM case_milestones
+    WHERE tracking_id = ?
+    ORDER BY id ASC
+');
+$mStmt->execute([$refNumber]);
+$milestones = $mStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            if (!$case) {
+                residentRespond(['success' => false, 'message' => 'Case not found or access denied.'], 404);
+            }
+
+            // Fetch milestones in chronological order
             $mStmt = $pdo->prepare('
-                SELECT m.id, m.status_snapshot, m.officer_in_charge, m.deployed_unit, m.action_note, m.created_at
-                FROM case_milestones m
-                JOIN incident_reports r ON r.reference_number = m.tracking_id
-                WHERE m.tracking_id = ? AND (r.complainant_name = ? OR r.complainant_phone = ?)
-                ORDER BY m.id DESC
+                SELECT id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at
+                FROM case_milestones
+                WHERE tracking_id = ?
+                ORDER BY id ASC
             ');
-            $mStmt->execute([$refNumber, $residentName, $residentPhone]);
+            $mStmt->execute([$refNumber]);
             $milestones = $mStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            // Fetch endorsements (PNP transmittals or Lupon certifications)
+            $eStmt = $pdo->prepare('
+                SELECT type, status, referred_at, endorsed_at, remarks
+                FROM endorsements
+                WHERE case_id = ?
+                ORDER BY id DESC
+            ');
+            $eStmt->execute([(int)$case['id']]);
+            $endorsements = $eStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            // Fetch dispatch log details
+            $dStmt = $pdo->prepare('
+                SELECT unit, status, dispatched_at, arrived_at
+                FROM tanod_dispatch_logs
+                WHERE incident_id = ?
+                ORDER BY id ASC
+            ');
+            $dStmt->execute([(int)$case['id']]);
+            $dispatchLogs = $dStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             residentRespond([
                 'success' => true,
-                'milestones' => $milestones
+                'case' => $case,
+                'milestones' => $milestones,
+                'endorsements' => $endorsements,
+                'dispatch_logs' => $dispatchLogs
             ]);
 
         case 'incident_create':

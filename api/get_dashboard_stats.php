@@ -1,87 +1,64 @@
 <?php
-// Suppress raw HTML error display so JSON won't break
+ini_set('display_errors', '0');
 error_reporting(E_ALL);
-ini_set('display_errors', 0);
-
 header('Content-Type: application/json; charset=UTF-8');
-header('Access-Control-Allow-Origin: *');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+// No CORS headers on purpose: this endpoint is same-origin only.
 
-$conn = new mysqli("127.0.0.1", "root", "", "balangaylog_db", 3306);
+require_once __DIR__ . '/../auth.php';
 
-if ($conn->connect_error) {
-    echo json_encode([
-        'success' => false,
-        'message' => 'Database connection failed: ' . $conn->connect_error,
-        'counts' => [
-            'pending' => 0,
-            'in_progress' => 0,
-            'for_resolution' => 0,
-            'resolved' => 0,
-            'critical' => 0,
-            'total' => 0
-        ],
-        'recent_cases' => []
-    ]);
-    exit();
-}
+requireApiRole(['OFFICER', 'CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN']);
+session_write_close();   // this page may be polled: do not hold the session lock
 
-$counts = [
-    'pending' => 0,
-    'in_progress' => 0,
-    'for_resolution' => 0,
-    'resolved' => 0,
-    'critical' => 0,
-    'total' => 0
-];
+try {
+    $pdo = getDatabaseConnection();
 
-// 1. Tally active statuses
-$sql = "SELECT status, COUNT(*) as cnt FROM incident_reports GROUP BY status";
-$res = $conn->query($sql);
+    $counts = [
+        'pending' => 0,
+        'in_progress' => 0,
+        'for_resolution' => 0,
+        'resolved' => 0,
+        'critical' => 0,
+        'total' => 0
+    ];
 
-if ($res) {
-    while ($row = $res->fetch_assoc()) {
-        $statusKey = strtolower($row['status']);
+    // 1. Tally statuses
+    foreach ($pdo->query('SELECT status, COUNT(*) AS cnt FROM incident_reports GROUP BY status') as $row) {
+        $statusKey = strtolower((string) $row['status']);
         if (array_key_exists($statusKey, $counts)) {
-            $counts[$statusKey] = (int)$row['cnt'];
+            $counts[$statusKey] = (int) $row['cnt'];
         }
-        $counts['total'] += (int)$row['cnt'];
+        $counts['total'] += (int) $row['cnt'];
     }
+
+    // 2. Recent cases
+    $recent = $pdo->query('SELECT reference_number, incident_type, purok, status, priority_level, created_at
+                           FROM incident_reports ORDER BY id DESC LIMIT 6')->fetchAll();
+
+    $cols = 'reference_number, complainant_name, complainant_phone, incident_type, narrative_description,
+             incident_datetime, purok, scenario_type, verification_level, priority_level, ai_recommendation,
+             status, assigned_officer_name, deployed_unit, created_at';
+
+    // 3. Urgent cases
+    $urgentCases = $pdo->query("SELECT {$cols} FROM incident_reports
+        WHERE (priority_level IN ('Critical', 'High') OR status = 'CRITICAL')
+          AND status NOT IN ('RESOLVED', 'FOR_RESOLUTION')
+        ORDER BY CASE WHEN priority_level = 'Critical' OR status = 'CRITICAL' THEN 0 ELSE 1 END, created_at DESC")->fetchAll();
+
+    // 4. Case queue
+    $caseQueue = $pdo->query("SELECT {$cols} FROM incident_reports
+        WHERE status NOT IN ('RESOLVED', 'FOR_RESOLUTION')
+        ORDER BY CASE WHEN priority_level = 'Critical' OR status = 'CRITICAL' THEN 0
+                      WHEN priority_level = 'High' THEN 1 ELSE 2 END, created_at DESC")->fetchAll();
+
+    echo json_encode([
+        'success' => true,
+        'counts' => $counts,
+        'recent_cases' => $recent,
+        'urgent_cases' => $urgentCases,
+        'case_queue' => $caseQueue
+    ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+} catch (Throwable $e) {
+    error_log('[get_dashboard_stats] ' . $e->getMessage());
+    jsonError(500, 'Could not load dashboard data.');
 }
-
-// 2. Fetch Recent Cases
-$recent = [];
-$recRes = $conn->query("SELECT reference_number, incident_type, purok, status, priority_level, created_at FROM incident_reports ORDER BY id DESC LIMIT 6");
-
-if ($recRes) {
-    while ($row = $recRes->fetch_assoc()) {
-        $recent[] = $row;
-    }
-}
-
-$urgentCases = [];
-$urgentRes = $conn->query("SELECT reference_number, complainant_name, complainant_phone, incident_type, narrative_description, incident_datetime, purok, scenario_type, verification_level, priority_level, ai_recommendation, status, assigned_officer_name, deployed_unit, created_at FROM incident_reports WHERE (priority_level IN ('Critical', 'High') OR status = 'CRITICAL') AND status NOT IN ('RESOLVED', 'FOR_RESOLUTION') ORDER BY CASE WHEN priority_level = 'Critical' OR status = 'CRITICAL' THEN 0 ELSE 1 END, created_at DESC");
-
-if ($urgentRes) {
-    while ($row = $urgentRes->fetch_assoc()) {
-        $urgentCases[] = $row;
-    }
-}
-
-$caseQueue = [];
-$queueRes = $conn->query("SELECT reference_number, complainant_name, complainant_phone, incident_type, narrative_description, incident_datetime, purok, scenario_type, verification_level, priority_level, ai_recommendation, status, assigned_officer_name, deployed_unit, created_at FROM incident_reports WHERE status NOT IN ('RESOLVED', 'FOR_RESOLUTION') ORDER BY CASE WHEN priority_level = 'Critical' OR status = 'CRITICAL' THEN 0 WHEN priority_level = 'High' THEN 1 ELSE 2 END, created_at DESC");
-
-if ($queueRes) {
-    while ($row = $queueRes->fetch_assoc()) {
-        $caseQueue[] = $row;
-    }
-}
-
-echo json_encode([
-    'success' => true,
-    'counts' => $counts,
-    'recent_cases' => $recent,
-    'urgent_cases' => $urgentCases,
-    'case_queue' => $caseQueue
-]);
-
-$conn->close();

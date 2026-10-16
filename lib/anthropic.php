@@ -1,7 +1,21 @@
 <?php
-/** Calls the Messages API, forcing one tool so the answer is always structured JSON. */
-function anthropic_tool_call(string $model, string $system, string $userText,
-                             array $tool, int $maxTokens = 400, int $timeoutSec = 8): array {
+/**
+ * Calls the Anthropic Messages API, forcing tool use for guaranteed structured JSON.
+ * Optimized for long narratives with extended timeout, keep-alive, and compression.
+ */
+function anthropic_tool_call(
+    string $model,
+    string $system,
+    string $userText,
+    array $tool,
+    int $maxTokens = 1000,
+    int $timeoutSec = 60
+): array {
+    // Prevent PHP from terminating execution before the AI responds
+    if (function_exists('set_time_limit')) {
+        @set_time_limit(max(120, $timeoutSec + 30));
+    }
+
     $configPath = __DIR__ . '/../config/secrets.php';
     if (!file_exists($configPath)) {
         throw new RuntimeException("Missing configuration file: config/secrets.php");
@@ -20,7 +34,9 @@ function anthropic_tool_call(string $model, string $system, string $userText,
         'system'      => $system,
         'tools'       => [$tool],
         'tool_choice' => ['type' => 'tool', 'name' => $tool['name']],
-        'messages'    => [['role' => 'user', 'content' => $userText]],
+        'messages'    => [
+            ['role' => 'user', 'content' => $userText]
+        ],
     ];
 
     $curlOpts = [
@@ -32,10 +48,12 @@ function anthropic_tool_call(string $model, string $system, string $userText,
         ],
         CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_CONNECTTIMEOUT => 3,
+        CURLOPT_CONNECTTIMEOUT => 15,
         CURLOPT_TIMEOUT        => $timeoutSec,
+        CURLOPT_ENCODING       => '', // Enables gzip compression for faster transmission
     ];
-    $caBundle = 'C:/xampp/apache/bin/curl-ca-bundle.crt';   // local XAMPP only
+
+    $caBundle = 'C:/xampp/apache/bin/curl-ca-bundle.crt'; // local XAMPP only
     if (file_exists($caBundle)) {
         $curlOpts[CURLOPT_CAINFO] = $caBundle;
     }
@@ -48,7 +66,7 @@ function anthropic_tool_call(string $model, string $system, string $userText,
     curl_close($ch);
 
     if ($raw === false) {
-        throw new RuntimeException("cURL error: $err");
+        throw new RuntimeException("cURL error ($err) after waiting up to {$timeoutSec}s. Check network connection.");
     }
 
     $data = json_decode($raw, true);
@@ -63,5 +81,6 @@ function anthropic_tool_call(string $model, string $system, string $userText,
             return $block['input'];
         }
     }
-    throw new RuntimeException('No tool_use block in response');
+
+    throw new RuntimeException('No tool_use block returned in response');
 }
