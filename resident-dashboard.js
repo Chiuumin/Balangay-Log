@@ -178,6 +178,7 @@ document.getElementById('incidentForm')?.addEventListener('submit', async (e) =>
 });
 
 // Parcel-Style Milestone Detail Viewer
+// Parcel-Style Milestone Detail Viewer with Dropdown Stages
 async function openReportDetails(reportId) {
     const report = state.reports.find(r => String(r.id) === String(reportId));
     if (!report) return;
@@ -191,89 +192,206 @@ async function openReportDetails(reportId) {
     const stepResolved = document.getElementById('step-resolved');
     const timelineEl = document.getElementById('trackingTimeline');
 
-    // Fetch live milestones from database
+    // Fetch live milestones, endorsements, and dispatch logs
     let milestones = [];
+    let endorsements = [];
+    let dispatchLogs = [];
+    let caseData = report;
+
     try {
         const res = await requestResident('get_milestones', { reference_number: ref });
         milestones = res.milestones || [];
+        endorsements = res.endorsements || [];
+        dispatchLogs = res.dispatch_logs || [];
+        if (res.case) caseData = { ...report, ...res.case };
     } catch (err) {
         console.error('Milestone fetch error:', err);
     }
 
-    // Determine current status: latest milestone snapshot takes precedence
-    const latestSnapshot = milestones.length > 0 ? milestones[0].status_snapshot : report.status;
-    const currentStatus = String(latestSnapshot || report.status || '').toUpperCase().trim();
+    // Check if escalated to higher authority
+    const isPnpEscalated = endorsements.some(e => e.type === 'PNP_TRANSMITTAL') || 
+                           milestones.some(m => String(m.status_snapshot).includes('ESCALATED') || String(m.action_note).includes('PNP'));
+    const isLuponEscalated = endorsements.some(e => e.type === 'LUPON_CERTIFICATION') ||
+                             String(caseData.status).toUpperCase() === 'FOR_RESOLUTION';
 
-    // Reset stepper
+    // Determine current status
+    const latestSnapshot = milestones.length > 0 ? milestones[milestones.length - 1].status_snapshot : caseData.status;
+    const currentStatus = String(latestSnapshot || caseData.status || '').toUpperCase().trim();
+
+    // 1. Update Stepper Bar UI
     [stepReported, stepReview, stepAction, stepResolved].forEach(s => {
         if (s) s.className = 'stepper-step';
     });
-
     if (stepReported) stepReported.classList.add('is-done');
 
-    if (currentStatus === 'PENDING' || currentStatus === 'UNDER_REVIEW' || currentStatus === 'UNDER REVIEW') {
+    const isPending = ['PENDING', 'UNDER_REVIEW', 'UNDER REVIEW'].includes(currentStatus);
+    const isInProgress = ['IN_PROGRESS', 'IN PROGRESS'].includes(currentStatus);
+    const isDispatched = ['DISPATCHED', 'UNIT DISPATCHED', 'CRITICAL', 'ESCALATED_PNP'].includes(currentStatus);
+    const isLupon = ['FOR_RESOLUTION', 'LUPON'].includes(currentStatus);
+    const isResolved = ['RESOLVED', 'CLOSED'].includes(currentStatus);
+
+    if (isPending) {
         if (stepReview) stepReview.classList.add('is-active');
-    } else if (currentStatus === 'IN_PROGRESS' || currentStatus === 'IN PROGRESS') {
+    } else if (isInProgress) {
         if (stepReview) stepReview.classList.add('is-done');
         if (stepAction) stepAction.classList.add('is-active');
-    } else if (currentStatus === 'DISPATCHED' || currentStatus === 'UNIT DISPATCHED') {
-        // Dispatched marks both review and field action as active/done
+    } else if (isDispatched) {
         if (stepReview) stepReview.classList.add('is-done');
         if (stepAction) stepAction.classList.add('is-done');
-    } else if (currentStatus === 'FOR_RESOLUTION' || currentStatus === 'LUPON') {
+    } else if (isLupon) {
         if (stepReview) stepReview.classList.add('is-done');
         if (stepAction) stepAction.classList.add('is-done');
         if (stepResolved) stepResolved.classList.add('is-active');
-    } else if (currentStatus === 'RESOLVED' || currentStatus === 'CLOSED') {
+    } else if (isResolved) {
         if (stepReview) stepReview.classList.add('is-done');
         if (stepAction) stepAction.classList.add('is-done');
         if (stepResolved) stepResolved.classList.add('is-done');
-    } else {
-        if (stepReview) stepReview.classList.add('is-active');
     }
 
-    // Details view
+    // 2. Render Core Top Fields
+    const pnpBadge = isPnpEscalated ? `<span class="pill pill-critical" style="margin-left: 6px;">Escalated to PNP</span>` : '';
     const fields = [
-        ['Incident Type', report.incident_type],
-        ['Purok / Location', report.purok || '—'],
-        ['Date Filed', formatDate(report.incident_datetime || report.created_at)],
-        ['Priority Level', report.priority_level || 'Moderate'],
+        ['Incident Type', escapeHtml(caseData.incident_type) + pnpBadge],
+        ['Purok / Location', escapeHtml(caseData.purok || '—')],
+        ['Date Filed', formatDate(caseData.incident_datetime || caseData.created_at)],
+        ['Priority Level', escapeHtml(caseData.priority_level || 'Moderate')],
         ['Current Status', statusPill(currentStatus)],
-        ['Recommendation', report.ai_recommendation || 'Under administrative assessment.'],
-        ['Narrative Notes', report.narrative_description || 'No description provided.']
+        ['Recommendation', escapeHtml(caseData.ai_recommendation || 'Under administrative assessment.')],
+        ['Narrative Notes', escapeHtml(caseData.narrative_description || 'No description provided.')]
     ];
 
     document.getElementById('reportDetailContent').innerHTML = fields.map(([label, value]) => `
         <div class="detail-field ${label === 'Narrative Notes' || label === 'Recommendation' ? 'detail-field--wide' : ''}">
-            <span>${escapeHtml(label)}</span>
+            <span>${label}</span>
             <strong>${value}</strong>
         </div>
     `).join('');
 
-    // Timeline entries
-    if (milestones.length === 0) {
-        timelineEl.innerHTML = `
-            <div class="timeline-event">
-                <span class="timeline-node"></span>
-                <div class="timeline-heading">
-                    <span class="pill pill-pending">Intake Logged</span>
-                    <span class="timeline-time">${formatDate(report.created_at)}</span>
+    // 3. Build Dropdown Stages List
+    // Helper to find relevant milestone data
+    const findMilestone = (statuses) => milestones.find(m => statuses.includes(String(m.status_snapshot).toUpperCase()));
+
+    const stagesConfig = [
+        {
+            id: 'stage-reported',
+            stepNumber: 1,
+            title: '1. Reported',
+            badge: 'Report Submitted',
+            badgeClass: 'pill-active',
+            date: formatDate(caseData.created_at),
+            isCompleted: true,
+            residentMessage: 'Your incident report has been registered in the system and queued for frontline verification.',
+            details: [
+                ['Tracking Reference', ref],
+                ['Reporting Method', 'Resident Online Portal'],
+                ['Initial Complainant Statement', caseData.narrative_description || '—'],
+                ['Safety Reminder', 'Please avoid direct confrontation. Keep safe distance from the reported area.']
+            ]
+        },
+        {
+            id: 'stage-review',
+            stepNumber: 2,
+            title: '2. Desk Review',
+            badge: (isInProgress || isDispatched || isLupon || isResolved) ? 'Verified' : 'Under Review',
+            badgeClass: (isInProgress || isDispatched || isLupon || isResolved) ? 'pill-active' : 'pill-pending',
+            date: formatDate(findMilestone(['IN_PROGRESS', 'DESK_REVIEW'])?.created_at || caseData.created_at),
+            isCompleted: !isPending,
+            residentMessage: (isInProgress || isDispatched || isLupon || isResolved)
+                ? (isPnpEscalated 
+                    ? 'Report screened and verified. Due to security severity, formal transmittal to the local police precinct has been authorized.' 
+                    : 'Report screened and verified by barangay desk. Prioritized for action.')
+                : 'Awaiting desk officer assessment and priority confirmation.',
+            details: isPnpEscalated ? [
+                ['Desk Assessment', 'Confirmed Critical / Active Threat'],
+                ['Transmittal Office', 'PNP Municipal Police Station'],
+                ['Escalation Reason', 'Exceeds standard barangay mediation scope (firearm / felony threat)'],
+                ['Desk Officer', findMilestone(['IN_PROGRESS', 'ESCALATED_PNP', 'DISPATCHED'])?.officer_in_charge || 'Duty Desk Officer']
+            ] : [
+                ['Desk Assessment', 'Verified under Barangay Jurisdiction'],
+                ['Assigned Priority', caseData.priority_level || 'Moderate'],
+                ['Duty Officer', findMilestone(['IN_PROGRESS', 'DISPATCHED'])?.officer_in_charge || 'Duty Desk Officer']
+            ]
+        },
+        {
+            id: 'stage-dispatch',
+            stepNumber: 3,
+            title: '3. Unit Dispatched',
+            badge: (isDispatched || isLupon || isResolved) ? 'Dispatched' : 'Pending Deployment',
+            badgeClass: (isDispatched || isLupon || isResolved) ? 'pill-blue' : 'pill-pending',
+            date: formatDate(findMilestone(['DISPATCHED', 'CRITICAL', 'ESCALATED_PNP'])?.created_at || '—'),
+            isCompleted: isDispatched || isLupon || isResolved,
+            residentMessage: (isDispatched || isLupon || isResolved)
+                ? (isPnpEscalated
+                    ? 'Joint Response Deployed: Barangay Tanods are securing the perimeter while police tactical units conduct on-site operations.'
+                    : `Patrol response team (${caseData.deployed_unit || 'Barangay Tanod Unit'}) has been deployed to the location.`)
+                : 'Response unit will be mobilized following desk review clearance.',
+            details: isPnpEscalated ? [
+                ['Tactical Response Lead', 'PNP Municipal Patrol Unit'],
+                ['Barangay Support Unit', caseData.deployed_unit || 'Unit Alpha (Barangay Tanods)'],
+                ['Target Location', caseData.purok || '—'],
+                ['Citizen Instruction', 'Keep clear of the active cordoned zone until official clearance is given.']
+            ] : [
+                ['Deployed Unit', caseData.deployed_unit || 'Tanod Patrol Team'],
+                ['Target Area', caseData.purok || '—'],
+                ['Field Mission', 'On-site investigation, verbal de-escalation, and peace preservation.']
+            ]
+        },
+        {
+            id: 'stage-resolved',
+            stepNumber: 4,
+            title: '4. Resolved',
+            badge: isResolved ? 'Case Closed' : (isLupon ? 'Mediation Scheduled' : 'Pending Closure'),
+            badgeClass: isResolved ? 'pill-active' : (isLupon ? 'pill-pending' : 'pill-pending'),
+            date: formatDate(findMilestone(['RESOLVED', 'CLOSED'])?.created_at || '—'),
+            isCompleted: isResolved,
+            residentMessage: isResolved
+                ? (isPnpEscalated
+                    ? 'Operation concluded at barangay level. Case and subject officially turned over to PNP for formal investigation and charge filing.'
+                    : 'The incident has been verified resolved on-site by responding personnel.')
+                : (isLupon ? 'Case endorsed to Lupong Tagapamayapa for amicable conciliation hearing.' : 'Final disposition pending on-site report submission.'),
+            details: isResolved ? (isPnpEscalated ? [
+                ['Final Disposition', 'Transferred to Higher Authority (PNP)'],
+                ['Custody & Action', 'Suspect secured and firearm confiscated by police officers'],
+                ['Official Reference', `Blotter / PIRF Tracking: ${ref}`],
+                ['Complainant Next Steps', 'If you wish to execute a sworn affidavit as a witness/complainant, you may coordinate directly with the PNP Investigation Division.']
+            ] : [
+                ['Final Disposition', 'Amicably Settled / Peace Restored'],
+                ['Actions Executed', findMilestone(['RESOLVED', 'CLOSED'])?.action_note || 'Verbal warning issued; compliance confirmed.'],
+                ['Official Blotter Entry', `Barangay Record #${ref}`],
+                ['Resident Next Steps', 'Case is archived. Should violations recur, re-open a report referencing this number.']
+            ]) : [
+                ['Status', 'Awaiting full resolution or signed settlement.']
+            ]
+        }
+    ];
+
+    // 4. Render Accordion Dropdowns into timelineEl
+    timelineEl.innerHTML = stagesConfig.map(st => `
+        <details class="milestone-accordion" ${st.isCompleted ? 'open' : ''} style="margin-bottom: 10px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface);">
+            <summary style="padding: 10px 14px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 13px; background: rgba(0,0,0,0.02); user-select: none;">
+                <span style="display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${st.isCompleted ? 'var(--teal, #19766c)' : 'var(--muted, #94a3b8)'};"></span>
+                    ${st.title}
+                </span>
+                <span style="display: flex; align-items: center; gap: 8px;">
+                    <span class="pill ${st.badgeClass}">${st.badge}</span>
+                    <small style="color: var(--muted); font-size: 11px;">${st.date}</small>
+                    <span class="chevron" style="font-size: 11px; color: var(--muted);">▼</span>
+                </span>
+            </summary>
+            <div style="padding: 12px 14px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.5;">
+                <p style="margin: 0 0 10px; font-weight: 600; color: var(--ink);">${st.residentMessage}</p>
+                <div style="display: grid; gap: 6px; background: rgba(0,0,0,0.02); padding: 8px 10px; border-radius: 4px;">
+                    ${st.details.map(([lbl, val]) => `
+                        <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px;">
+                            <span style="color: var(--muted); font-weight: 600;">${lbl}:</span>
+                            <span style="color: var(--ink); text-align: right; font-weight: 500;">${escapeHtml(val)}</span>
+                        </div>
+                    `).join('')}
                 </div>
-                <p class="timeline-note">Initial case intake completed and queued for verification.</p>
             </div>
-        `;
-    } else {
-        timelineEl.innerHTML = milestones.map(m => `
-            <div class="timeline-event">
-                <span class="timeline-node"></span>
-                <div class="timeline-heading">
-                    ${statusPill(m.status_snapshot)}
-                    <span class="timeline-time">${formatDate(m.created_at)}</span>
-                </div>
-                <p class="timeline-note">${escapeHtml(m.action_note)}</p>
-            </div>
-        `).join('');
-    }
+        </details>
+    `).join('');
 
     document.getElementById('reportDetailDialog').showModal();
 }

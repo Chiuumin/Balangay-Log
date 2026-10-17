@@ -1,59 +1,60 @@
 <?php
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+date_default_timezone_set('Asia/Manila');
 header('Content-Type: application/json; charset=UTF-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST');
-header('Access-Control-Allow-Headers: Content-Type');
+// No CORS headers on purpose: this endpoint is same-origin only.
 
-mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+require_once __DIR__ . '/../auth.php';
 
-try {
-    $conn = new mysqli("127.0.0.1", "root", "", "balangaylog_db", 3306);
-    $conn->set_charset("utf8mb4");
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
-    exit();
-}
+requireJsonPost();
+$actor     = requireApiRole(['OFFICER', 'CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN']);
+$actorName = mb_substr((string) ($actor['full_name'] ?? ''), 0, 120);   // the author is the logged-in user
+session_write_close();
 
 $input = json_decode(file_get_contents('php://input'), true);
-$referenceNumber = trim($input['reference_number'] ?? '');
-$actionNote = trim($input['action_note'] ?? '');
-$officerInCharge = trim($input['officer_in_charge'] ?? 'Dispatcher');
+if (!is_array($input)) jsonError(400, 'Invalid or missing JSON payload.');
+// Any officer_in_charge sent by the browser is ignored on purpose.
+
+$referenceNumber = trim((string) ($input['reference_number'] ?? ''));
+$actionNote      = trim((string) ($input['action_note'] ?? ''));
 
 if ($referenceNumber === '' || $actionNote === '') {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'Case reference and note are required.']);
-    exit();
+    jsonError(422, 'Case reference and note are required.');
+}
+if (mb_strlen($actionNote) > 1000) {
+    jsonError(422, 'The note is too long (max 1000 characters).');
 }
 
+$pdo = getDatabaseConnection();
+$pdo->beginTransaction();
 try {
-    $stmtCase = $conn->prepare("SELECT id, status, assigned_officer_name, deployed_unit FROM incident_reports WHERE reference_number = ? LIMIT 1");
-    $stmtCase->bind_param("s", $referenceNumber);
-    $stmtCase->execute();
-    $case = $stmtCase->get_result()->fetch_assoc();
-    $stmtCase->close();
+    $st = $pdo->prepare('SELECT id, status, deployed_unit FROM incident_reports WHERE reference_number = ? LIMIT 1');
+    $st->execute([$referenceNumber]);
+    $case = $st->fetch();
 
     if (!$case) {
-        http_response_code(404);
-        echo json_encode(['success' => false, 'message' => 'Incident record not found.']);
-        $conn->close();
-        exit();
+        $pdo->rollBack();
+        jsonError(404, 'Incident record not found.');
     }
+    $incidentId = (int) $case['id'];
+    $status     = (string) $case['status'];
 
-    $incidentId = (int)$case['id'];
-    $status = $case['status'];
-    $assignedOfficer = $case['assigned_officer_name'];
-    $deployedUnit = $case['deployed_unit'];
-    $officerInCharge = substr($officerInCharge, 0, 120);
-    $stmtNote = $conn->prepare("INSERT INTO case_milestones (incident_id, tracking_id, status_snapshot, officer_in_charge, deployed_unit, action_note) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmtNote->bind_param("isssss", $incidentId, $referenceNumber, $status, $officerInCharge, $deployedUnit, $actionNote);
-    $stmtNote->execute();
-    $stmtNote->close();
+    $pdo->prepare('INSERT INTO case_milestones
+            (incident_id, tracking_id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, NOW())')
+        ->execute([$incidentId, $referenceNumber, $status, $actorName, $case['deployed_unit'], $actionNote]);
+    $milestoneId = (int) $pdo->lastInsertId();
 
-    echo json_encode(['success' => true, 'message' => 'Note added to the case timeline.']);
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Unable to add note to the case timeline.']);
+    // A note changes no status, so old and new status are equal. Agent 2 reads the milestone by id.
+    $pdo->prepare("INSERT INTO outbox_events (event_type, incident_id, payload) VALUES ('STATUS_CHANGED', ?, ?)")
+        ->execute([$incidentId, json_encode(['milestone_id' => $milestoneId, 'old_status' => $status, 'new_status' => $status, 'note_only' => true])]);
+
+    $pdo->commit();
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    error_log('[add_case_note] failed: ' . $e->getMessage());
+    jsonError(500, 'Unable to add note to the case timeline.');
 }
 
-$conn->close();
+echo json_encode(['success' => true, 'message' => 'Note added to the case timeline.']);

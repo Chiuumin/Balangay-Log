@@ -1,5 +1,10 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'httponly' => true,      // JavaScript cannot read the session cookie
+        'samesite' => 'Lax',     // not sent on cross-site POSTs
+        'secure'   => !empty($_SERVER['HTTPS']),
+    ]);
     session_start();
 }
 
@@ -142,4 +147,46 @@ function logAudit(string $action, array $details = [], ?int $actorUserId = null,
     } catch (Throwable $e) {
         // Intentionally silent to avoid breaking user actions when audit logging is unavailable.
     }
+}
+
+/* ------------------------------------------------------------------
+   JSON guards for /api endpoints. The page guards above redirect,
+   which breaks fetch() calls.
+------------------------------------------------------------------ */
+function jsonError(int $code, string $message): void
+{
+    http_response_code($code);
+    header('Content-Type: application/json; charset=UTF-8');
+    echo json_encode(['success' => false, 'message' => $message]);
+    exit;
+}
+
+function requireJsonPost(): void
+{
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        jsonError(405, 'POST only.');
+    }
+    // A cross-site HTML form cannot send this content type without a CORS preflight,
+    // so this check also blocks forged cross-site posts (CSRF).
+    $ct = strtolower($_SERVER['CONTENT_TYPE'] ?? '');
+    if (strpos($ct, 'application/json') !== 0) {
+        jsonError(415, 'Content-Type must be application/json.');
+    }
+}
+
+/** Returns the verified user row. The role is read from the DB, not the session. */
+function requireApiRole(array $allowedRoles): array
+{
+    if (!isLoggedIn()) {
+        jsonError(401, 'Please log in again.');
+    }
+    $user = getCurrentUser();
+    if (!$user || strtoupper((string) $user['status']) !== 'ACTIVE') {
+        jsonError(401, 'Your account is not active.');
+    }
+    $role = strtoupper(trim((string) $user['role']));
+    if (!in_array($role, array_map('strtoupper', $allowedRoles), true)) {
+        jsonError(403, 'You do not have permission for this action.');
+    }
+    return $user;
 }

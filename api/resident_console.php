@@ -1,5 +1,9 @@
 <?php
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+
 require_once __DIR__ . '/../auth.php';
+require_once __DIR__ . '/../lib/case_intake.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -14,6 +18,7 @@ function residentRespond(array $payload, int $status = 200): void
 if (!isLoggedIn() || getUserRole() !== 'RESIDENT') {
     residentRespond(['success' => false, 'message' => 'Resident authentication required.'], 403);
 }
+session_write_close();   // release the session lock; $_SESSION stays readable below
 
 try {
     $pdo = getDatabaseConnection();
@@ -52,14 +57,29 @@ try {
         $stmt->execute([$residentName, $residentPhone]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        // Overwrite status with the derived true status
-        $reports = array_map(function ($row) {
+        // ai_recommendation holds two kinds of text: staff-only triage guidance (written at intake) and
+        // the resident-facing text written by officer actions. Only the second kind may be shown.
+        // These prefixes must match the texts written in api/officer_console.php.
+        $residentVisibleRec = '/^(Unit Dispatched:|Case settled amicably|Flagged \/ closed)/';
+
+        $reports = array_map(function ($row) use ($residentVisibleRec) {
             if (!empty($row['true_status'])) {
                 $row['status'] = $row['true_status'];
             }
-            if (!empty($row['latest_note']) && empty($row['ai_recommendation'])) {
-                $row['ai_recommendation'] = $row['latest_note'];
+
+            $rec = (string) ($row['ai_recommendation'] ?? '');
+            if ($rec !== '' && preg_match($residentVisibleRec, $rec) !== 1) {
+                $rec = '';   // staff-only triage guidance
             }
+            if ($rec === '' && !empty($row['latest_note'])) {
+                $rec = (string) $row['latest_note'];
+            }
+            $row['ai_recommendation'] = $rec !== '' ? $rec : null;
+
+            // Internal triage fields are never sent to residents.
+            $row['ai_urgency_score']        = null;
+            $row['original_ai_priority']    = null;
+            $row['severity_review_status']  = null;
             return $row;
         }, $rows);
 
@@ -90,19 +110,63 @@ try {
     $action = trim((string) ($input['action'] ?? ''));
 
     switch ($action) {
-        case 'get_milestones':
+       case 'get_milestones':
             $refNumber = trim((string) ($input['reference_number'] ?? ''));
             if (!$refNumber) {
                 residentRespond(['success' => false, 'message' => 'Tracking number required.'], 422);
             }
 
-            $mStmt = $pdo->prepare('SELECT id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at FROM case_milestones WHERE tracking_id = ? ORDER BY id DESC');
+            // Verify resident ownership
+          // Fetch milestones in chronological order
+$mStmt = $pdo->prepare('
+    SELECT id, status_snapshot, milestone_stage, officer_in_charge, deployed_unit, action_note, created_at
+    FROM case_milestones
+    WHERE tracking_id = ?
+    ORDER BY id ASC
+');
+$mStmt->execute([$refNumber]);
+$milestones = $mStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            if (!$case) {
+                residentRespond(['success' => false, 'message' => 'Case not found or access denied.'], 404);
+            }
+
+            // Fetch milestones in chronological order
+            $mStmt = $pdo->prepare('
+                SELECT id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at
+                FROM case_milestones
+                WHERE tracking_id = ?
+                ORDER BY id ASC
+            ');
             $mStmt->execute([$refNumber]);
             $milestones = $mStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
+            // Fetch endorsements (PNP transmittals or Lupon certifications)
+            $eStmt = $pdo->prepare('
+                SELECT type, status, referred_at, endorsed_at, remarks
+                FROM endorsements
+                WHERE case_id = ?
+                ORDER BY id DESC
+            ');
+            $eStmt->execute([(int)$case['id']]);
+            $endorsements = $eStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            // Fetch dispatch log details
+            $dStmt = $pdo->prepare('
+                SELECT unit, status, dispatched_at, arrived_at
+                FROM tanod_dispatch_logs
+                WHERE incident_id = ?
+                ORDER BY id ASC
+            ');
+            $dStmt->execute([(int)$case['id']]);
+            $dispatchLogs = $dStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
             residentRespond([
                 'success' => true,
-                'milestones' => $milestones
+                'case' => $case,
+                'milestones' => $milestones,
+                'endorsements' => $endorsements,
+                'dispatch_logs' => $dispatchLogs
             ]);
 
         case 'incident_create':
@@ -111,7 +175,6 @@ try {
             $purok = trim((string) ($input['purok'] ?? $resident['purok'] ?? ''));
             $houseNo = trim((string) ($input['house_number'] ?? ''));
             $street = trim((string) ($input['street_name'] ?? ''));
-            $summary = trim((string) ($input['summary'] ?? ''));
             $category = trim((string) ($input['category'] ?? 'Others'));
             $priority = trim((string) ($input['priority'] ?? 'High'));
             $narrative = trim((string) ($input['narrative'] ?? ''));
@@ -119,32 +182,30 @@ try {
             if (!$complainant || !$phone || !$purok || !$narrative) {
                 residentRespond(['success' => false, 'message' => 'Please fill in all required fields.'], 422);
             }
-
-            $year = date('Y');
-            $totalCount = (int) $pdo->query('SELECT COUNT(*) FROM incident_reports')->fetchColumn();
-            $newTracking = sprintf('TRK-%s-%03d', $year, $totalCount + 1);
+            if (mb_strlen($narrative) > 2000) {
+                residentRespond(['success' => false, 'message' => 'The description is too long (max 2000 characters).'], 422);
+            }
+            if (mb_strlen($category) > 100) {
+                residentRespond(['success' => false, 'message' => 'The category is too long.'], 422);
+            }
 
             $locationDetails = trim("{$houseNo} {$street}");
             $fullNarrative = $narrative . ($locationDetails ? "\n[Location: {$locationDetails}]" : '');
 
-            $insStmt = $pdo->prepare("
-                INSERT INTO incident_reports 
-                    (reference_number, complainant_name, complainant_phone, incident_type, narrative_description, incident_datetime, purok, scenario_type, verification_level, priority_level, status, created_at) 
-                VALUES 
-                    (?, ?, ?, ?, ?, NOW(), ?, 'ONLINE', 'UNVERIFIED', ?, 'PENDING', NOW())
-            ");
-            $insStmt->execute([$newTracking, $complainant, $phone, $category, $fullNarrative, $purok, $priority]);
+            // Triage decides the priority (it can raise, never lower, the resident's own rating).
+            $r = online_case_run([
+                'complainant' => $complainant,
+                'phone'       => $phone,
+                'purok'       => $purok,
+                'category'    => $category,
+                'narrative'   => $fullNarrative,
+                'priority'    => $priority,
+            ], $userId);
 
-            $newId = (int) $pdo->lastInsertId();
-            $mInsert = $pdo->prepare("
-                INSERT INTO case_milestones 
-                    (incident_id, tracking_id, status_snapshot, officer_in_charge, action_note, created_at) 
-                VALUES 
-                    (?, ?, 'PENDING', 'System Desk', 'Citizen online report submitted and queued for verification.', NOW())
-            ");
-            $mInsert->execute([$newId, $newTracking]);
-
-            residentRespond(['success' => true, 'message' => "Incident reported successfully. Tracking code: {$newTracking}"]);
+            if ($r['status'] === 200) {
+                residentRespond(['success' => true, 'message' => "Incident reported successfully. Tracking code: {$r['body']['reference_number']}"]);
+            }
+            residentRespond($r['body'], $r['status']);
 
         case 'profile_update':
             $fullName = trim((string) ($input['full_name'] ?? ''));
@@ -214,7 +275,9 @@ try {
             residentRespond(['success' => false, 'message' => 'Unknown action.'], 422);
     }
 } catch (PDOException $e) {
-    residentRespond(['success' => false, 'message' => 'Database error: ' . $e->getMessage()], 500);
+    error_log('[resident_console] database error: ' . $e->getMessage());
+    residentRespond(['success' => false, 'message' => 'Database error. Please try again.'], 500);
 } catch (Throwable $e) {
-    residentRespond(['success' => false, 'message' => 'System error: ' . $e->getMessage()], 500);
+    error_log('[resident_console] ' . $e->getMessage());
+    residentRespond(['success' => false, 'message' => 'System error. Please try again.'], 500);
 }
