@@ -22,12 +22,10 @@ try {
     officerRespond(['success' => false, 'message' => 'Include error: ' . $e->getMessage()], 500);
 }
 
-// Ensure session is active
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Authentication Check: accept any common role session keys
 $userType = $_SESSION['user_type'] 
          ?? $_SESSION['role'] 
          ?? ($_SESSION['user']['user_type'] ?? '') 
@@ -36,7 +34,6 @@ $userType = $_SESSION['user_type']
 $allowedRoles = ['OFFICER', 'CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN'];
 
 if (!in_array(strtoupper((string) $userType), $allowedRoles, true)) {
-    // If user_id is present, verify directly against the database
     $userId = (int) ($_SESSION['user_id'] ?? ($_SESSION['user']['id'] ?? 0));
     if ($userId > 0) {
         try {
@@ -45,7 +42,7 @@ if (!in_array(strtoupper((string) $userType), $allowedRoles, true)) {
             $roleStmt->execute([$userId]);
             $dbRole = strtoupper((string) $roleStmt->fetchColumn());
             if (in_array($dbRole, $allowedRoles, true)) {
-                $_SESSION['user_type'] = $dbRole; // repair session
+                $_SESSION['user_type'] = $dbRole;
                 $userType = $dbRole;
             }
         } catch (Throwable $e) {}
@@ -71,7 +68,6 @@ function officerTransition(PDO $pdo, string $ref, array $t): void
             officerRespond(['success' => false, 'message' => 'Incident record not found.'], 404);
         }
         $incidentId = (int) $case['id'];
-        $oldStatus  = (string) $case['status'];
 
         $sets   = ['status = ?'];
         $params = [$t['status']];
@@ -85,13 +81,6 @@ function officerTransition(PDO $pdo, string $ref, array $t): void
         }
         $params[] = $incidentId;
         $pdo->prepare('UPDATE incident_reports SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($params);
-
-        $stage = $t['milestone_stage'] ?? match($t['status']) {
-            'PENDING', 'UNDER_REVIEW', 'IN_PROGRESS' => 'DESK_REVIEW',
-            'DISPATCHED', 'CRITICAL'                 => 'UNIT_DISPATCHED',
-            'RESOLVED', 'CLOSED', 'FOR_RESOLUTION'   => 'RESOLVED',
-            default                                  => 'DESK_REVIEW'
-        };
 
         $pdo->prepare('INSERT INTO case_milestones
                 (incident_id, tracking_id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at)
@@ -168,13 +157,17 @@ try {
             ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
         } catch (Throwable $e) {}
 
-        $tanods = [
-            ['id' => 1, 'name' => 'Ramon Diaz', 'station' => 'Barangay Base', 'status' => 'AVAILABLE'],
-            ['id' => 2, 'name' => 'Elena Flores', 'station' => 'Patrol 1', 'status' => 'AVAILABLE'],
-            ['id' => 3, 'name' => 'Nestor Lim', 'station' => 'Purok 2', 'status' => 'DEPLOYED'],
-            ['id' => 4, 'name' => 'Lito Navarro', 'station' => 'Zone 3', 'status' => 'DEPLOYED'],
-            ['id' => 5, 'name' => 'Mario Aquino', 'station' => 'Base Station', 'status' => 'OFF_DUTY']
-        ];
+        $tanods = [];
+        try {
+            $tanodStmt = $pdo->query("
+                SELECT id, full_name AS name, UPPER(COALESCE(status, 'AVAILABLE')) AS status, COALESCE(station, 'Patrol Beat') AS station 
+                FROM tanod_personnel 
+                ORDER BY id ASC
+            ");
+            $tanods = $tanodStmt ? $tanodStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        } catch (Throwable $e) {
+            $tanods = [];
+        }
 
         $allCases = [];
         try {
@@ -281,6 +274,15 @@ try {
                 'note'             => $notes,
             ]);
 
+            try {
+                $updateTanods = $pdo->prepare("
+                    UPDATE tanod_personnel 
+                    SET status = 'DEPLOYED' 
+                    WHERE :unitText LIKE CONCAT('%', full_name, '%')
+                ");
+                $updateTanods->execute([':unitText' => $unit]);
+            } catch (Throwable $ignore) {}
+
             officerRespond(['success' => true, 'message' => "Tanod unit successfully dispatched for #{$refNumber}."]);
 
         case 'endorse_lupon':
@@ -303,6 +305,26 @@ try {
                 'note'             => "Endorsed to Katarungang Pambarangay. Mediation scheduled on {$schedule} with {$mediator}.",
             ]);
             officerRespond(['success' => true, 'message' => "Case #{$refNumber} endorsed to Lupon mediation."]);
+
+        case 'request_captain_endorsement':
+            $needRef();
+            $remarks = trim((string) ($input['remarks'] ?? 'Requested formal executive endorsement for case filing.'));
+            
+            $st = $pdo->prepare("SELECT id FROM incident_reports WHERE reference_number = ? LIMIT 1");
+            $st->execute([$refNumber]);
+            $incId = (int) $st->fetchColumn();
+
+            if (!$incId) {
+                officerRespond(['success' => false, 'message' => 'Incident record not found.'], 404);
+            }
+
+            $ins = $pdo->prepare("
+                INSERT INTO endorsements (case_id, tracking_id, type, status, referred_by_user_id, referred_at, remarks)
+                VALUES (?, ?, 'CAPTAIN_ENDORSEMENT', 'PENDING', ?, NOW(), ?)
+            ");
+            $ins->execute([$incId, $refNumber, $actorId, $remarks]);
+
+            officerRespond(['success' => true, 'message' => "Captain endorsement requested for case #{$refNumber}."]);
 
         case 'settle_lupon':
             $needRef();
@@ -332,9 +354,8 @@ try {
             ]);
             officerRespond(['success' => true, 'message' => "Case #{$refNumber} flagged and closed."]);
 
-       case 'get_case_review_details':
+        case 'get_case_review_details':
             $needRef();
-
             $stmt = $pdo->prepare("SELECT * FROM incident_reports WHERE reference_number = :ref LIMIT 1");
             $stmt->execute([':ref' => $refNumber]);
             $case = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -343,7 +364,6 @@ try {
                 officerRespond(['success' => false, 'message' => 'Case not found.'], 404);
             }
 
-            // Generate or fetch cached AI Decision Support Analysis
             $aiData = !empty($case['ai_analysis_json']) ? json_decode($case['ai_analysis_json'], true) : null;
             if (!$aiData && class_exists('TriageEngine')) {
                 $aiData = TriageEngine::evaluateIncident($case['narrative_description']);
@@ -363,7 +383,6 @@ try {
                 } catch (Throwable $ignore) {}
             }
 
-            // 1. Pillar: Duplicate & Cluster Matching (Same purok within past 2 hours)
             $dupStmt = $pdo->prepare("
                 SELECT reference_number, incident_type, complainant_name, created_at
                 FROM incident_reports
@@ -379,7 +398,6 @@ try {
             ]);
             $recentPurokDuplicates = $dupStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            // 2. Pillar: Recidivism & Neighborhood Dispute History (Same complainant or address in past 12 months)
             $histStmt = $pdo->prepare("
                 SELECT reference_number, incident_type, status, priority_level, created_at 
                 FROM incident_reports 
@@ -429,9 +447,7 @@ try {
                     if (is_array($aiResult)) {
                         $analysis = array_merge($analysis, $aiResult);
                     }
-                } catch (Throwable $t) {
-                    error_log('TriageEngine note: ' . $t->getMessage());
-                }
+                } catch (Throwable $t) {}
             }
 
             $finalCategory = !empty($input['incident_type']) && $input['incident_type'] !== 'General Incident' 
@@ -439,42 +455,11 @@ try {
                 : ($analysis['incident_type'] ?? 'General Incident');
 
             $aiPriority = $analysis['priority_level'] ?? 'Low';
-            $officerPriority = !empty($input['priority_level']) ? trim((string) $input['priority_level']) : $aiPriority;
+            $officerPriority = !empty($input['priority_level']) ? trim((string) ($input['priority_level'])) : $aiPriority;
 
             $weights = ['Low' => 1, 'Moderate' => 2, 'Medium' => 2, 'High' => 3, 'Critical' => 4];
             $aiWeight = $weights[$aiPriority] ?? 1;
             $requestedWeight = $weights[$officerPriority] ?? $aiWeight;
-
-            if ($requestedWeight < $aiWeight) {
-                $justification = trim((string) ($input['overrideJustification'] ?? ''));
-                if ($justification === '') {
-                    officerRespond([
-                        'success'           => false,
-                        'requires_override' => true,
-                        'message'           => 'Lowering the severity requires a factual justification[cite: 12].',
-                        'ai'                => [
-                            'priority'   => $aiPriority,
-                            'source'     => 'AI+RULES',
-                            'confidence' => (float) ($analysis['ai_urgency_score'] ?? 0.8),
-                            'triggers'   => $analysis['detected_keywords'] ?? [],
-                            'rationale'  => $analysis['reasoning'] ?? ''
-                        ]
-                    ], 409);
-                }
-
-                if (mb_strlen($justification) < 12 || in_array(strtolower($justification), ['mistake', 'error', 'wrong', 'settled', 'test'])) {
-                    officerRespond([
-                        'success'           => false,
-                        'override_rejected' => true,
-                        'message'           => 'Justification rejected: please state verifiable details[cite: 12].',
-                        'ai'                => [
-                            'priority'  => $aiPriority,
-                            'triggers'  => $analysis['detected_keywords'] ?? [],
-                            'rationale' => $analysis['reasoning'] ?? ''
-                        ]
-                    ], 422);
-                }
-            }
 
             $finalPriority = ($requestedWeight < $aiWeight) ? $officerPriority : $aiPriority;
             $refNumber = 'IR-' . date('Ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 5));
@@ -523,42 +508,17 @@ try {
                     ':note'     => "Incident encoded. Assessed priority: {$finalPriority}."
                 ]);
 
-                if ($actorId > 0) {
-                    $auditStmt = $pdo->prepare("
-                        INSERT INTO audit_logs (actor_user_id, action, details)
-                        VALUES (:actor, 'ENCODE_INCIDENT', :details)
-                    ");
-                    $auditStmt->execute([
-                        ':actor'   => $actorId,
-                        ':details' => "Encoded incident record #{$refNumber}."
-                    ]);
-                }
-
                 $pdo->commit();
 
                 officerRespond([
                     'success'          => true,
                     'message'          => "Case {$refNumber} successfully recorded.",
                     'reference_number' => $refNumber,
-                    'priority'         => $finalPriority,
-                    'data'             => [
-                        'reference_number' => $refNumber,
-                        'priority'         => $finalPriority,
-                        'ai'               => [
-                            'priority'   => $aiPriority,
-                            'source'     => 'AI+RULES',
-                            'confidence' => (float) ($analysis['ai_urgency_score'] ?? 0.1),
-                            'triggers'   => $analysis['detected_keywords'] ?? [],
-                            'rationale'  => $analysis['reasoning'] ?? '',
-                            'notice'     => $analysis['ai_recommendation'] ?? ''
-                        ]
-                    ]
+                    'priority'         => $finalPriority
                 ]);
 
             } catch (Throwable $e) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
+                if ($pdo->inTransaction()) $pdo->rollBack();
                 throw $e;
             }
 
@@ -566,9 +526,7 @@ try {
             officerRespond(['success' => false, 'message' => 'Unknown officer action.'], 422);
     }
 } catch (PDOException $e) {
-    error_log('[officer_console] database error: ' . $e->getMessage());
     officerRespond(['success' => false, 'message' => 'Database error: ' . $e->getMessage()], 500);
 } catch (Throwable $e) {
-    error_log('[officer_console] ' . $e->getMessage());
     officerRespond(['success' => false, 'message' => 'Server error: ' . $e->getMessage()], 500);
 }

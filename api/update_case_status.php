@@ -5,6 +5,7 @@ date_default_timezone_set('Asia/Manila');
 header('Content-Type: application/json; charset=UTF-8');
 
 require_once __DIR__ . '/../auth.php';
+require_once __DIR__ . '/../sms_helper.php'; // Required for SMS updates[cite: 16]
 
 function fail(int $code, string $msg): void {
     http_response_code($code);
@@ -38,7 +39,7 @@ if ($inUnit !== null && mb_strlen($inUnit) > 100)        fail(422, 'Unit name is
 $pdo = getDatabaseConnection();
 $pdo->beginTransaction();
 try {
-    $st = $pdo->prepare('SELECT id, status, assigned_officer_name, deployed_unit
+    $st = $pdo->prepare('SELECT id, status, assigned_officer_name, deployed_unit, complainant_name, complainant_phone
                          FROM incident_reports WHERE reference_number = ? LIMIT 1 FOR UPDATE');
     $st->execute([$referenceNumber]);
     $case = $st->fetch();
@@ -66,11 +67,39 @@ try {
         ->execute([$incidentId, json_encode(['milestone_id' => $milestoneId, 'old_status' => $oldStatus, 'new_status' => $newStatus])]);
 
     $pdo->commit();
+
+    // Trigger iProg SMS to complainant featuring officer transparency details
+    $phone = $case['complainant_phone'];
+    $name = $case['complainant_name'];
+    
+    // Explicitly incorporating the officer who took/handled the case for full transparency
+    $officerText = !empty($officer) ? " Handled by: {$officer}." : "";
+    $smsMsg = "BalangayLog Update: Hi {$name}, your incident ({$referenceNumber}) is now '{$newStatus}'.{$officerText}";
+    if ($actionNote !== '') {
+        $smsMsg .= " Remarks: {$actionNote}";
+    }
+    
+    $clean_phone = preg_replace('/[^0-9]/', '', $phone);
+    if (strpos($clean_phone, '0') === 0) $clean_phone = '63' . substr($clean_phone, 1);
+    
+    $smsResponse = sendIprogSms($clean_phone, $smsMsg);
+    error_log("[SMS] Tracking update for {$referenceNumber}: " . $smsResponse);
+
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     error_log('[update_case_status] failed: ' . $e->getMessage());
     fail(500, 'Failed to update incident status. Nothing was changed.');
 }
+
+// Trigger iProg SMS for Captain Endorsement / Signature Approval
+    $phone = $case['complainant_phone'];
+    $name = $case['complainant_name'];
+    $smsMsg = "BalangayLog Executive Update: Hi {$name}, your incident ({$referenceNumber}) has been officially endorsed and signed by Punong Barangay Capt. Renato Lim.";
+    
+    $clean_phone = preg_replace('/[^0-9]/', '', $phone);
+    if (strpos($clean_phone, '0') === 0) $clean_phone = '63' . substr($clean_phone, 1);
+    
+    sendIprogSms($clean_phone, $smsMsg);
 
 echo json_encode([
     'success'    => true,
@@ -80,3 +109,4 @@ echo json_encode([
     'assigned_officer_name' => $officer,
     'deployed_unit' => $unit,
 ]);
+?>
