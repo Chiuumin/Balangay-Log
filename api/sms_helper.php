@@ -1,7 +1,7 @@
 <?php
 function sendIprogSms($phone_number, $message) {
     // Replace with your actual token from the IPROG dashboard
-    $api_token = "2525a70dadb65d4882083689f8f68d8939c6e7ff"; 
+    $api_token = ""; 
     $url = "https://www.iprogsms.com/api/v1/sms_messages";
 
     // Build the payload required by IPROG
