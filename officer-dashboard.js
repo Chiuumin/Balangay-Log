@@ -67,8 +67,6 @@ function showNotice(msg, isError = false) {
     clearTimeout(showNotice.timeout);
     showNotice.timeout = setTimeout(() => { pageNotice.hidden = true; }, 4500);
 }
-
-// Expose showNotice to global window scope for officer-ai.js
 window.showNotice = showNotice;
 
 async function requestOfficer(action, payload = {}, options = {}) {
@@ -97,9 +95,6 @@ function setView(view) {
     history.replaceState(null, '', `#${view}`);
 }
 
-// -------------------------------------------------------------
-// TAB RENDERERS
-// -------------------------------------------------------------
 function renderTriageQueue() {
     const container = document.getElementById('triageQueueContainer');
     const dedicated = document.getElementById('dedicatedTriageContainer');
@@ -121,12 +116,7 @@ function renderTriageQueue() {
         <div class="queue-item-card" data-ref="${escapeHtml(item.reference_number)}">
             <div class="queue-meta-block" style="flex: 1; max-width: 65%;">
                 <div class="queue-header-tag">
-                    <!-- ONLY THE CASE IDENTIFIER IS CLICKABLE TO OPEN FULL REVIEW POPUP -->
-                    <span class="queue-id" 
-                          data-trigger-review="true" 
-                          data-ref="${escapeHtml(item.reference_number)}" 
-                          title="Click reference code to open full case details" 
-                          style="cursor: pointer; text-decoration: underline; color: var(--teal); font-weight: 800;">
+                    <span class="queue-id" data-trigger-review="true" data-ref="${escapeHtml(item.reference_number)}" style="cursor: pointer; text-decoration: underline; color: var(--teal); font-weight: 800;">
                         ${escapeHtml(item.reference_number)}
                     </span>
                     ${priorityPill(item.priority_level)}
@@ -147,6 +137,7 @@ function renderTriageQueue() {
                 <button class="btn-action-primary" data-action="accept" data-ref="${escapeHtml(item.reference_number)}">Accept &amp; Blotter</button>
                 <button class="btn-action-quiet" data-action="dispatch" data-ref="${escapeHtml(item.reference_number)}">Dispatch</button>
                 <button class="btn-action-quiet" data-action="endorse_lupon" data-ref="${escapeHtml(item.reference_number)}">Endorse Lupon</button>
+                <button class="btn-action-quiet" data-action="request_captain" data-ref="${escapeHtml(item.reference_number)}" style="color: #b45309; border-color: #fde68a; background: #fffbeb;">Refer to Captain</button>
                 <button class="btn-action-danger" data-action="reject" data-ref="${escapeHtml(item.reference_number)}">Flag / Reject</button>
             </div>
         </div>
@@ -238,35 +229,160 @@ function renderLuponCases() {
     `).join('');
 }
 
+function populateDispatchDropdown(selectedTanodName = '') {
+    const unitSelect = document.getElementById('dispatchUnitSelect');
+    if (!unitSelect) return;
+
+    const tanods = state.tanods || [];
+    const availableTanods = tanods.filter(t => {
+        const s = String(t.status || '').trim().toUpperCase();
+        return s === 'AVAILABLE';
+    });
+
+    let optionsHtml = '<option value="">Select On-Duty Responder / Unit</option>';
+    
+    availableTanods.forEach(t => {
+        const val = `Tanod Patrol (${t.name})`;
+        const isSelected = selectedTanodName === t.name ? 'selected' : '';
+        optionsHtml += `<option value="${escapeHtml(val)}" ${isSelected}>Tanod Patrol (${escapeHtml(t.name)} - ${escapeHtml(t.station || 'Patrol Beat')})</option>`;
+    });
+
+    optionsHtml += `
+        <option value="Immediate Tanod Response Team">Immediate Tanod Response Team</option>
+        <option value="Unit Alpha (Joint Patrol)">Unit Alpha (Joint Patrol)</option>
+    `;
+
+    unitSelect.innerHTML = optionsHtml;
+}
+
 function renderTanodBoard() {
     const container = document.getElementById('tanodRosterContainer');
-    const tanods = state.tanods;
-    const available = tanods.filter(t => t.status === 'AVAILABLE').length;
+    const tanods = state.tanods || [];
+    
+    const available = tanods.filter(t => {
+        const s = String(t.status || '').trim().toUpperCase();
+        return s === 'AVAILABLE';
+    }).length;
+
     const countEl = document.getElementById('activeTanodCount');
     if (countEl) countEl.textContent = `${available} Available`;
 
+    populateDispatchDropdown();
+
     if (!container) return;
+    if (tanods.length === 0) {
+        container.innerHTML = '<p class="empty-message">No responders found in roster.</p>';
+        return;
+    }
+
     container.innerHTML = tanods.map(t => {
-        const isAvail = t.status === 'AVAILABLE';
+        const rawStatus = String(t.status || 'AVAILABLE').trim().toUpperCase();
+        
+        let currentStatus = 'AVAILABLE';
+        if (rawStatus === 'DEPLOYED' || rawStatus === 'IN_USE') {
+            currentStatus = 'DEPLOYED';
+        } else if (rawStatus === 'OFF_DUTY' || rawStatus === 'OFF-DUTY') {
+            currentStatus = 'OFF_DUTY';
+        }
+
+        const isAvail = currentStatus === 'AVAILABLE';
+        const isDeployed = currentStatus === 'DEPLOYED';
+        const isOffDuty = currentStatus === 'OFF_DUTY';
+
+        let actionButtons = '';
+        if (isDeployed) {
+            actionButtons = `<button class="button button-quiet" style="width: 100%; justify-content: center;" disabled>Currently Deployed</button>`;
+        } else if (isAvail) {
+            actionButtons = `
+                <div style="display: flex; gap: 6px;">
+                    <button class="button button-primary" style="flex: 1; justify-content: center; background: #173d3b; border-color: #173d3b;" onclick="assignTanodFromBoard('${escapeHtml(t.name)}')">Assign</button>
+                    <button class="button button-quiet" style="flex: 1; justify-content: center; color: var(--coral); border-color: #ffd8d2;" onclick="changeTanodStatus(${t.id}, '${escapeHtml(t.name)}', 'OFF_DUTY')">Set Off-Duty</button>
+                </div>
+            `;
+        } else {
+            actionButtons = `
+                <button class="button button-quiet" style="width: 100%; justify-content: center; color: var(--green); border-color: #a7f3d0;" onclick="changeTanodStatus(${t.id}, '${escapeHtml(t.name)}', 'AVAILABLE')">Set Active / On-Duty</button>
+            `;
+        }
+
+        let indicatorClass = 'available';
+        if (isDeployed) indicatorClass = 'deployed';
+        if (isOffDuty) indicatorClass = 'off_duty';
+
+        const statusLabel = currentStatus.toLowerCase().replace('_', ' ');
+
         return `
             <div class="tanod-card">
                 <div class="tanod-card-header">
-                    <span class="tanod-indicator ${t.status.toLowerCase()}"></span>
+                    <span class="tanod-indicator ${indicatorClass}"></span>
                     <div>
                         <strong style="display: block; font-size: 13.5px; color: var(--ink);">${escapeHtml(t.name)}</strong>
-                        <small style="color: var(--muted);">${escapeHtml(t.station)}</small>
+                        <small style="color: var(--muted);">${escapeHtml(t.station || 'Patrol Beat')} • <span style="text-transform: capitalize; font-weight: 600;">${statusLabel}</span></small>
                     </div>
                 </div>
                 <div>
-                    ${isAvail 
-                        ? `<button class="button button-primary" style="width: 100%; justify-content: center;" data-action="assign_tanod" data-tanod="${escapeHtml(t.name)}">Assign to Incident</button>`
-                        : `<button class="button button-quiet" style="width: 100%; justify-content: center;" disabled>${t.status === 'DEPLOYED' ? 'Currently Deployed' : 'Off Duty'}</button>`
-                    }
+                    ${actionButtons}
                 </div>
             </div>
         `;
     }).join('');
 }
+
+window.changeTanodStatus = async function(tanodId, tanodName, targetStatus) {
+    try {
+        const res = await fetch('api/update_tanod_status.php', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': (document.querySelector('meta[name="csrf-token"]') || {}).content || ''
+            },
+            body: JSON.stringify({ tanod_id: tanodId, tanod_name: tanodName, status: targetStatus })
+        });
+        const result = await res.json();
+        if (!result.success) throw new Error(result.message || 'Failed to update status.');
+        
+        showNotice('Responder status updated successfully.');
+        await refreshOperationsData();
+    } catch (err) {
+        showNotice(err.message, true);
+    }
+};
+
+window.assignTanodFromBoard = function(tanodName) {
+    const activeCases = [...state.urgentCases, ...state.triageQueue, ...state.luponCases, ...state.cases.filter(c => c.status !== 'RESOLVED')];
+    const uniqueCases = Array.from(new Map(activeCases.map(c => [c.reference_number, c])).values());
+
+    if (uniqueCases.length === 0) {
+        showNotice('No active cases available to assign right now.', true);
+        return;
+    }
+
+    let promptHtml = `Select the case reference number to dispatch <strong>${escapeHtml(tanodName)}</strong>:\n\n`;
+    uniqueCases.slice(0, 8).forEach((c, index) => {
+        promptHtml += `[${index + 1}] ${c.reference_number} - ${c.incident_type} (${c.purok})\n`;
+    });
+    promptHtml += `\nEnter the number [1-${Math.min(uniqueCases.length, 8)}] or type the exact Reference Number:`;
+
+    const userSelection = prompt(promptHtml);
+    if (!userSelection) return;
+
+    let selectedCase = null;
+    const numericChoice = parseInt(userSelection.trim(), 10);
+    if (!isNaN(numericChoice) && numericChoice >= 1 && numericChoice <= Math.min(uniqueCases.length, 8)) {
+        selectedCase = uniqueCases[numericChoice - 1];
+    } else {
+        selectedCase = uniqueCases.find(c => c.reference_number.toUpperCase() === userSelection.trim().toUpperCase());
+    }
+
+    if (selectedCase) {
+        document.getElementById('dispatchRefInput').value = selectedCase.reference_number;
+        populateDispatchDropdown(tanodName);
+        document.getElementById('dispatchModal').showModal();
+        showNotice(`Assigning ${tanodName} to incident #${selectedCase.reference_number}`);
+    } else {
+        showNotice('Invalid case selection. Assignment cancelled.', true);
+    }
+};
 
 function renderBlotterTable() {
     const search = document.getElementById('blotterSearchInput')?.value.trim().toLowerCase() || '';
@@ -283,6 +399,7 @@ function renderBlotterTable() {
     const tbody = document.getElementById('blotterTableRows');
     if (!tbody) return;
 
+    // Added "Refer to Captain" button directly into the blotter table row actions for instant visibility
     tbody.innerHTML = cases.map(c => `
         <tr>
             <td>
@@ -302,6 +419,7 @@ function renderBlotterTable() {
                     <button class="small-button" data-action="change_severity" data-ref="${escapeHtml(c.reference_number)}" data-priority="${escapeHtml(c.priority_level)}">Severity</button>
                     <button class="small-button" data-action="dispatch" data-ref="${escapeHtml(c.reference_number)}">Dispatch</button>
                     <button class="small-button" data-action="endorse_lupon" data-ref="${escapeHtml(c.reference_number)}">Lupon</button>
+                    <button class="small-button" data-action="request_captain" data-ref="${escapeHtml(c.reference_number)}" style="color: #b45309; border-color: #fde68a; background: #fffbeb;" title="Refer to Barangay Captain">Captain</button>
                 </div>
             </td>
         </tr>
@@ -357,7 +475,6 @@ function renderNotifications() {
     }).join('');
 }
 
-// Notification Popover listeners
 const notifBellBtn = document.getElementById('notifBellBtn');
 const notifDropdown = document.getElementById('notifDropdown');
 
@@ -373,6 +490,7 @@ document.getElementById('notifDropdownList')?.addEventListener('click', (e) => {
     notifDropdown?.classList.remove('is-active');
     const refInput = document.getElementById('dispatchRefInput');
     if (refInput) refInput.value = ref;
+    populateDispatchDropdown();
     document.getElementById('dispatchModal')?.showModal();
 });
 
@@ -382,9 +500,6 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// -------------------------------------------------------------
-// REFRESH & BACKGROUND POLLING
-// -------------------------------------------------------------
 async function refreshOperationsData() {
     try {
         const data = await requestOfficer();
@@ -467,17 +582,10 @@ async function refreshOperationsData() {
     }
 }
 
-// Expose refresh to window so officer-ai.js can trigger re-renders after override
 window.refreshOperationsData = refreshOperationsData;
-
-// Background polling every 10 seconds
 setInterval(refreshOperationsData, 10000);
 
-// -------------------------------------------------------------
-// REAL-TIME AI NARRATIVE INSPECTION (WALK-IN MODAL)
-// -------------------------------------------------------------
 let triageDebounceTimer = null;
-
 async function inspectNarrativeWithAI(narrativeText) {
     const trimmed = String(narrativeText || '').trim();
     const statusContainer = document.getElementById('aiTriageStatus');
@@ -532,13 +640,11 @@ async function inspectNarrativeWithAI(narrativeText) {
             return;
         }
 
-        // 1. Assign AI-determined Category to Hidden Input & UI Badge
         if (result.incident_type) {
             if (hiddenCategory) hiddenCategory.value = result.incident_type;
             if (categoryBadge) categoryBadge.textContent = `Category: ${result.incident_type}`;
         }
 
-        // 2. Assign AI-determined Priority to Hidden Input & Score Badge
         if (result.priority_level) {
             if (hiddenPriority) hiddenPriority.value = result.priority_level;
             const pct = Math.round(Number(result.ai_urgency_score || 0) * 100);
@@ -560,7 +666,6 @@ async function inspectNarrativeWithAI(narrativeText) {
             }
         }
 
-        // 3. Render Threat Keywords
         if (badgeContainer) {
             const keywords = Array.isArray(result.detected_keywords) ? result.detected_keywords : [];
             if (keywords.length === 0) {
@@ -574,7 +679,6 @@ async function inspectNarrativeWithAI(narrativeText) {
             }
         }
 
-        // 4. Render Step-by-Step AI Reasoning & Action Guidance
         if (reasoningBox) {
             reasoningBox.innerHTML = `
                 <div style="font-size: 12.5px; line-height: 1.5; color: var(--ink);">
@@ -591,11 +695,7 @@ async function inspectNarrativeWithAI(narrativeText) {
     }
 }
 
-// -------------------------------------------------------------
-// EVENT DELEGATION: POPUP REVIEW (STRICTLY ON REFERENCE ID)
-// -------------------------------------------------------------
 document.addEventListener('click', async (e) => {
-    // Check if clicked element is the reference code trigger
     const idTrigger = e.target.closest('[data-trigger-review="true"]');
     if (idTrigger) {
         e.preventDefault();
@@ -611,7 +711,6 @@ document.addEventListener('click', async (e) => {
             const duplicates = res.duplicates || [];
             const history = res.history_matches || [];
 
-            // 1. Basic Resident & Case Info
             document.getElementById('modalReviewRef').textContent = c.reference_number;
             document.getElementById('modalReviewCategory').textContent = c.incident_type;
             document.getElementById('modalComplainantName').textContent = c.complainant_name || 'Walk-in Resident';
@@ -619,12 +718,10 @@ document.addEventListener('click', async (e) => {
             document.getElementById('modalLocationPurok').textContent = c.purok || 'Barangay Duale';
             document.getElementById('modalNarrativeText').textContent = c.narrative_description || 'No narrative facts recorded.';
 
-            // Priority Badge
             const pBadge = document.getElementById('modalPriorityBadge');
             pBadge.textContent = c.priority_level;
             pBadge.className = 'pill ' + (c.priority_level === 'Critical' ? 'pill-rejected' : c.priority_level === 'High' ? 'pill-pending' : 'pill-active');
 
-            // 2. Multi-Agent System: Statutory Jurisdiction (Agent 1)
             const routingTitle = document.getElementById('modalLegalRoutingTitle');
             const routingDesc = document.getElementById('modalLegalRoutingDesc');
             const routingBanner = document.getElementById('modalLegalRoutingBanner');
@@ -647,16 +744,14 @@ document.addEventListener('click', async (e) => {
                 vawcPill.className = 'pill pill-active';
             }
 
-            // 3. Multi-Agent System: Safety Entities & Beat (Agent 2)
             const wpEl = document.getElementById('modalWeaponFlag');
             wpEl.textContent = ai.weapon_flag !== 'NONE' ? `⚠️ ${ai.weapon_flag}` : 'NONE DETECTED';
             wpEl.style.color = ai.weapon_flag !== 'NONE' ? 'var(--coral)' : 'var(--ink)';
 
             document.getElementById('modalMedicalFlag').textContent = ai.medical_flag || 'No acute trauma mentioned.';
-            document.getElementById('modalSubstanceFlag').textContent = ai.substance_flag || 'No intoxication reported.';
+            document.getElementById('modalSubstanceFlag').textContent = ai.substance_flag || 'None intoxication reported.';
             document.getElementById('modalBeatRecommendation').textContent = `${c.purok} Sector Patrol Beat`;
 
-            // Reasoning & Keywords
             document.getElementById('modalAiReasoning').textContent = ai.reasoning || 'Triage evaluation completed.';
             const kwContainer = document.getElementById('modalDetectedKeywords');
             const kws = ai.detected_keywords || [];
@@ -666,7 +761,6 @@ document.addEventListener('click', async (e) => {
                 </span>
             `).join('');
 
-            // 4. Multi-Agent System: Duplicate Cluster Sentinel (Agent 3)
             const dupContainer = document.getElementById('modalDuplicateBox');
             if (duplicates.length === 0) {
                 dupContainer.innerHTML = '<span style="color: var(--muted);">✓ No recent cluster or duplicate in this Purok within 2 hours.</span>';
@@ -678,7 +772,6 @@ document.addEventListener('click', async (e) => {
                 `).join('');
             }
 
-            // 5. Multi-Agent System: Recidivism Pattern Graph (Agent 4)
             const histContainer = document.getElementById('modalHistoryList');
             if (history.length === 0) {
                 histContainer.innerHTML = '<span style="color: var(--muted);">✓ No previous blotters on record for this complainant.</span>';
@@ -691,13 +784,11 @@ document.addEventListener('click', async (e) => {
                 `).join('');
             }
 
-            // Bind Action Buttons inside the review modal
-            ['modalBtnAccept', 'modalBtnDispatch', 'modalBtnLupon', 'modalBtnReject'].forEach(btnId => {
+            ['modalBtnAccept', 'modalBtnDispatch', 'modalBtnLupon', 'modalBtnReject', 'modalBtnCaptain'].forEach(btnId => {
                 const btn = document.getElementById(btnId);
                 if (btn) btn.setAttribute('data-ref', c.reference_number);
             });
 
-            // Prevent mediation endorsement if prohibited by law (e.g., VAWC or Minor)
             const luponBtn = document.getElementById('modalBtnLupon');
             if (luponBtn) {
                 luponBtn.disabled = !!ai.vawc_minor_flag;
@@ -712,7 +803,6 @@ document.addEventListener('click', async (e) => {
         return;
     }
 
-    // Check for Walk-In Encode Modal Triggers
     const encodeTrigger = e.target.closest('#openEncodeModalBtn, #sidebarEncodeCaseBtn, [data-open-encode]');
     if (encodeTrigger) {
         e.preventDefault();
@@ -742,7 +832,6 @@ document.addEventListener('click', async (e) => {
         return;
     }
 
-    // Table Row Actions (Accept, Dispatch, Lupon, Flag)
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
     const action = btn.dataset.action;
@@ -764,6 +853,7 @@ document.addEventListener('click', async (e) => {
         } else if (action === 'dispatch') {
             document.getElementById('caseReviewModal')?.close();
             document.getElementById('dispatchRefInput').value = ref;
+            populateDispatchDropdown();
             document.getElementById('dispatchModal').showModal();
         } else if (action === 'endorse_lupon') {
             document.getElementById('caseReviewModal')?.close();
@@ -782,27 +872,32 @@ document.addEventListener('click', async (e) => {
             document.getElementById('luponSettleFields').style.display = 'block';
             document.getElementById('luponSubmitBtn').textContent = 'Confirm Settlement';
             document.getElementById('luponModal').showModal();
-        } else if (action === 'assign_tanod') {
-            const tanod = btn.dataset.tanod;
-            document.getElementById('dispatchUnitSelect').value = `Tanod Patrol (${tanod})`;
-            setView('blotter');
-            showNotice(`Select a case to assign ${tanod}`);
+        } else if (action === 'request_captain') {
+            document.getElementById('caseReviewModal')?.close();
+            const remarks = prompt("Enter remarks or instructions for the Captain's endorsement:");
+            if (remarks === null) return;
+            try {
+                const res = await requestOfficer('request_captain_endorsement', { reference_number: ref, remarks: remarks });
+                showNotice(res.message);
+                await refreshOperationsData();
+            } catch (err) {
+                showNotice(err.message, true);
+            }
         }
     } catch (err) {
         showNotice(err.message, true);
     }
 });
 
-// Banner quick dispatch button
 document.getElementById('criticalDispatchBtn')?.addEventListener('click', (e) => {
     const ref = e.currentTarget.getAttribute('data-ref');
     if (ref) {
         document.getElementById('dispatchRefInput').value = ref;
+        populateDispatchDropdown();
         document.getElementById('dispatchModal').showModal();
     }
 });
 
-// Dispatch Form Submission
 document.getElementById('dispatchForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = Object.fromEntries(new FormData(e.currentTarget).entries());
@@ -816,7 +911,6 @@ document.getElementById('dispatchForm')?.addEventListener('submit', async (e) =>
     }
 });
 
-// Lupon Form Submission
 document.getElementById('luponForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const mode = document.getElementById('luponActionMode').value;
@@ -845,7 +939,6 @@ document.getElementById('luponForm')?.addEventListener('submit', async (e) => {
     }
 });
 
-// Encode Case Submission
 document.getElementById('encodeCaseForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -887,7 +980,6 @@ document.getElementById('encodeCaseForm')?.addEventListener('submit', async (e) 
     }
 });
 
-// Real-Time Debounce for Narrative Textarea in Encode Form
 document.addEventListener('input', (e) => {
     if (e.target && (e.target.matches('#encodeCaseForm textarea[name="narrative_description"]') || e.target.id === 'narrativeDescriptionInput')) {
         clearTimeout(triageDebounceTimer);
@@ -897,7 +989,6 @@ document.addEventListener('input', (e) => {
     }
 });
 
-// Profile and Password Form Submissions
 document.getElementById('profileForm')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -946,7 +1037,6 @@ if (photoInput) {
     });
 }
 
-// Blotter filters & search
 document.querySelectorAll('[data-blotter-filter]').forEach(tab => {
     tab.addEventListener('click', () => {
         state.filter = tab.dataset.blotterFilter;
@@ -959,10 +1049,8 @@ document.getElementById('blotterSearchInput')?.addEventListener('input', renderB
 document.querySelector('[data-refresh-cases]')?.addEventListener('click', refreshOperationsData);
 document.querySelectorAll('[data-close-dialog]').forEach(btn => btn.addEventListener('click', () => btn.closest('dialog').close()));
 
-// View Switching
 navLinks.forEach(link => link.addEventListener('click', () => setView(link.dataset.view)));
 
-// Mobile Drawer
 const mobileMenuBtn = document.getElementById('mobileMenuBtn');
 const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
 const sidebarBackdrop = document.getElementById('sidebarBackdrop');
@@ -978,7 +1066,6 @@ mobileMenuBtn?.addEventListener('click', () => toggleDrawer(true));
 sidebarCloseBtn?.addEventListener('click', () => toggleDrawer(false));
 sidebarBackdrop?.addEventListener('click', () => toggleDrawer(false));
 
-// Theme Toggle
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const themeToggleLabel = document.getElementById('themeToggleLabel');
 
@@ -999,7 +1086,6 @@ themeToggleBtn?.addEventListener('click', () => {
     applyTheme(isDark ? 'light' : 'dark');
 });
 
-// Logout Handler
 document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     try { 
         await fetch('api/logout.php', { method: 'POST', credentials: 'same-origin' }); 
@@ -1010,7 +1096,6 @@ document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     window.location.replace('index.html');
 });
 
-// Initialization & Route Execution
 const initialView = location.hash.slice(1);
 if (initialView && document.getElementById(`view-${initialView}`)) {
     setView(initialView);

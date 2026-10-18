@@ -153,6 +153,17 @@ if (isLoggedIn()) {
                         </div>
                         <p class="privacy-note">Your document will be used only to verify your residency with the barangay.</p>
                     </div>
+
+                    <div class="form-group form-group--wide" style="margin-top: 20px;">
+                        <label for="otp_code">SMS Verification Code (OTP)</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="otp_code" name="otp_code" placeholder="Enter 6-digit code" required pattern="\d{6}" aria-describedby="otp_hint otp_code_error" style="flex: 1;" />
+                            <button type="button" id="requestOtpBtn" class="secondary-btn" style="white-space: nowrap; padding: 0 20px;">Send OTP</button>
+                        </div>
+                        <small class="field-hint" id="otp_hint">Click 'Send OTP' to receive a code on your contact number.</small>
+                        <small class="field-error" id="otp_code_error"></small>
+                    </div>
+
                 </section>
 
                 <div class="registration-actions">
@@ -310,6 +321,63 @@ if (isLoggedIn()) {
             errorBanner.textContent = message;
             errorBanner.style.display = 'block';
         }
+
+        document.getElementById('requestOtpBtn').addEventListener('click', async function() {
+            const phoneInput = document.getElementById('contact_number');
+            const phoneVal = phoneInput.value.trim();
+            const errorElement = document.getElementById('otp_code_error');
+            const btn = this;
+            
+            if (!phoneVal) {
+                showStep(1); 
+                phoneInput.focus();
+                setFieldError(phoneInput, 'Please provide a contact number before requesting an OTP.');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+            errorElement.classList.remove('is-visible');
+            
+            try {
+                const response = await fetch('api/send_otp.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contact_number: phoneVal })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    errorElement.textContent = 'OTP sent! Please check your messages.';
+                    errorElement.style.color = '#059669'; 
+                    errorElement.classList.add('is-visible');
+                    
+                    let countdown = 60;
+                    const timer = setInterval(() => {
+                        countdown--;
+                        btn.textContent = `Resend in ${countdown}s`;
+                        if (countdown <= 0) {
+                            clearInterval(timer);
+                            btn.disabled = false;
+                            btn.textContent = 'Resend OTP';
+                            errorElement.style.color = ''; 
+                        }
+                    }, 1000);
+                } else {
+                    errorElement.textContent = result.message || 'Failed to send OTP.';
+                    errorElement.style.color = ''; 
+                    errorElement.classList.add('is-visible');
+                    btn.disabled = false;
+                    btn.textContent = 'Send OTP';
+                }
+            } catch (e) {
+                errorElement.textContent = 'Network error. Failed to connect to SMS server.';
+                errorElement.classList.add('is-visible');
+                btn.disabled = false;
+                btn.textContent = 'Send OTP';
+            }
+        });
 
         fetch('api/get_system_parameters.php')
             .then((response) => response.json())

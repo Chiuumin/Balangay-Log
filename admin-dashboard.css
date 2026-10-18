@@ -2369,3 +2369,26 @@ html[data-theme="dark"] textarea,
     padding: 2px 8px;
     border-radius: 9999px;
 }
+
+/* 1. Add missing blue pill for active dispatch */
+/* Clean, borderless blue pill matching the Admin UI style */
+.pill-blue {
+    background-color: #edf3f7 !important;
+    color: #2b566b !important;
+    border: none !important; 
+}
+
+/* 2. Completed Steps (is-done): Green (Matches Admin 'Active' success color) */
+.tracking-stepper .stepper-step.is-done .stepper-node {
+    background-color: #e6f3e9 !important;
+    border-color: #38a169 !important;
+    color: #287048 !important;
+}
+
+/* 3. Current Active Step (is-active): Glowing Blue (Action happening now) */
+.tracking-stepper .stepper-step.is-active .stepper-node {
+    background-color: #0ea5e9 !important;
+    border-color: #0ea5e9 !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.2) !important;
+}

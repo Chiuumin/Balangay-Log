@@ -143,8 +143,6 @@ if (!$initials) $initials = 'OF';
              cursor: default;
              user-select: text;
         }
-
-/* Ensure only tracking numbers indicate interactivity */
         .queue-id {
              font-family: monospace;
              font-size: 12.5px;
@@ -707,7 +705,7 @@ if (!$initials) $initials = 'OF';
         </main>
     </div>
 
-    <!-- MODAL: ENCODE WALK-IN CASE (AI-Driven Category & Priority) -->
+    <!-- MODAL: ENCODE WALK-IN CASE -->
     <dialog class="admin-dialog" id="encodeCaseDialog" style="width: min(640px, calc(100vw - 32px)); max-height: 90vh;">
         <form id="encodeCaseForm" method="dialog">
             <div class="dialog-heading">
@@ -802,125 +800,112 @@ if (!$initials) $initials = 'OF';
     </dialog>
 
     <!-- MODAL: DEEP CASE REVIEW & MULTI-AGENT DECISION SUPPORT -->
-<dialog class="admin-dialog" id="caseReviewModal" style="width: min(760px, calc(100vw - 32px)); max-height: 92vh;">
-    <div class="dialog-heading" style="border-bottom: 1px solid var(--line); padding-bottom: 10px;">
-        <div>
-            <span class="eyebrow" id="modalReviewRef" style="font-size: 11px; font-weight: 800; letter-spacing: 0.5px;">IR-0000</span>
-            <h2 id="modalReviewCategory" style="font-size: 20px; font-weight: 800; font-family: 'Manrope', sans-serif; margin-top: 2px;">Incident Review</h2>
-        </div>
-        <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
-    </div>
-
-    <div style="max-height: calc(92vh - 180px); overflow-y: auto; padding-right: 6px; display: grid; gap: 14px; margin-top: 12px;">
-
-        <!-- ========================================== -->
-        <!-- SECTION 1: BASIC RESIDENT & CASE DETAILS   -->
-        <!-- ========================================== -->
-        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 8px; padding: 14px;">
-            <p class="eyebrow" style="color: var(--teal); font-weight: 800; margin-bottom: 8px;">1. RESIDENT &amp; INCIDENT INFORMATION</p>
-            
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
-                <div>
-                    <span class="meta-label">COMPLAINANT</span>
-                    <strong id="modalComplainantName" style="font-size: 13px; display: block; margin-top: 2px;">—</strong>
-                </div>
-                <div>
-                    <span class="meta-label">PHONE NUMBER</span>
-                    <strong id="modalComplainantPhone" style="font-size: 13px; display: block; margin-top: 2px;">—</strong>
-                </div>
-                <div>
-                    <span class="meta-label">PUROK / LOCATION</span>
-                    <strong id="modalLocationPurok" style="font-size: 13px; display: block; margin-top: 2px;">—</strong>
-                </div>
+    <dialog class="admin-dialog" id="caseReviewModal" style="width: min(760px, calc(100vw - 32px)); max-height: 92vh;">
+        <div class="dialog-heading" style="border-bottom: 1px solid var(--line); padding-bottom: 10px;">
+            <div>
+                <span class="eyebrow" id="modalReviewRef" style="font-size: 11px; font-weight: 800; letter-spacing: 0.5px;">IR-0000</span>
+                <h2 id="modalReviewCategory" style="font-size: 20px; font-weight: 800; font-family: 'Manrope', sans-serif; margin-top: 2px;">Incident Review</h2>
             </div>
-
-            <div style="margin-top: 12px;">
-                <span class="meta-label">RECORDED BLOTTER NARRATIVE</span>
-                <div id="modalNarrativeText" style="margin-top: 4px; padding: 10px 12px; border-radius: 6px; background: rgba(0,0,0,0.18); border: 1px solid var(--line); font-size: 13px; line-height: 1.5; color: var(--ink);">
-                    —
-                </div>
-            </div>
+            <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
         </div>
 
-        <!-- ========================================== -->
-        <!-- SECTION 2: MULTI-AGENT DECISION SUPPORT    -->
-        <!-- ========================================== -->
-        <div style="background: rgba(25, 118, 108, 0.05); border: 1px solid rgba(25, 118, 108, 0.3); border-radius: 8px; padding: 14px; display: grid; gap: 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <p class="eyebrow" style="color: var(--teal); font-weight: 800; margin: 0;">2. MULTI-AGENT AI DECISION SUPPORT SYSTEM</p>
-                <span id="modalPriorityBadge" class="pill pill-rejected" style="font-weight: 800;">Critical</span>
-            </div>
-
-            <!-- Agent A: Statutory Jurisdiction & Legal Routing -->
-            <div id="modalLegalRoutingBanner" style="padding: 12px; border-radius: 6px; border: 1px solid var(--teal); background: rgba(25, 118, 108, 0.1);">
-                <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <strong style="font-size: 12.5px; color: var(--teal);" id="modalLegalRoutingTitle">Jurisdiction Assessment</strong>
-                    <span class="pill" id="modalVawcStatusPill" style="font-weight: 700; font-size: 10px;">KP Authority</span>
-                </div>
-                <p style="font-size: 12px; color: var(--ink); margin: 4px 0 0; line-height: 1.4;" id="modalLegalRoutingDesc">
-                    Analyzing legal authority under Local Government Code...
-                </p>
-            </div>
-
-            <!-- Agent B: Safety Entities & Threat Breakdown -->
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
-                <div style="padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                    <span class="meta-label">WEAPON IDENTIFICATION</span>
-                    <strong id="modalWeaponFlag" style="display: block; font-size: 12.5px; margin-top: 3px;">NONE</strong>
-                </div>
-                <div style="padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                    <span class="meta-label">MEDICAL / TRAUMA STATUS</span>
-                    <span id="modalMedicalFlag" style="display: block; font-size: 12px; color: var(--muted); margin-top: 3px;">None reported</span>
-                </div>
-                <div style="padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                    <span class="meta-label">SUBSTANCE / INTOXICATION</span>
-                    <span id="modalSubstanceFlag" style="display: block; font-size: 12px; color: var(--muted); margin-top: 3px;">None reported</span>
-                </div>
-                <div style="padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                    <span class="meta-label">RECOMMENDED BEAT DISPATCH</span>
-                    <span id="modalBeatRecommendation" style="display: block; font-size: 12px; color: var(--teal); font-weight: 700; margin-top: 3px;">Desk Assessment</span>
-                </div>
-            </div>
-
-            <!-- Agent C: Reasoning & Threat Keywords -->
-            <div style="padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                <span class="meta-label">AI TRIAGE REASONING &amp; DISPATCH GUIDANCE</span>
-                <p id="modalAiReasoning" style="font-size: 12px; line-height: 1.5; color: var(--ink); margin: 4px 0 8px;">—</p>
-                <div id="modalDetectedKeywords" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
-            </div>
-
-            <!-- Agent D & E: Duplication Sentinel & Recidivism Pattern Graph -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                <!-- Duplication Box -->
-                <div style="padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                    <span class="meta-label">CROSS-REPORT CLUSTER / DEDUPLICATION</span>
-                    <div id="modalDuplicateBox" style="margin-top: 6px; font-size: 11.5px; display: grid; gap: 4px;">
-                        <span style="color: var(--muted);">No matching cluster in this purok within 2 hours.</span>
+        <div style="max-height: calc(92vh - 180px); overflow-y: auto; padding-right: 6px; display: grid; gap: 14px; margin-top: 12px;">
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 8px; padding: 14px;">
+                <p class="eyebrow" style="color: var(--teal); font-weight: 800; margin-bottom: 8px;">1. RESIDENT &amp; INCIDENT INFORMATION</p>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+                    <div>
+                        <span class="meta-label">COMPLAINANT</span>
+                        <strong id="modalComplainantName" style="font-size: 13px; display: block; margin-top: 2px;">—</strong>
+                    </div>
+                    <div>
+                        <span class="meta-label">PHONE NUMBER</span>
+                        <strong id="modalComplainantPhone" style="font-size: 13px; display: block; margin-top: 2px;">—</strong>
+                    </div>
+                    <div>
+                        <span class="meta-label">PUROK / LOCATION</span>
+                        <strong id="modalLocationPurok" style="font-size: 13px; display: block; margin-top: 2px;">—</strong>
                     </div>
                 </div>
 
-                <!-- Recidivism History Box -->
+                <div style="margin-top: 12px;">
+                    <span class="meta-label">RECORDED BLOTTER NARRATIVE</span>
+                    <div id="modalNarrativeText" style="margin-top: 4px; padding: 10px 12px; border-radius: 6px; background: rgba(0,0,0,0.18); border: 1px solid var(--line); font-size: 13px; line-height: 1.5; color: var(--ink);">
+                        —
+                    </div>
+                </div>
+            </div>
+
+            <div style="background: rgba(25, 118, 108, 0.05); border: 1px solid rgba(25, 118, 108, 0.3); border-radius: 8px; padding: 14px; display: grid; gap: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <p class="eyebrow" style="color: var(--teal); font-weight: 800; margin: 0;">2. MULTI-AGENT AI DECISION SUPPORT SYSTEM</p>
+                    <span id="modalPriorityBadge" class="pill pill-rejected" style="font-weight: 800;">Critical</span>
+                </div>
+
+                <div id="modalLegalRoutingBanner" style="padding: 12px; border-radius: 6px; border: 1px solid var(--teal); background: rgba(25, 118, 108, 0.1);">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <strong style="font-size: 12.5px; color: var(--teal);" id="modalLegalRoutingTitle">Jurisdiction Assessment</strong>
+                        <span class="pill" id="modalVawcStatusPill" style="font-weight: 700; font-size: 10px;">KP Authority</span>
+                    </div>
+                    <p style="font-size: 12px; color: var(--ink); margin: 4px 0 0; line-height: 1.4;" id="modalLegalRoutingDesc">
+                        Analyzing legal authority under Local Government Code...
+                    </p>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                    <div style="padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
+                        <span class="meta-label">WEAPON IDENTIFICATION</span>
+                        <strong id="modalWeaponFlag" style="display: block; font-size: 12.5px; margin-top: 3px;">NONE</strong>
+                    </div>
+                    <div style="padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
+                        <span class="meta-label">MEDICAL / TRAUMA STATUS</span>
+                        <span id="modalMedicalFlag" style="display: block; font-size: 12px; color: var(--muted); margin-top: 3px;">None reported</span>
+                    </div>
+                    <div style="padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
+                        <span class="meta-label">SUBSTANCE / INTOXICATION</span>
+                        <span id="modalSubstanceFlag" style="display: block; font-size: 12px; color: var(--muted); margin-top: 3px;">None reported</span>
+                    </div>
+                    <div style="padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
+                        <span class="meta-label">RECOMMENDED BEAT DISPATCH</span>
+                        <span id="modalBeatRecommendation" style="display: block; font-size: 12px; color: var(--teal); font-weight: 700; margin-top: 3px;">Desk Assessment</span>
+                    </div>
+                </div>
+
                 <div style="padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                    <span class="meta-label">COMPLAINANT RECORD HISTORY (12 Months)</span>
-                    <div id="modalHistoryList" style="margin-top: 6px; font-size: 11.5px; display: grid; gap: 4px;">
-                        <span style="color: var(--muted);">No previous blotters on record.</span>
+                    <span class="meta-label">AI TRIAGE REASONING &amp; DISPATCH GUIDANCE</span>
+                    <p id="modalAiReasoning" style="font-size: 12px; line-height: 1.5; color: var(--ink); margin: 4px 0 8px;">—</p>
+                    <div id="modalDetectedKeywords" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div style="padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
+                        <span class="meta-label">CROSS-REPORT CLUSTER / DEDUPLICATION</span>
+                        <div id="modalDuplicateBox" style="margin-top: 6px; font-size: 11.5px; display: grid; gap: 4px;">
+                            <span style="color: var(--muted);">No matching cluster in this purok within 2 hours.</span>
+                        </div>
+                    </div>
+
+                    <div style="padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
+                        <span class="meta-label">COMPLAINANT RECORD HISTORY (12 Months)</span>
+                        <div id="modalHistoryList" style="margin-top: 6px; font-size: 11.5px; display: grid; gap: 4px;">
+                            <span style="color: var(--muted);">No previous blotters on record.</span>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Direct Action Footer Buttons -->
-    <div class="dialog-actions" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: space-between;">
-        <button class="button button-quiet" type="button" data-close-dialog>Close</button>
-        <div class="queue-action-group" id="modalActionButtons">
-            <button class="btn-action-primary" data-action="accept" id="modalBtnAccept">Accept &amp; Blotter</button>
-            <button class="btn-action-quiet" data-action="dispatch" id="modalBtnDispatch">Dispatch</button>
-            <button class="btn-action-quiet" data-action="endorse_lupon" id="modalBtnLupon">Endorse Lupon</button>
-            <button class="btn-action-danger" data-action="reject" id="modalBtnReject">Flag / Reject</button>
+        <!-- Direct Action Footer Buttons including Captain Endorsement Request -->
+        <div class="dialog-actions" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
+            <button class="button button-quiet" type="button" data-close-dialog>Close</button>
+            <div class="queue-action-group" id="modalActionButtons" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <button class="btn-action-primary" data-action="accept" id="modalBtnAccept">Accept &amp; Blotter</button>
+                <button class="btn-action-quiet" data-action="dispatch" id="modalBtnDispatch">Dispatch</button>
+                <button class="btn-action-quiet" data-action="endorse_lupon" id="modalBtnLupon">Endorse Lupon</button>
+                <button class="btn-action-quiet" data-action="request_captain" id="modalBtnCaptain" style="color: #b45309; border-color: #fde68a; background: #fffbeb;">Endorse / Refer to Captain</button>
+                <button class="btn-action-danger" data-action="reject" id="modalBtnReject">Flag / Reject</button>
+            </div>
         </div>
-    </div>
-</dialog>
+    </dialog>
 
     <!-- MODAL: DISPATCH TANOD -->
     <dialog class="admin-dialog" id="dispatchModal" style="width: min(480px, calc(100vw - 32px));">

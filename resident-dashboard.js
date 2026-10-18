@@ -18,7 +18,7 @@ const escapeHtml = (val) => String(val ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[c]));
 
-const formatDate = (val) => val ? new Date(String(val).replace(' ', 'T')).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+const formatDate = (val) => (val && val !== '—') ? new Date(String(val).replace(' ', 'T')).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
 
 function statusPill(status) {
     const s = String(status || '').toUpperCase().trim();
@@ -123,15 +123,12 @@ function renderReports() {
     if (state.filter !== 'all') {
         reports = reports.filter(r => {
             const st = String(r.status).toUpperCase().trim();
-            // "Under Review" filter matches PENDING or UNDER_REVIEW
             if (state.filter === 'UNDER_REVIEW') {
                 return st === 'PENDING' || st === 'UNDER_REVIEW' || st === 'UNDER REVIEW';
             }
-            // "In Progress" filter matches active investigation, dispatched units, and Lupon
             if (state.filter === 'IN_PROGRESS') {
                 return st === 'IN_PROGRESS' || st === 'IN PROGRESS' || st === 'DISPATCHED' || st === 'UNIT DISPATCHED' || st === 'FOR_RESOLUTION';
             }
-            // "Resolved" filter matches RESOLVED and CLOSED
             if (state.filter === 'RESOLVED') {
                 return st === 'RESOLVED' || st === 'CLOSED';
             }
@@ -154,7 +151,126 @@ function renderReports() {
     document.getElementById('allReportsEmpty').hidden = reports.length > 0;
 }
 
-// Double-Submission Lock on Submit
+// AI Narrative Inspection Engine matching Officer Console
+let triageDebounceTimer = null;
+async function inspectNarrativeWithAI(narrativeText) {
+    const trimmed = String(narrativeText || '').trim();
+    const statusContainer = document.getElementById('aiTriageStatus');
+    const badgeContainer = document.getElementById('detectedKeywordsContainer');
+    const reasoningBox = document.getElementById('aiReasoningBox');
+    const scoreBadge = document.getElementById('aiUrgencyScoreBadge');
+    const categoryBadge = document.getElementById('aiAssessedCategoryBadge');
+    
+    const hiddenCategory = document.getElementById('aiGeneratedCategoryInput');
+    const hiddenPriority = document.getElementById('aiGeneratedPriorityInput');
+
+    if (!trimmed || trimmed.length < 15) {
+        if (badgeContainer) badgeContainer.innerHTML = '<span style="font-size: 11.5px; color: var(--muted);">Type narrative details above to start AI classification...</span>';
+        if (reasoningBox) reasoningBox.textContent = 'Waiting for narrative facts to evaluate jurisdiction and emergency level...';
+        if (scoreBadge) {
+            scoreBadge.textContent = 'Priority: Low (0%)';
+            scoreBadge.style.background = '';
+            scoreBadge.style.color = '';
+        }
+        if (categoryBadge) categoryBadge.textContent = 'Category: Pending';
+        return;
+    }
+
+    if (statusContainer) {
+        statusContainer.textContent = 'AI is evaluating narrative...';
+        statusContainer.classList.add('pulse');
+    }
+
+    try {
+        const response = await fetch('api/encode_case.php', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': (document.querySelector('meta[name="csrf-token"]') || {}).content || ''
+            },
+            body: JSON.stringify({
+                action: 'inspect_triage',
+                narrative_description: trimmed
+            })
+        });
+
+        const result = await response.json();
+
+        if (statusContainer) {
+            statusContainer.textContent = 'AI Classification Applied';
+            statusContainer.classList.remove('pulse');
+        }
+
+        if (!result.success) {
+            if (reasoningBox) reasoningBox.textContent = result.error || 'Failed to inspect narrative.';
+            return;
+        }
+
+        if (result.incident_type) {
+            if (hiddenCategory) hiddenCategory.value = result.incident_type;
+            if (categoryBadge) categoryBadge.textContent = `Category: ${result.incident_type}`;
+        }
+
+        if (result.priority_level) {
+            if (hiddenPriority) hiddenPriority.value = result.priority_level;
+            const pct = Math.round(Number(result.ai_urgency_score || 0) * 100);
+            if (scoreBadge) {
+                scoreBadge.textContent = `${result.priority_level} (${pct}%)`;
+                if (result.priority_level === 'Critical') {
+                    scoreBadge.style.background = 'var(--coral)';
+                    scoreBadge.style.color = '#fff';
+                } else if (result.priority_level === 'High') {
+                    scoreBadge.style.background = '#d97706';
+                    scoreBadge.style.color = '#fff';
+                } else if (result.priority_level === 'Moderate') {
+                    scoreBadge.style.background = '#0284c7';
+                    scoreBadge.style.color = '#fff';
+                } else {
+                    scoreBadge.style.background = '#059669';
+                    scoreBadge.style.color = '#fff';
+                }
+            }
+        }
+
+        if (badgeContainer) {
+            const keywords = Array.isArray(result.detected_keywords) ? result.detected_keywords : [];
+            if (keywords.length === 0) {
+                badgeContainer.innerHTML = '<span style="font-size: 11px; color: var(--muted);">No immediate threat indicators identified.</span>';
+            } else {
+                badgeContainer.innerHTML = keywords.map(kw => `
+                    <span class="pill" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); font-weight: 700; margin-right: 4px; margin-bottom: 4px;">
+                        🔍 ${escapeHtml(kw)}
+                    </span>
+                `).join('');
+            }
+        }
+
+        if (reasoningBox) {
+            reasoningBox.innerHTML = `
+                <div style="font-size: 12.5px; line-height: 1.5; color: var(--ink);">
+                    <strong>Evaluation:</strong> ${escapeHtml(result.reasoning || 'Evaluated under Katarungang Pambarangay scope.')}
+                    <div style="margin-top: 6px; color: var(--teal); font-weight: 700;">
+                        Recommended Action: ${escapeHtml(result.ai_recommendation || 'Proceed with standard desk logging.')}
+                    </div>
+                </div>
+            `;
+        }
+    } catch (err) {
+        if (statusContainer) statusContainer.textContent = 'AI inspection failed.';
+        if (reasoningBox) reasoningBox.textContent = err.message;
+    }
+}
+
+document.addEventListener('input', (e) => {
+    if (e.target && (e.target.matches('#incidentForm textarea[name="narrative"]') || e.target.id === 'narrativeDescriptionInput')) {
+        clearTimeout(triageDebounceTimer);
+        triageDebounceTimer = setTimeout(() => {
+            inspectNarrativeWithAI(e.target.value);
+        }, 600);
+    }
+});
+
 document.getElementById('incidentForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const submitBtn = e.currentTarget.querySelector('button[type="submit"]');
@@ -163,7 +279,24 @@ document.getElementById('incidentForm')?.addEventListener('submit', async (e) =>
     submitBtn.disabled = true;
     submitBtn.textContent = 'Filing Incident...';
 
-    const payload = Object.fromEntries(new FormData(e.currentTarget).entries());
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    
+    const locationParts = [formData.get('street_name')].filter(Boolean).join(', ');
+    const narrativeText = formData.get('narrative');
+    const fullNarrative = locationParts ? `${narrativeText}\n[Landmark/Street: ${locationParts}]` : narrativeText;
+
+    const payload = {
+        action: 'incident_create',
+        complainant_name: formData.get('complainant_name'),
+        contact_number: formData.get('contact_number'),
+        category: document.getElementById('aiGeneratedCategoryInput')?.value || 'General Incident',
+        purok: formData.get('purok'),
+        street_name: formData.get('street_name'),
+        narrative: fullNarrative,
+        priority: document.getElementById('aiGeneratedPriorityInput')?.value || 'High'
+    };
+
     try {
         const res = await requestResident('incident_create', payload);
         document.getElementById('reportDialog').close();
@@ -173,12 +306,10 @@ document.getElementById('incidentForm')?.addEventListener('submit', async (e) =>
         showNotice(err.message, true);
     } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Encode & File Case';
+        submitBtn.textContent = 'Encode & Log Case';
     }
 });
 
-// Parcel-Style Milestone Detail Viewer
-// Parcel-Style Milestone Detail Viewer with Dropdown Stages
 async function openReportDetails(reportId) {
     const report = state.reports.find(r => String(r.id) === String(reportId));
     if (!report) return;
@@ -192,33 +323,25 @@ async function openReportDetails(reportId) {
     const stepResolved = document.getElementById('step-resolved');
     const timelineEl = document.getElementById('trackingTimeline');
 
-    // Fetch live milestones, endorsements, and dispatch logs
     let milestones = [];
     let endorsements = [];
-    let dispatchLogs = [];
     let caseData = report;
 
     try {
         const res = await requestResident('get_milestones', { reference_number: ref });
         milestones = res.milestones || [];
         endorsements = res.endorsements || [];
-        dispatchLogs = res.dispatch_logs || [];
         if (res.case) caseData = { ...report, ...res.case };
     } catch (err) {
         console.error('Milestone fetch error:', err);
     }
 
-    // Check if escalated to higher authority
     const isPnpEscalated = endorsements.some(e => e.type === 'PNP_TRANSMITTAL') || 
                            milestones.some(m => String(m.status_snapshot).includes('ESCALATED') || String(m.action_note).includes('PNP'));
-    const isLuponEscalated = endorsements.some(e => e.type === 'LUPON_CERTIFICATION') ||
-                             String(caseData.status).toUpperCase() === 'FOR_RESOLUTION';
-
-    // Determine current status
+    
     const latestSnapshot = milestones.length > 0 ? milestones[milestones.length - 1].status_snapshot : caseData.status;
     const currentStatus = String(latestSnapshot || caseData.status || '').toUpperCase().trim();
 
-    // 1. Update Stepper Bar UI
     [stepReported, stepReview, stepAction, stepResolved].forEach(s => {
         if (s) s.className = 'stepper-step';
     });
@@ -237,7 +360,7 @@ async function openReportDetails(reportId) {
         if (stepAction) stepAction.classList.add('is-active');
     } else if (isDispatched) {
         if (stepReview) stepReview.classList.add('is-done');
-        if (stepAction) stepAction.classList.add('is-done');
+        if (stepAction) stepAction.classList.add('is-active'); 
     } else if (isLupon) {
         if (stepReview) stepReview.classList.add('is-done');
         if (stepAction) stepAction.classList.add('is-done');
@@ -248,13 +371,14 @@ async function openReportDetails(reportId) {
         if (stepResolved) stepResolved.classList.add('is-done');
     }
 
-    // 2. Render Core Top Fields
     const pnpBadge = isPnpEscalated ? `<span class="pill pill-critical" style="margin-left: 6px;">Escalated to PNP</span>` : '';
     const fields = [
         ['Incident Type', escapeHtml(caseData.incident_type) + pnpBadge],
         ['Purok / Location', escapeHtml(caseData.purok || '—')],
         ['Date Filed', formatDate(caseData.incident_datetime || caseData.created_at)],
-        ['Priority Level', escapeHtml(caseData.priority_level || 'Moderate')],
+        ['Priority Level', caseData.priority_level === 'High' || caseData.priority_level === 'Urgent' 
+            ? `<span style="color: #d15c49; font-weight: 800;">${escapeHtml(caseData.priority_level)}</span>` 
+            : escapeHtml(caseData.priority_level || 'Moderate')],
         ['Current Status', statusPill(currentStatus)],
         ['Recommendation', escapeHtml(caseData.ai_recommendation || 'Under administrative assessment.')],
         ['Narrative Notes', escapeHtml(caseData.narrative_description || 'No description provided.')]
@@ -267,110 +391,78 @@ async function openReportDetails(reportId) {
         </div>
     `).join('');
 
-    // 3. Build Dropdown Stages List
-    // Helper to find relevant milestone data
     const findMilestone = (statuses) => milestones.find(m => statuses.includes(String(m.status_snapshot).toUpperCase()));
 
-    const stagesConfig = [
+    const allStages = [
         {
             id: 'stage-reported',
-            stepNumber: 1,
             title: '1. Reported',
             badge: 'Report Submitted',
             badgeClass: 'pill-active',
             date: formatDate(caseData.created_at),
-            isCompleted: true,
+            isReached: true,
             residentMessage: 'Your incident report has been registered in the system and queued for frontline verification.',
             details: [
                 ['Tracking Reference', ref],
                 ['Reporting Method', 'Resident Online Portal'],
-                ['Initial Complainant Statement', caseData.narrative_description || '—'],
-                ['Safety Reminder', 'Please avoid direct confrontation. Keep safe distance from the reported area.']
+                ['Initial Statement', caseData.narrative_description || '—']
             ]
         },
         {
             id: 'stage-review',
-            stepNumber: 2,
             title: '2. Desk Review',
             badge: (isInProgress || isDispatched || isLupon || isResolved) ? 'Verified' : 'Under Review',
             badgeClass: (isInProgress || isDispatched || isLupon || isResolved) ? 'pill-active' : 'pill-pending',
             date: formatDate(findMilestone(['IN_PROGRESS', 'DESK_REVIEW'])?.created_at || caseData.created_at),
-            isCompleted: !isPending,
+            isReached: !isPending,
             residentMessage: (isInProgress || isDispatched || isLupon || isResolved)
-                ? (isPnpEscalated 
-                    ? 'Report screened and verified. Due to security severity, formal transmittal to the local police precinct has been authorized.' 
-                    : 'Report screened and verified by barangay desk. Prioritized for action.')
+                ? 'Report screened and verified by barangay desk. Prioritized for action.'
                 : 'Awaiting desk officer assessment and priority confirmation.',
-            details: isPnpEscalated ? [
-                ['Desk Assessment', 'Confirmed Critical / Active Threat'],
-                ['Transmittal Office', 'PNP Municipal Police Station'],
-                ['Escalation Reason', 'Exceeds standard barangay mediation scope (firearm / felony threat)'],
-                ['Desk Officer', findMilestone(['IN_PROGRESS', 'ESCALATED_PNP', 'DISPATCHED'])?.officer_in_charge || 'Duty Desk Officer']
-            ] : [
+            details: [
                 ['Desk Assessment', 'Verified under Barangay Jurisdiction'],
-                ['Assigned Priority', caseData.priority_level || 'Moderate'],
-                ['Duty Officer', findMilestone(['IN_PROGRESS', 'DISPATCHED'])?.officer_in_charge || 'Duty Desk Officer']
+                ['Assigned Officer (Transparency)', findMilestone(['IN_PROGRESS', 'DISPATCHED', 'RESOLVED'])?.officer_in_charge || caseData.assigned_officer_name || 'Duty Desk Officer']
             ]
         },
         {
             id: 'stage-dispatch',
-            stepNumber: 3,
             title: '3. Unit Dispatched',
             badge: (isDispatched || isLupon || isResolved) ? 'Dispatched' : 'Pending Deployment',
             badgeClass: (isDispatched || isLupon || isResolved) ? 'pill-blue' : 'pill-pending',
-            date: formatDate(findMilestone(['DISPATCHED', 'CRITICAL', 'ESCALATED_PNP'])?.created_at || '—'),
-            isCompleted: isDispatched || isLupon || isResolved,
+            date: findMilestone(['DISPATCHED', 'CRITICAL', 'ESCALATED_PNP'])?.created_at ? formatDate(findMilestone(['DISPATCHED', 'CRITICAL', 'ESCALATED_PNP']).created_at) : '—',
+            isReached: isDispatched || isLupon || isResolved,
             residentMessage: (isDispatched || isLupon || isResolved)
-                ? (isPnpEscalated
-                    ? 'Joint Response Deployed: Barangay Tanods are securing the perimeter while police tactical units conduct on-site operations.'
-                    : `Patrol response team (${caseData.deployed_unit || 'Barangay Tanod Unit'}) has been deployed to the location.`)
+                ? `Response team (${caseData.deployed_unit || 'Barangay Tanod Unit'}) has been deployed to the location.`
                 : 'Response unit will be mobilized following desk review clearance.',
-            details: isPnpEscalated ? [
-                ['Tactical Response Lead', 'PNP Municipal Patrol Unit'],
-                ['Barangay Support Unit', caseData.deployed_unit || 'Unit Alpha (Barangay Tanods)'],
-                ['Target Location', caseData.purok || '—'],
-                ['Citizen Instruction', 'Keep clear of the active cordoned zone until official clearance is given.']
-            ] : [
+            details: [
                 ['Deployed Unit', caseData.deployed_unit || 'Tanod Patrol Team'],
                 ['Target Area', caseData.purok || '—'],
-                ['Field Mission', 'On-site investigation, verbal de-escalation, and peace preservation.']
+                ['Action Officer', findMilestone(['DISPATCHED'])?.officer_in_charge || caseData.assigned_officer_name || 'Assigned Lead Officer']
             ]
         },
         {
             id: 'stage-resolved',
-            stepNumber: 4,
             title: '4. Resolved',
             badge: isResolved ? 'Case Closed' : (isLupon ? 'Mediation Scheduled' : 'Pending Closure'),
-            badgeClass: isResolved ? 'pill-active' : (isLupon ? 'pill-pending' : 'pill-pending'),
-            date: formatDate(findMilestone(['RESOLVED', 'CLOSED'])?.created_at || '—'),
-            isCompleted: isResolved,
+            badgeClass: isResolved ? 'pill-active' : 'pill-pending',
+            date: findMilestone(['RESOLVED', 'CLOSED'])?.created_at ? formatDate(findMilestone(['RESOLVED', 'CLOSED']).created_at) : '—',
+            isReached: isResolved,
             residentMessage: isResolved
-                ? (isPnpEscalated
-                    ? 'Operation concluded at barangay level. Case and subject officially turned over to PNP for formal investigation and charge filing.'
-                    : 'The incident has been verified resolved on-site by responding personnel.')
+                ? 'The incident has been verified resolved on-site by responding personnel.'
                 : (isLupon ? 'Case endorsed to Lupong Tagapamayapa for amicable conciliation hearing.' : 'Final disposition pending on-site report submission.'),
-            details: isResolved ? (isPnpEscalated ? [
-                ['Final Disposition', 'Transferred to Higher Authority (PNP)'],
-                ['Custody & Action', 'Suspect secured and firearm confiscated by police officers'],
-                ['Official Reference', `Blotter / PIRF Tracking: ${ref}`],
-                ['Complainant Next Steps', 'If you wish to execute a sworn affidavit as a witness/complainant, you may coordinate directly with the PNP Investigation Division.']
-            ] : [
-                ['Final Disposition', 'Amicably Settled / Peace Restored'],
-                ['Actions Executed', findMilestone(['RESOLVED', 'CLOSED'])?.action_note || 'Verbal warning issued; compliance confirmed.'],
-                ['Official Blotter Entry', `Barangay Record #${ref}`],
-                ['Resident Next Steps', 'Case is archived. Should violations recur, re-open a report referencing this number.']
-            ]) : [
-                ['Status', 'Awaiting full resolution or signed settlement.']
+            details: [
+                ['Final Disposition', isResolved ? 'Amicably Settled / Peace Restored' : 'Pending Action'],
+                ['Handling Officer', findMilestone(['RESOLVED', 'CLOSED'])?.officer_in_charge || caseData.assigned_officer_name || 'Desk Officer']
             ]
         }
     ];
 
-    // 4. Render Accordion Dropdowns into timelineEl
-    timelineEl.innerHTML = stagesConfig.map(st => `
-        <details class="milestone-accordion" ${st.isCompleted ? 'open' : ''} style="margin-bottom: 10px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface);">
+    const activeStages = allStages.filter(st => st.isReached);
+
+    timelineEl.innerHTML = activeStages.map(st => `
+        <details class="milestone-accordion" open style="margin-bottom: 10px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface);">
             <summary style="padding: 10px 14px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 13px; background: rgba(0,0,0,0.02); user-select: none;">
                 <span style="display: flex; align-items: center; gap: 8px;">
-                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${st.isCompleted ? 'var(--teal, #19766c)' : 'var(--muted, #94a3b8)'};"></span>
+                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--teal, #19766c);"></span>
                     ${st.title}
                 </span>
                 <span style="display: flex; align-items: center; gap: 8px;">
@@ -448,7 +540,6 @@ async function refreshData() {
     }
 }
 
-// Navigation & Filters
 navLinks.forEach((link) => link.addEventListener('click', () => setView(link.dataset.view)));
 
 document.querySelectorAll('[data-open-view]').forEach(btn => {
@@ -505,7 +596,6 @@ document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     window.location.replace('index.html');
 });
 
-// Theme handling
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const themeToggleLabel = document.getElementById('themeToggleLabel');
 
@@ -527,7 +617,6 @@ themeToggleBtn?.addEventListener('click', () => {
     applyTheme(isDark ? 'light' : 'dark');
 });
 
-// Profile upload
 const photoInput = document.getElementById('residentPhotoInput');
 const avatarPreview = document.getElementById('residentAvatarPreview');
 const avatarInitials = document.getElementById('settingsAvatarInitials');
@@ -570,7 +659,6 @@ document.getElementById('profileForm')?.addEventListener('submit', async (e) => 
     }
 });
 
-// Off-canvas mobile drawer
 const mobileMenuBtn = document.getElementById('mobileMenuBtn');
 const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
 const sidebarBackdrop = document.getElementById('sidebarBackdrop');
