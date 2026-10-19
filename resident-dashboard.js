@@ -23,6 +23,9 @@ const formatDateTime = (val) => (val && val !== '—') ? new Date(String(val).re
 
 function statusPill(status) {
     const s = String(status || '').toUpperCase().trim();
+    if (s === 'REJECTED') {
+        return `<span class="pill pill-rejected">Report Rejected</span>`;
+    }
     if (s === 'CLOSED' || s === 'RESOLVED') {
         return `<span class="pill pill-active">Resolved</span>`;
     }
@@ -355,13 +358,18 @@ async function openReportDetails(reportId) {
                            milestones.some(m => String(m.status_snapshot).includes('ESCALATED') || String(m.action_note).includes('PNP'));
     
     const currentStatus = String(caseData.status || report.status || 'PENDING').toUpperCase().trim();
-    const steps = [stepReported, stepReview, stepAction, stepResolved, stepInProgress, stepAwaitingResolution, stepFindings];
+    const rejectionMilestone = [...milestones].reverse().find(m => String(m.status_snapshot || '').toUpperCase() === 'REJECTED');
+    const rejectionReason = String(rejectionMilestone?.action_note || '')
+        .replace(/^Report rejected during triage\.\s*Reason:\s*/i, '')
+        .trim();
+    const steps = [stepReported, stepReview, stepInProgress, stepAction, stepAwaitingResolution, stepFindings, stepResolved];
     steps.forEach(s => {
         if (s) s.className = 'stepper-step';
     });
     if (stepReported) stepReported.classList.add('is-done');
 
     const isPending = ['PENDING', 'UNDER_REVIEW', 'UNDER REVIEW'].includes(currentStatus);
+    const isRejected = currentStatus === 'REJECTED';
     const isInProgress = ['IN_PROGRESS', 'IN PROGRESS'].includes(currentStatus);
     const isDispatched = ['DISPATCHED', 'UNIT DISPATCHED', 'ESCALATED_PNP'].includes(currentStatus);
     const isLupon = ['FOR_RESOLUTION', 'LUPON'].includes(currentStatus);
@@ -386,12 +394,20 @@ async function openReportDetails(reportId) {
             step.classList.add('is-active');
         }
     };
-    setStepState(stepReview, isPastTriage, isPending);
+    setStepState(stepReview, isPastTriage, isPending || isRejected);
     setStepState(stepInProgress, isInProgress || isPastProgress, isInProgress);
     setStepState(stepAction, hasDispatch, isDispatched);
     setStepState(stepAwaitingResolution, hasMediation, isLupon);
     setStepState(stepFindings, hasFindings, hasFindings && !isConcluded);
     setStepState(stepResolved, isConcluded);
+    let furthestReachedStep = 0;
+    steps.forEach((step, index) => {
+        if (step?.classList.contains('is-done') || step?.classList.contains('is-active')) {
+            furthestReachedStep = index;
+        }
+    });
+    const progressPercent = 7.14 + (furthestReachedStep / (steps.length - 1)) * 85.72;
+    document.getElementById('trackingStepper').style.setProperty('--tracking-progress', `${progressPercent}%`);
 
     const pnpBadge = isPnpEscalated ? `<span class="pill pill-critical" style="margin-left: 6px;">Escalated to PNP</span>` : '';
     const fields = [
@@ -402,7 +418,7 @@ async function openReportDetails(reportId) {
             ? `<span style="color: #d15c49; font-weight: 800;">${escapeHtml(caseData.priority_level)}</span>` 
             : escapeHtml(caseData.priority_level || 'Moderate')],
         ['Current Status', statusPill(currentStatus)],
-        ['Recommendation', escapeHtml(caseData.ai_recommendation || 'Under administrative assessment.')],
+        [isRejected ? 'Rejection Reason' : 'Recommendation', escapeHtml(caseData.ai_recommendation || 'Under administrative assessment.')],
         ['Narrative Notes', escapeHtml(caseData.narrative_description || 'No description provided.')]
     ];
 
@@ -423,7 +439,9 @@ async function openReportDetails(reportId) {
             badgeClass: 'pill-active',
             date: formatDate(caseData.created_at),
             isReached: true,
-            residentMessage: 'Your incident report has been registered in the system and queued for frontline verification.',
+            residentMessage: isRejected
+                ? 'Your report was reviewed and rejected during triage. It will not proceed to case handling.'
+                : 'Your incident report has been registered in the system and queued for frontline verification.',
             details: [
                 ['Tracking Reference', ref],
                 ['Reporting Method', 'Resident Online Portal'],
@@ -433,16 +451,19 @@ async function openReportDetails(reportId) {
         {
             id: 'stage-review',
             title: '2. Desk Review',
-            badge: isPastTriage ? 'Reviewed' : 'Pending Triage',
-            badgeClass: isPastTriage ? 'pill-active' : 'pill-pending',
-            date: formatDate(findMilestone(['IN_PROGRESS', 'DESK_REVIEW'])?.created_at || caseData.created_at),
+            badge: isRejected ? 'Report Rejected' : (isPastTriage ? 'Reviewed' : 'Pending Triage'),
+            badgeClass: isRejected ? 'pill-rejected' : (isPastTriage ? 'pill-active' : 'pill-pending'),
+            date: formatDate(rejectionMilestone?.created_at || findMilestone(['IN_PROGRESS', 'DESK_REVIEW'])?.created_at || caseData.created_at),
             isReached: !isPending,
-            residentMessage: isPastTriage
+            residentMessage: isRejected
+                ? 'This report was not accepted into the official blotter and will not proceed to dispatch, mediation, or resolution.'
+                : isPastTriage
                 ? 'Report screened and verified by barangay desk. Prioritized for action.'
                 : 'Awaiting desk officer assessment and priority confirmation.',
             details: [
-                ['Desk Assessment', 'Verified under Barangay Jurisdiction'],
-                ['Assigned Officer (Transparency)', findMilestone(['IN_PROGRESS', 'DISPATCHED', 'RESOLVED'])?.officer_in_charge || caseData.assigned_officer_name || 'Duty Desk Officer']
+                [isRejected ? 'Decision' : 'Desk Assessment', isRejected ? 'Rejected during initial triage' : 'Verified under Barangay Jurisdiction'],
+                ...(isRejected && rejectionReason ? [['Rejection Reason', rejectionReason]] : []),
+                ['Responsible Officer', rejectionMilestone?.officer_in_charge || findMilestone(['IN_PROGRESS', 'DISPATCHED', 'RESOLVED'])?.officer_in_charge || caseData.assigned_officer_name || 'Duty Desk Officer']
             ]
         },
         {
@@ -523,7 +544,8 @@ async function openReportDetails(reportId) {
         DISPATCHED: 'Dispatched',
         FOR_RESOLUTION: 'Awaiting Resolution',
         RESOLVED: 'Resolved',
-        CLOSED: 'Resolved'
+        CLOSED: 'Resolved',
+        REJECTED: 'Report Rejected'
     }[String(status || '').toUpperCase()] || String(status || 'Case update').replaceAll('_', ' '));
 
     const activityEvents = [];

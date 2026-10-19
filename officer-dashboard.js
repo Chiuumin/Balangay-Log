@@ -34,40 +34,6 @@ const state = {
     currentCaseResolution: null
 };
 
-let inspectSeq = 0;
-let aiSeq = 0;
-let aiTimer = null;
-
-function resetInspectPanel() {
-    const badgeContainer = document.getElementById('detectedKeywordsContainer');
-    if (badgeContainer) badgeContainer.innerHTML = '<span style="font-size: 11.5px; color: var(--muted);">Type narrative details above to start AI classification...</span>';
-    const reasoningBox = document.getElementById('aiReasoningBox');
-    if (reasoningBox) reasoningBox.textContent = 'Waiting for narrative facts to evaluate jurisdiction and emergency level...';
-    const scoreBadge = document.getElementById('aiUrgencyScoreBadge');
-    if (scoreBadge) {
-        scoreBadge.textContent = 'Priority: Low (0%)';
-        scoreBadge.style.background = '';
-        scoreBadge.style.color = '';
-    }
-    const categoryBadge = document.getElementById('aiAssessedCategoryBadge');
-    if (categoryBadge) categoryBadge.textContent = 'Category: Pending';
-}
-
-function refLink(ref) {
-    return `<span class="queue-id" data-trigger-review="true" data-ref="${escapeHtml(ref)}" style="cursor: pointer; text-decoration: underline; color: var(--teal); font-weight: 800;">${escapeHtml(ref)}</span>`;
-}
-
-function validatePhoneField(showAlert = false) {
-    const phoneInput = document.getElementById('complainantPhoneInput');
-    if (!phoneInput) return true;
-    const val = phoneInput.value.trim();
-    const isValid = /^09\d{9}$/.test(val);
-    if (!isValid && showAlert && val !== '') {
-        showNotice('Please enter a valid 11-digit Philippine mobile number starting with 09 (e.g. 09171234567).', true);
-    }
-    return isValid;
-}
-
 const escapeHtml = (val) => String(val ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[c]));
@@ -105,7 +71,8 @@ function statusPill(status) {
         FOR_RESOLUTION: ['resolution', 'Awaiting Resolution'],
         LUPON: ['resolution', 'Awaiting Resolution'],
         RESOLVED: ['resolved', 'Resolved'],
-        CLOSED: ['resolved', 'Resolved']
+        CLOSED: ['resolved', 'Resolved'],
+        REJECTED: ['rejected', 'Report Rejected']
     };
     const [className, label] = statuses[s] || ['unknown', s.replace(/_/g, ' ') || 'Unknown'];
     return `<span class="status-badge status-badge--${className}">${escapeHtml(label)}</span>`;
@@ -123,6 +90,7 @@ function caseStatusLabel(status) {
         LUPON: 'Awaiting Resolution',
         RESOLVED: 'Resolved',
         CLOSED: 'Resolved',
+        REJECTED: 'Report Rejected',
         TRIAGE: 'Triage Assessment',
         PRIORITY_UPDATED: 'Priority Updated',
         REFERRAL: 'Referral',
@@ -153,11 +121,13 @@ function showNotice(msg, isError = false) {
 }
 window.showNotice = showNotice;
 
-const csrfToken = () => (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-
 async function requestOfficer(action, payload = {}, options = {}) {
-    const headers = { 'X-CSRF-Token': csrfToken() };
-    if (!options.formData) headers['Content-Type'] = 'application/json';
+    const headers = { 
+        'X-CSRF-Token': (document.querySelector('meta[name="csrf-token"]') || {}).content || ''
+    };
+    if (!options.formData) {
+        headers['Content-Type'] = 'application/json';
+    }
     const response = await fetch(officerApi, {
         method: action ? 'POST' : 'GET',
         credentials: 'same-origin',
@@ -196,7 +166,7 @@ function renderTriageQueue() {
 
     const html = queue.map(item => `
         <div class="queue-item-card" data-ref="${escapeHtml(item.reference_number)}">
-            <div class="queue-meta-block">
+            <div class="queue-meta-block" style="flex: 1; max-width: 65%;">
                 <div class="queue-header-tag">
                     <span class="queue-id" data-trigger-review="true" data-ref="${escapeHtml(item.reference_number)}" style="cursor: pointer; text-decoration: underline; color: var(--teal); font-weight: 800;">
                         ${escapeHtml(item.reference_number)}
@@ -206,16 +176,18 @@ function renderTriageQueue() {
                 </div>
                 <h3 class="queue-title" style="margin-top: 4px; cursor: default;">${escapeHtml(item.incident_type)}</h3>
                 <p class="queue-details">
-                    <strong>${escapeHtml(item.complainant_name)}</strong> •
-                    ${escapeHtml(item.complainant_phone || 'No phone')} •
-                    ${escapeHtml(item.purok)} •
+                    <strong>${escapeHtml(item.complainant_name)}</strong> • 
+                    ${escapeHtml(item.complainant_phone || 'No phone')} • 
+                    ${escapeHtml(item.purok)} • 
                     ${timeAgo(item.created_at)}
                 </p>
-                <p style="margin: 6px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.4;">${escapeHtml(item.narrative_description)}</p>
+                <p style="margin: 6px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.4;">
+                    ${escapeHtml(item.narrative_description)}
+                </p>
             </div>
             <div class="queue-action-group">
                 <button class="btn-action-primary" data-action="accept" data-ref="${escapeHtml(item.reference_number)}">Accept &amp; Blotter</button>
-                <button class="btn-action-quiet" data-action="dispatch" data-ref="${escapeHtml(item.reference_number)}">Dispatch</button>
+                <button class="btn-action-quiet" data-action="reject" data-ref="${escapeHtml(item.reference_number)}">Reject / Mark as Spam</button>
             </div>
         </div>
     `).join('');
@@ -229,27 +201,33 @@ function renderUrgentCases() {
     const cases = state.urgentCases;
     const badge = document.getElementById('emergencyNavBadge');
     if (badge) badge.textContent = cases.length;
+
     if (!container) return;
     if (cases.length === 0) {
         container.innerHTML = '<p class="empty-message">No critical or emergency incidents pending.</p>';
         return;
     }
+
     container.innerHTML = cases.map(c => `
         <div class="queue-item-card" style="border-left: 4px solid var(--coral);" data-ref="${escapeHtml(c.reference_number)}">
             <div class="queue-meta-block">
                 <div class="queue-header-tag">
-                    ${refLink(c.reference_number)}
+                    <span class="queue-id" data-trigger-review="true" data-ref="${escapeHtml(c.reference_number)}" style="cursor: pointer; text-decoration: underline; color: var(--teal); font-weight: 800;">
+                        ${escapeHtml(c.reference_number)}
+                    </span>
                     ${priorityPill(c.priority_level)}
                     ${statusPill(c.status)}
                 </div>
                 <h3 class="queue-title" style="cursor: default;">${escapeHtml(c.incident_type)}</h3>
                 <p class="queue-details">
-                    <strong>${escapeHtml(c.complainant_name)}</strong> •
-                    ${escapeHtml(c.purok)} •
-                    Reported: ${timeAgo(c.created_at)} •
+                    <strong>${escapeHtml(c.complainant_name)}</strong> • 
+                    ${escapeHtml(c.purok)} • 
+                    Reported: ${timeAgo(c.created_at)} • 
                     Responder: <strong>${escapeHtml(c.deployed_unit || 'Unassigned')}</strong>
                 </p>
-                <p style="margin: 4px 0 0; font-size: 11.5px; color: var(--muted);">${escapeHtml(c.narrative_description)}</p>
+                <p style="margin: 4px 0 0; font-size: 11.5px; color: var(--muted);">
+                    ${escapeHtml(c.narrative_description)}
+                </p>
             </div>
             <div class="queue-action-group">
                 <button class="button button-danger" data-action="dispatch" data-ref="${escapeHtml(c.reference_number)}">
@@ -266,16 +244,20 @@ function renderLuponCases() {
     const cases = state.luponCases;
     const badge = document.getElementById('luponNavBadge');
     if (badge) badge.textContent = cases.length;
+
     if (!container) return;
     if (cases.length === 0) {
         container.innerHTML = '<p class="empty-message">No cases currently scheduled for Lupon mediation.</p>';
         return;
     }
+
     container.innerHTML = cases.map(c => `
         <div class="queue-item-card lupon-case-card" data-ref="${escapeHtml(c.reference_number)}">
             <div class="queue-meta-block">
                 <div class="queue-header-tag">
-                    ${refLink(c.reference_number)}
+                    <span class="queue-id" data-trigger-review="true" data-ref="${escapeHtml(c.reference_number)}" style="cursor: pointer; text-decoration: underline; color: var(--teal); font-weight: 800;">
+                        ${escapeHtml(c.reference_number)}
+                    </span>
                     ${statusPill(c.status)}
                 </div>
                 <h3 class="queue-title" style="cursor: default;">${escapeHtml(c.incident_type)}</h3>
@@ -285,7 +267,9 @@ function renderLuponCases() {
                     Mediator: <strong>${escapeHtml(c.assigned_officer || 'Barangay Captain / Secretary')}</strong> •
                     Hearing: <strong>${escapeHtml(formatDateTime(c.next_hearing))}</strong>
                 </p>
-                <p style="margin: 4px 0 0; font-size: 11.5px; color: var(--muted);">${escapeHtml(c.narrative_description)}</p>
+                <p style="margin: 4px 0 0; font-size: 11.5px; color: var(--muted);">
+                    ${escapeHtml(c.narrative_description)}
+                </p>
             </div>
             <div class="queue-action-group lupon-case-actions">
                 <button class="btn-action-primary" data-action="complete_mediation" data-ref="${escapeHtml(c.reference_number)}">Complete Mediation</button>
@@ -489,6 +473,7 @@ function renderCaseDetail(data) {
     const status = String(c.status || '').toUpperCase().replace(/\s+/g, '_');
     const isResolved = status === 'RESOLVED';
     const isAdministrativelyClosed = status === 'CLOSED';
+    const isRejected = status === 'REJECTED';
     const isDispatched = status === 'DISPATCHED';
     const role = String(state.currentUserRole).toUpperCase();
     const canAct = ['OFFICER', 'CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN'].includes(role);
@@ -569,9 +554,9 @@ function renderCaseDetail(data) {
     const findingEntries = Array.isArray(data.findings) ? data.findings : [];
     state.currentCaseFindings = findingEntries;
     const findingsSection = document.getElementById('caseFindingsSection');
-    const canRecordFindings = canAct && !isAdministrativelyClosed && !isResolved
+    const canRecordFindings = canAct && !isAdministrativelyClosed && !isResolved && !isRejected
         && workflowReady
-        && ['PENDING', 'UNDER_REVIEW', 'CRITICAL', 'IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION'].includes(status);
+        && ['IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION'].includes(status);
     findingsSection.hidden = !findingEntries.length && !canRecordFindings;
     document.getElementById('caseFindingsList').innerHTML = findingEntries.length
         ? `<ul class="case-findings-list">${findingEntries.map(item => `<li><strong>${escapeHtml(formatDateTime(item.created_at))}</strong><p><b>Observations:</b> ${escapeHtml(item.observations)}${item.persons_contacted ? `<br><b>Persons contacted:</b> ${escapeHtml(item.persons_contacted)}` : ''}<br><b>Action taken:</b> ${escapeHtml(item.action_taken)}<br><b>Findings:</b> ${escapeHtml(item.findings)}${item.recommended_next_steps ? `<br><b>Recommended next steps:</b> ${escapeHtml(item.recommended_next_steps)}` : ''}</p><small>By ${escapeHtml(item.submitted_by_name || 'System')}</small></li>`).join('')}</ul>`
@@ -587,8 +572,7 @@ function renderCaseDetail(data) {
         && workflowReady
         && ['IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION'].includes(status)
         && findingEntries.length > 0;
-    const canClosePending = workflowReady && canClose && ['PENDING', 'UNDER_REVIEW', 'CRITICAL'].includes(status) && findingEntries.length > 0;
-    const canFinalize = canClose && (isResolved || canClosePending);
+    const canFinalize = canClose && isResolved;
     resolutionSection.hidden = workflowReady
         ? !resolutionEntries.length && !closureEntries.length && !canResolve && !canFinalize
         : false;
@@ -632,7 +616,9 @@ function renderCaseDetail(data) {
             : 'Submit Resolution'
     ));
 
-    const nextStep = status === 'PENDING' || status === 'CRITICAL' || status === 'UNDER_REVIEW'
+    const nextStep = isRejected
+        ? 'This report was rejected during triage and is read-only.'
+        : status === 'PENDING' || status === 'CRITICAL' || status === 'UNDER_REVIEW'
         ? assignedOfficer ? 'Complete triage, then move the case into active handling or dispatch.' : 'Assign an officer and review the report.'
         : status === 'IN_PROGRESS'
             ? assignedUnit ? 'Record field findings after dispatch, or refer the case for mediation.' : 'Assign / dispatch responding personnel.'
@@ -652,7 +638,7 @@ function renderCaseDetail(data) {
         if (!isAdministrativelyClosed) {
             if (['PENDING', 'UNDER_REVIEW', 'CRITICAL'].includes(status)) {
                 actionButtons.push(['accept', 'Accept into Blotter', 'btn-action-primary']);
-                actionButtons.push(['dispatch', 'Assign / Dispatch', 'btn-action-quiet']);
+                actionButtons.push(['reject', 'Reject / Mark as Spam', 'btn-action-quiet']);
             } else if (status === 'IN_PROGRESS') {
                 actionButtons.push(['dispatch', assignedUnit ? 'Update / Dispatch Unit' : 'Assign / Dispatch', 'btn-action-primary']);
                 actionButtons.push(['refer', 'Refer / Escalate', 'btn-action-quiet']);
@@ -676,6 +662,7 @@ function renderCaseDetail(data) {
         ? 'Your account does not have permission to change this case.'
         : !workflowReady ? 'Case details remain viewable. Apply the case workflow database migration to enable findings, resolution, and finalization actions.'
         : isAdministrativelyClosed ? canReopen ? 'Reopening is available only to an authorized Captain or administrator and requires a reason.' : 'This finalized resolution can only be viewed.'
+        : isRejected ? 'This report was rejected during triage. No further case actions are available.'
         : isResolved ? canClose ? 'This resolved case can be finalized by an authorized Captain or administrator.' : 'This case is resolved and read-only.'
         : isDispatched ? 'Record findings below, or continue the case workflow.'
         : 'Actions are shown based on the current case status and your role.';
@@ -731,6 +718,7 @@ function renderNotifications() {
         dropdownList.innerHTML = '<p class="empty-message" style="margin: 24px 0;">No active alerts.</p>';
         return;
     }
+
     dropdownList.innerHTML = notifs.map(n => {
         const isCrit = n.priority_level === 'Critical' || n.status === 'CRITICAL';
         return `
@@ -741,8 +729,11 @@ function renderNotifications() {
                     </span>
                     <span class="notif-item-time">${timeAgo(n.created_at)}</span>
                 </div>
-                <p class="notif-item-desc">Reported by <strong>${escapeHtml(n.complainant_name)}</strong> in ${escapeHtml(n.purok)}</p>
-            </div>`;
+                <p class="notif-item-desc">
+                    Reported by <strong>${escapeHtml(n.complainant_name)}</strong> in ${escapeHtml(n.purok)}
+                </p>
+            </div>
+        `;
     }).join('');
 }
 
@@ -757,6 +748,7 @@ notifBellBtn?.addEventListener('click', (e) => {
 document.getElementById('notifDropdownList')?.addEventListener('click', (e) => {
     const item = e.target.closest('.notif-item');
     if (!item) return;
+    const ref = item.dataset.ref;
     notifDropdown?.classList.remove('is-active');
     const refInput = document.getElementById('dispatchRefInput');
     if (refInput) refInput.value = ref;
@@ -765,13 +757,10 @@ document.getElementById('notifDropdownList')?.addEventListener('click', (e) => {
 });
 
 document.addEventListener('click', (e) => {
-    if (!e.target.closest('.notif-container')) notifDropdown?.classList.remove('is-active');
+    if (!e.target.closest('.notif-container')) {
+        notifDropdown?.classList.remove('is-active');
+    }
 });
-
-function setText(id, text) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = text;
-}
 
 async function refreshOperationsData() {
     try {
@@ -802,7 +791,8 @@ async function refreshOperationsData() {
         if (banner) {
             if (state.criticalCase) {
                 banner.hidden = false;
-                setText('criticalBannerHeading', `Critical Case (${state.criticalCase.reference_number}) Needs Attention: ${state.criticalCase.incident_type}`);
+                const head = document.getElementById('criticalBannerHeading');
+                if (head) head.textContent = `Critical Case (${state.criticalCase.reference_number}) Needs Attention: ${state.criticalCase.incident_type}`;
                 document.getElementById('criticalDispatchBtn')?.setAttribute('data-ref', state.criticalCase.reference_number);
             } else {
                 banner.hidden = true;
@@ -818,17 +808,22 @@ async function refreshOperationsData() {
 
         if (data.officer) {
             const officerName = data.officer.full_name || 'Barangay Officer';
-            setText('officerDisplayName', officerName);
+            const nameEl = document.getElementById('officerDisplayName');
+            if (nameEl) nameEl.textContent = officerName;
+
             const settingsName = document.getElementById('settingsName');
             if (settingsName) settingsName.value = officerName;
-            setText('settingsProfileName', officerName);
+            const settingsProfileName = document.getElementById('settingsProfileName');
+            if (settingsProfileName) settingsProfileName.textContent = officerName;
+
             const settingsContact = document.getElementById('settingsContact');
             if (settingsContact) settingsContact.value = data.officer.contact_number || '';
 
             const initials = officerName.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('') || 'OF';
-            setText('officerInitials', initials);
-            setText('settingsAvatarInitials', initials);
+            const initialsEl = document.getElementById('officerInitials');
+            if (initialsEl) initialsEl.textContent = initials;
             const cardAvatar = document.getElementById('settingsAvatarInitials');
+            if (cardAvatar) cardAvatar.textContent = initials;
 
             const pic = data.officer.profile_picture;
             const profilePicEl = document.getElementById('officerProfilePic');
@@ -836,6 +831,7 @@ async function refreshOperationsData() {
                 profilePicEl.hidden = !pic;
                 if (pic) profilePicEl.src = pic + '?v=' + Date.now();
             }
+
             const settingsPreview = document.getElementById('settingsAvatarPreview');
             if (settingsPreview) {
                 if (pic) {
@@ -960,22 +956,17 @@ async function inspectNarrativeWithAI(narrativeText) {
                 </div>
             `;
         }
-} catch (err) {
-    if (statusContainer) { 
-        statusContainer.textContent = 'AI inspection failed.'; 
-        statusContainer.classList.remove('pulse'); 
+    } catch (err) {
+        if (statusContainer) statusContainer.textContent = 'AI inspection failed.';
+        if (reasoningBox) reasoningBox.textContent = err.message;
     }
-    if (reasoningBox) {
-        reasoningBox.textContent = err.message || 'Failed to evaluate narrative.';
-    }
-}
 }
 
 document.addEventListener('click', async (e) => {
     const idTrigger = e.target.closest('[data-trigger-review="true"]');
     if (idTrigger) {
         e.preventDefault();
-        const ref = btn.dataset.ref || btn.getAttribute('data-ref') || '';
+        const ref = idTrigger.dataset.ref;
         if (!ref) return;
 
         await openCaseDetails(ref);
@@ -987,11 +978,24 @@ document.addEventListener('click', async (e) => {
         e.preventDefault();
         const encodeDialog = document.getElementById('encodeCaseDialog');
         const form = document.getElementById('encodeCaseForm');
+
         if (form) form.reset();
-        inspectSeq++;
-        resetInspectPanel();
+
+        const badgeContainer = document.getElementById('detectedKeywordsContainer');
+        if (badgeContainer) badgeContainer.innerHTML = '<span style="font-size: 11.5px; color: var(--muted);">Type narrative details above to start AI classification...</span>';
+        const reasoningBox = document.getElementById('aiReasoningBox');
+        if (reasoningBox) reasoningBox.textContent = 'Waiting for narrative facts to evaluate jurisdiction and emergency level...';
+        const scoreBadge = document.getElementById('aiUrgencyScoreBadge');
+        if (scoreBadge) {
+            scoreBadge.textContent = 'Priority: Low (0%)';
+            scoreBadge.style.background = '';
+            scoreBadge.style.color = '';
+        }
+        const categoryBadge = document.getElementById('aiAssessedCategoryBadge');
+        if (categoryBadge) categoryBadge.textContent = 'Category: Pending';
+
         if (encodeDialog && typeof encodeDialog.showModal === 'function') {
-            if (!encodeDialog.open) encodeDialog.showModal();
+            encodeDialog.showModal();
         } else if (encodeDialog) {
             encodeDialog.setAttribute('open', '');
         }
@@ -1011,9 +1015,9 @@ document.addEventListener('click', async (e) => {
             await refreshOperationsData();
             if (state.currentCaseReference === ref) await openCaseDetails(ref);
         } else if (action === 'reject') {
-            document.getElementById('caseReviewModal')?.close();
-            await openCaseDetails(ref);
-            showNotice('Record findings and a written conclusion before closing this case.');
+            document.getElementById('rejectReportReference').value = ref;
+            document.getElementById('rejectReportReason').value = '';
+            document.getElementById('rejectReportDialog').showModal();
         } else if (action === 'resolve_case') {
             document.getElementById('caseResolutionForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } else if (action === 'close_case') {
@@ -1084,6 +1088,37 @@ document.getElementById('criticalDispatchBtn')?.addEventListener('click', (e) =>
         document.getElementById('dispatchRefInput').value = ref;
         populateDispatchDropdown();
         document.getElementById('dispatchModal').showModal();
+    }
+});
+
+document.getElementById('rejectReportForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const referenceNumber = document.getElementById('rejectReportReference').value;
+    const reason = document.getElementById('rejectReportReason').value.trim();
+    if (!referenceNumber || reason.length < 5) {
+        showNotice('Enter a rejection reason of at least 5 characters.', true);
+        return;
+    }
+
+    const submitButton = form.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    try {
+        const result = await requestOfficer('flag_reject', {
+            reference_number: referenceNumber,
+            reason
+        });
+        document.getElementById('rejectReportDialog').close();
+        document.getElementById('caseReviewModal')?.close();
+        showNotice(result.message);
+        await refreshOperationsData();
+        if (state.currentCaseReference === referenceNumber) {
+            await openCaseDetails(referenceNumber);
+        }
+    } catch (error) {
+        showNotice(error.message, true);
+    } finally {
+        submitButton.disabled = false;
     }
 });
 
@@ -1344,6 +1379,7 @@ document.getElementById('luponForm')?.addEventListener('submit', async (e) => {
     const mode = document.getElementById('luponActionMode').value;
     const ref = document.getElementById('luponRefInput').value;
     const formData = new FormData(e.currentTarget);
+
     try {
         if (mode === 'refer') {
             const destination = formData.get('destination');
@@ -1385,26 +1421,35 @@ document.getElementById('luponDestinationSelect')?.addEventListener('change', (e
 document.getElementById('encodeCaseForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
-    if (!validatePhoneField(true)) return;
     const submitBtn = form.querySelector('button[type="submit"]');
+
     if (submitBtn) submitBtn.disabled = true;
+
     try {
         const formData = new FormData(form);
-        const narrative = String(formData.get('narrative_description') || '').trim();
+        const narrative = (formData.get('narrative_description') || '').trim();
+
         if (!narrative) {
             showNotice('Narrative description is required.', true);
+            if (submitBtn) submitBtn.disabled = false;
             return;
         }
-        const res = await requestOfficer('encode_case', {
-            complainant_name: String(formData.get('complainant_name') || '').trim(),
-            complainant_phone: String(formData.get('complainant_phone') || '').trim(),
-            purok: String(formData.get('purok') || '').trim(),
-            street_address: String(formData.get('street_address') || '').trim(),
+
+        const payload = {
+            action: 'encode_case',
+            complainant_name: (formData.get('complainant_name') || 'Walk-in Resident').trim(),
+            complainant_phone: (formData.get('complainant_phone') || 'N/A').trim(),
+            incident_type: (formData.get('incident_type') || 'General Incident').trim(),
+            purok: (formData.get('purok') || 'Purok 1').trim(),
+            street_address: (formData.get('street_address') || '').trim(),
             narrative_description: narrative,
-            incident_type: String(formData.get('incident_type') || '').trim()
-        });
+            priority_level: formData.get('priority_level') || 'Low'
+        };
+
+        const res = await requestOfficer('encode_case', payload);
         const encodeDialog = document.getElementById('encodeCaseDialog');
         if (encodeDialog) encodeDialog.close();
+
         showNotice(res.message || 'Case recorded successfully.');
         await refreshOperationsData();
     } catch (err) {
@@ -1417,12 +1462,11 @@ document.getElementById('encodeCaseForm')?.addEventListener('submit', async (e) 
 document.addEventListener('input', (e) => {
     if (e.target && (e.target.matches('#encodeCaseForm textarea[name="narrative_description"]') || e.target.id === 'narrativeDescriptionInput')) {
         clearTimeout(triageDebounceTimer);
-        clearTimeout(aiTimer);
-        triageDebounceTimer = setTimeout(() => inspectNarrativeWithAI(e.target.value), 450);
+        triageDebounceTimer = setTimeout(() => {
+            inspectNarrativeWithAI(e.target.value);
+        }, 600);
     }
 });
-
-
 
 document.getElementById('profileForm')?.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -1432,8 +1476,8 @@ document.getElementById('profileForm')?.addEventListener('submit', async (event)
         const result = await requestOfficer('profile_update', {}, { formData });
         showNotice(result.message || 'Profile updated successfully.');
         await refreshOperationsData();
-    } catch (error) {
-        showNotice(error.message, true);
+    } catch (error) { 
+        showNotice(error.message, true); 
     }
 });
 
@@ -1444,22 +1488,29 @@ document.getElementById('passwordForm')?.addEventListener('submit', async (event
         const result = await requestOfficer('password_update', payload);
         event.currentTarget.reset();
         showNotice(result.message || 'Password updated successfully.');
-    } catch (error) {
-        showNotice(error.message, true);
+    } catch (error) { 
+        showNotice(error.message, true); 
     }
 });
 
 const photoInput = document.getElementById('settingsPhotoInput');
 const avatarPreview = document.getElementById('settingsAvatarPreview');
 const avatarInitials = document.getElementById('settingsAvatarInitials');
+
 if (photoInput) {
     photoInput.addEventListener('change', function () {
         const file = this.files && this.files[0];
         if (!file) return;
+
         const reader = new FileReader();
-        reader.onload = function (ev) {
-            if (avatarPreview) { avatarPreview.src = ev.target.result; avatarPreview.style.display = 'block'; }
-            if (avatarInitials) avatarInitials.style.display = 'none';
+        reader.onload = function (e) {
+            if (avatarPreview) {
+                avatarPreview.src = e.target.result;
+                avatarPreview.style.display = 'block';
+            }
+            if (avatarInitials) {
+                avatarInitials.style.display = 'none';
+            }
         };
         reader.readAsDataURL(file);
     });
@@ -1487,6 +1538,7 @@ navLinks.forEach(link => link.addEventListener('click', () => setView(link.datas
 
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const themeToggleLabel = document.getElementById('themeToggleLabel');
+
 function applyTheme(theme) {
     if (theme === 'dark') {
         document.documentElement.setAttribute('data-theme', 'dark');
@@ -1500,19 +1552,22 @@ function applyTheme(theme) {
 }
 if (localStorage.getItem('balangay_theme') === 'dark') applyTheme('dark');
 themeToggleBtn?.addEventListener('click', () => {
-    applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    applyTheme(isDark ? 'light' : 'dark');
 });
 
 document.getElementById('logoutBtn')?.addEventListener('click', async () => {
-    try { await fetch('api/logout.php', { method: 'POST', credentials: 'same-origin' }); } catch {}
+    try { 
+        await fetch('api/logout.php', { method: 'POST', credentials: 'same-origin' }); 
+    } catch {}
     sessionStorage.clear();
     localStorage.removeItem('currentUser');
     localStorage.removeItem('authToken');
     window.location.replace('index.html');
 });
 
-
-
 const initialView = location.hash.slice(1);
-if (initialView && document.getElementById(`view-${initialView}`)) setView(initialView);
+if (initialView && document.getElementById(`view-${initialView}`)) {
+    setView(initialView);
+}
 refreshOperationsData();
