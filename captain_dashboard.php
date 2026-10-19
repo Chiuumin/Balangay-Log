@@ -22,11 +22,33 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 </head>
 <body>
 	<div class="admin-shell">
-		<aside class="admin-sidebar">
-			<a class="admin-brand" href="captain_dashboard.php" aria-label="BalangayLog Executive Overview">
+		<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+		<header class="mobile-top-header">
+			<button class="mobile-hamburger-btn" id="mobileMenuBtn" type="button" aria-label="Open Navigation" aria-expanded="false">
+				<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+					<line x1="3" y1="6" x2="21" y2="6"></line>
+					<line x1="3" y1="12" x2="21" y2="12"></line>
+					<line x1="3" y1="18" x2="21" y2="18"></line>
+				</svg>
+			</button>
+			<a class="admin-brand mobile-brand-inline" href="captain_dashboard.php">
 				<span class="admin-brand-mark">B</span>
 				<span><strong>BalangayLog</strong><small>BARANGAY DUALE</small></span>
 			</a>
+		</header>
+		<aside class="admin-sidebar" id="adminSidebar">
+			<div class="sidebar-header-row">
+				<a class="admin-brand" href="captain_dashboard.php" aria-label="BalangayLog Executive Overview">
+					<span class="admin-brand-mark">B</span>
+					<span><strong>BalangayLog</strong><small>BARANGAY DUALE</small></span>
+				</a>
+				<div class="sidebar-header-actions">
+					<button class="sidebar-collapse-btn" id="sidebarCollapseBtn" type="button" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">
+						<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+					</button>
+					<button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close Navigation">×</button>
+				</div>
+			</div>
 			<div class="admin-identity">
 				<span class="identity-avatar" id="captainAvatar">CP<img id="captainPicture" alt="" hidden></span>
 				<span><strong id="captainSideName">Capt. <?= $captainName ?></strong><small>Punong Barangay</small></span>
@@ -303,6 +325,7 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 
 	<dialog class="admin-dialog" id="caseDialog"><div class="dialog-heading"><div><p class="eyebrow">CASE RECORD (READ-ONLY)</p><h2 id="caseDialogTitle">Case details</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div><div id="caseDetails" class="detail-content"></div><div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog>Close</button></div></dialog>
 
+	<script src="sidebar.js?v=<?= time() ?>" defer></script>
 	<script src="captain-dashboard.js?v=<?= time() ?>" defer></script>
 </body>
 </html>

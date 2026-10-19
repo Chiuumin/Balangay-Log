@@ -319,14 +319,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         const priorityClass = item.priority.toLowerCase();
                         const newCaseHtml = `
-                            <div class="case-item">
+                            <div class="case-item" data-case-status="PENDING">
                                 <div class="case-meta">
                                     <h4>${item.title}</h4>
                                     <span class="case-subtext">${item.reference_number} · ${item.complainant}</span>
                                 </div>
                                 <div class="case-tags">
                                     <span class="badge badge-${priorityClass}">${item.priority}</span>
-                                    <span class="pill pill-pending">Pending</span>
+                                    <span class="pill pill-pending">Pending Triage</span>
                                     <button class="btn-suggest">💡 Suggest</button>
                                 </div>
                             </div>
@@ -461,13 +461,26 @@ document.addEventListener('DOMContentLoaded', () => {
             btnApplyAction.innerText = 'Executing...';
 
             try {
+                const actionType = currentClassification.includes('LUPON') ? 'LUPON' : 'DISPATCH';
+                const actionData = {
+                    reference_number: currentSuggestRef,
+                    action_type: actionType
+                };
+                if (actionType === 'LUPON') {
+                    actionData.reason = prompt('Why is this case being referred to Lupon?');
+                    if (actionData.reason === null) return;
+                    actionData.mediator = prompt('Enter the assigned Lupon mediator:', 'Barangay Lupon Panel');
+                    if (actionData.mediator === null) return;
+                    actionData.schedule = prompt('Enter the hearing date and time (YYYY-MM-DDTHH:MM):');
+                    if (actionData.schedule === null) return;
+                } else {
+                    actionData.deployed_unit = prompt('Enter the responding unit:', 'Tanod Patrol Unit');
+                    if (actionData.deployed_unit === null) return;
+                }
                 const response = await fetch('api/execute_action.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        reference_number: currentSuggestRef,
-                        action_type: currentClassification.includes('LUPON') ? 'LUPON' : 'DISPATCH'
-                    })
+                    body: JSON.stringify(actionData)
                 });
 
                 const result = await response.json();
@@ -492,7 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="activity-entry">
                                 <span class="act-dot act-purple"></span>
                                 <div class="act-details">
-                                    <p class="act-text"><strong>${currentSuggestRef}</strong> action executed — dispatched tanods</p>
+                                    <p class="act-text"><strong>${currentSuggestRef}</strong> ${actionType === 'LUPON' ? 'referred to Lupon' : 'dispatched tanods'}</p>
                                     <span class="act-time">Just now</span>
                                 </div>
                             </div>
@@ -665,16 +678,68 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusModalCaseRef   = document.getElementById('statusModalCaseRef');
     const targetStatusSelect   = document.getElementById('targetStatusSelect');
     const statusActionNote     = document.getElementById('statusActionNote');
+    const statusDispatchFields = document.getElementById('statusDispatchFields');
+    const statusDispatchUnit   = document.getElementById('statusDispatchUnit');
+    const statusReferralFields = document.getElementById('statusReferralFields');
+    const statusMediator       = document.getElementById('statusMediator');
+    const statusHearing        = document.getElementById('statusHearing');
+    const statusActionNoteLabel = document.getElementById('statusActionNoteLabel');
 
     let activeStatusTargetRef = '';
+    let activeStatusSourceStatus = '';
+    const caseStatusLabels = {
+        PENDING: 'Pending Triage',
+        UNDER_REVIEW: 'Pending Triage',
+        CRITICAL: 'Pending Triage',
+        IN_PROGRESS: 'In Progress',
+        DISPATCHED: 'Dispatched',
+        FOR_RESOLUTION: 'Awaiting Resolution',
+        RESOLVED: 'Resolved',
+        CLOSED: 'Closed'
+    };
+
+    function statusTransitionOptions(status, role) {
+        const transitions = {
+            PENDING: ['IN_PROGRESS', 'DISPATCHED', 'CLOSED'],
+            UNDER_REVIEW: ['IN_PROGRESS', 'DISPATCHED', 'CLOSED'],
+            CRITICAL: ['IN_PROGRESS', 'DISPATCHED', 'CLOSED'],
+            IN_PROGRESS: ['DISPATCHED', 'FOR_RESOLUTION', 'CLOSED'],
+            DISPATCHED: ['IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION', 'CLOSED'],
+            FOR_RESOLUTION: ['RESOLVED', 'CLOSED'],
+            RESOLVED: ['CLOSED'],
+            CLOSED: ['IN_PROGRESS']
+        };
+        const currentRole = String(role || '').toUpperCase();
+        return (transitions[status] || []).filter(target => {
+            if (target === 'CLOSED') return ['CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN'].includes(currentRole);
+            if (status === 'CLOSED' && target === 'IN_PROGRESS') return ['CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN'].includes(currentRole);
+            return true;
+        });
+    }
+
+    function updateStatusModalFields() {
+        const target = targetStatusSelect?.value || '';
+        const needsLuponDetails = target === 'FOR_RESOLUTION';
+        const needsReason = ['FOR_RESOLUTION', 'RESOLVED', 'CLOSED'].includes(target)
+            || (activeStatusSourceStatus === 'CLOSED' && target === 'IN_PROGRESS');
+        if (statusDispatchFields) statusDispatchFields.hidden = target !== 'DISPATCHED';
+        if (statusReferralFields) statusReferralFields.hidden = !needsLuponDetails;
+        if (statusDispatchUnit) statusDispatchUnit.required = target === 'DISPATCHED';
+        if (statusMediator) statusMediator.required = needsLuponDetails;
+        if (statusHearing) statusHearing.required = needsLuponDetails;
+        if (statusActionNote) statusActionNote.required = needsReason;
+        if (statusActionNoteLabel) statusActionNoteLabel.textContent = needsReason ? 'Reason / Resolution Notes (required)' : 'Officer Log / Progress Notes';
+    }
 
     function closeStatusModal() {
         if (statusModal) statusModal.style.display = 'none';
         activeStatusTargetRef = '';
+        activeStatusSourceStatus = '';
     }
 
     if (btnCloseStatusModal) btnCloseStatusModal.addEventListener('click', closeStatusModal);
     if (btnCancelStatus) btnCancelStatus.addEventListener('click', closeStatusModal);
+    if (targetStatusSelect) targetStatusSelect.addEventListener('change', updateStatusModalFields);
 
     // Clicking any status pill in Recent Cases opens the transition modal
     document.addEventListener('click', (e) => {
@@ -689,8 +754,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const refNumber = refMatch ? refMatch[0] : subtext.split('·')[0].trim();
 
         activeStatusTargetRef = refNumber;
+        activeStatusSourceStatus = String(caseItem.dataset.caseStatus || pill.innerText || '').toUpperCase().replace(/\s+/g, '_');
         if (statusModalCaseRef) statusModalCaseRef.innerText = refNumber;
         if (statusActionNote) statusActionNote.value = '';
+        if (statusDispatchUnit) statusDispatchUnit.value = '';
+        if (statusMediator) statusMediator.value = '';
+        if (statusHearing) statusHearing.value = '';
+        const role = JSON.parse(sessionStorage.getItem('currentUser') || '{}')?.role;
+        const options = statusTransitionOptions(activeStatusSourceStatus, role);
+        if (targetStatusSelect) {
+            targetStatusSelect.innerHTML = options.map(status => `<option value="${status}">${caseStatusLabels[status] || status.replaceAll('_', ' ')}</option>`).join('');
+            targetStatusSelect.disabled = options.length === 0;
+        }
+        if (btnConfirmStatus) btnConfirmStatus.disabled = options.length === 0;
+        updateStatusModalFields();
         if (statusModal) statusModal.style.display = 'flex';
     });
 
@@ -700,6 +777,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const selectedStatus = targetStatusSelect?.value || 'IN_PROGRESS';
             const noteText       = statusActionNote?.value.trim() || '';
+            const statusPayload = {
+                reference_number: activeStatusTargetRef,
+                new_status: selectedStatus,
+                action_note: noteText
+            };
+            if (selectedStatus === 'DISPATCHED' && !statusDispatchUnit?.value.trim()) {
+                alert('Assign a responder or unit before dispatch.');
+                return;
+            }
+            if (selectedStatus === 'DISPATCHED') {
+                statusPayload.deployed_unit = statusDispatchUnit.value.trim();
+            }
+            if (selectedStatus === 'FOR_RESOLUTION'
+                && (!noteText || !statusMediator?.value.trim() || !statusHearing?.value)) {
+                alert('A referral reason, Lupon mediator, and hearing schedule are required.');
+                return;
+            }
+            if (selectedStatus === 'FOR_RESOLUTION') {
+                statusPayload.mediator = statusMediator.value.trim();
+                statusPayload.schedule = statusHearing.value;
+            }
+            if (['RESOLVED', 'CLOSED'].includes(selectedStatus)
+                || (activeStatusSourceStatus === 'CLOSED' && selectedStatus === 'IN_PROGRESS')) {
+                if (!noteText) {
+                    alert('A reason is required for this status change.');
+                    return;
+                }
+            }
 
             btnConfirmStatus.disabled = true;
             btnConfirmStatus.innerText = 'Updating...';
@@ -708,11 +813,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const response = await fetch('api/update_case_status.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        reference_number: activeStatusTargetRef,
-                        new_status: selectedStatus,
-                        action_note: noteText
-                    })
+                    body: JSON.stringify(statusPayload)
                 });
 
                 const result = await response.json();
@@ -893,14 +994,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     const badgeLabel = isCritical ? 'Critical' : 'Standard';
 
                     const html = `
-                        <div class="case-item">
+                        <div class="case-item" data-case-status="${item.status}">
                             <div class="case-meta">
                                 <h4>${item.incident_type}</h4>
                                 <span class="case-subtext">${item.reference_number} · ${item.purok || 'Sitio Masaya'}</span>
                             </div>
                             <div class="case-tags">
                                 <span class="badge ${badgeClass}">${badgeLabel}</span>
-                                <span class="pill pill-${statusClass}">${item.status.replace('_', ' ')}</span>
+                                <span class="pill pill-${statusClass}">${caseStatusLabels[String(item.status).toUpperCase()] || item.status.replaceAll('_', ' ')}</span>
                                 <button class="btn-suggest">💡 Suggest</button>
                             </div>
                         </div>

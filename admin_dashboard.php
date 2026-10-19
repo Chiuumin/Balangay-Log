@@ -46,7 +46,12 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
                     <span class="admin-brand-mark">B</span>
                     <span><strong>BalangayLog</strong><small>BARANGAY DUALE</small></span>
                 </a>
-                <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close Navigation">×</button>
+                <div class="sidebar-header-actions">
+                    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" type="button" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">
+                        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+                    </button>
+                    <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close Navigation">×</button>
+                </div>
             </div>
 
 			<div class="admin-identity">
@@ -232,6 +237,7 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 	<dialog class="admin-dialog" id="reasonDialog"><form id="reasonForm" method="dialog"><div class="dialog-heading"><div><p class="eyebrow">REASON REQUIRED</p><h2 id="reasonDialogTitle">Add a reason</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div><input type="hidden" name="action"><input type="hidden" name="id"><input type="hidden" name="status"><label>Reason<textarea name="reason" rows="4" required></textarea></label><div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog>Cancel</button><button class="button button-danger" type="submit">Confirm</button></div></form></dialog>
 
 	<dialog class="admin-dialog" id="historyDialog"><div class="dialog-heading"><div><p class="eyebrow">INVENTORY RECORD</p><h2>Equipment history</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div><div id="equipmentHistoryRows" class="history-list"></div></dialog>
+	<script src="sidebar.js?v=<?= time() ?>"></script>
 	<script src="admin-dashboard.js?v=<?= time() ?>"></script>
 </body>
 </html>

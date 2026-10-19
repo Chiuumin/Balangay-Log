@@ -72,6 +72,18 @@ function residentRespond(array $payload, int $status = 200): void
     exit;
 }
 
+function residentTableExists(PDO $pdo, string $tableName): bool
+{
+    $stmt = $pdo->prepare('
+        SELECT 1
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+        LIMIT 1
+    ');
+    $stmt->execute([$tableName]);
+    return (bool) $stmt->fetchColumn();
+}
+
 if (!isLoggedIn() || getUserRole() !== 'RESIDENT') {
     residentRespond(['success' => false, 'message' => 'Resident authentication required.'], 403);
 }
@@ -97,12 +109,9 @@ try {
         $stmt = $pdo->prepare("
             SELECT 
                 r.*,
+                r.status AS true_status,
                 COALESCE(
-                    (SELECT status_snapshot FROM case_milestones WHERE tracking_id = r.reference_number OR incident_id = r.id ORDER BY id DESC LIMIT 1),
-                    r.status
-                ) AS true_status,
-                COALESCE(
-                    (SELECT action_note FROM case_milestones WHERE tracking_id = r.reference_number OR incident_id = r.id ORDER BY id DESC LIMIT 1),
+                    (SELECT action_note FROM case_milestones WHERE incident_id = r.id ORDER BY id DESC LIMIT 1),
                     r.ai_recommendation
                 ) AS latest_note
             FROM incident_reports r
@@ -115,9 +124,7 @@ try {
         $residentVisibleRec = '/^(Unit Dispatched:|Case settled amicably|Flagged \/ closed)/';
 
         $reports = array_map(function ($row) use ($residentVisibleRec) {
-            if (!empty($row['true_status'])) {
-                $row['status'] = $row['true_status'];
-            }
+            $row['status'] = $row['true_status'] ?: 'PENDING';
 
             $rec = (string) ($row['ai_recommendation'] ?? '');
             if ($rec !== '' && preg_match($residentVisibleRec, $rec) !== 1) {
@@ -166,8 +173,13 @@ try {
                 residentRespond(['success' => false, 'message' => 'Tracking number required.'], 422);
             }
 
-            $caseStmt = $pdo->prepare('SELECT * FROM incident_reports WHERE reference_number = ? LIMIT 1');
-            $caseStmt->execute([$refNumber]);
+            $caseStmt = $pdo->prepare('
+                SELECT * FROM incident_reports
+                WHERE reference_number = ?
+                  AND (complainant_name = ? OR complainant_phone = ?)
+                LIMIT 1
+            ');
+            $caseStmt->execute([$refNumber, $residentName, $residentPhone]);
             $case = $caseStmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$case) {
@@ -178,36 +190,94 @@ try {
             $mStmt = $pdo->prepare('
                 SELECT id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at
                 FROM case_milestones
-                WHERE tracking_id = ?
+                WHERE incident_id = ? OR tracking_id = ?
                 ORDER BY id ASC
             ');
-            $mStmt->execute([$refNumber]);
+            $mStmt->execute([(int) $case['id'], $refNumber]);
             $milestones = $mStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            $eStmt = $pdo->prepare('
-                SELECT type, status, referred_at, endorsed_at, remarks
-                FROM endorsements
-                WHERE case_id = ?
-                ORDER BY id DESC
-            ');
-            $eStmt->execute([(int)$case['id']]);
-            $endorsements = $eStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $endorsements = [];
+            if (residentTableExists($pdo, 'endorsements')) {
+                $eStmt = $pdo->prepare('
+                    SELECT type, status, referred_at, endorsed_at, remarks
+                    FROM endorsements
+                    WHERE case_id = ?
+                    ORDER BY id ASC
+                ');
+                $eStmt->execute([(int) $case['id']]);
+                $endorsements = $eStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            }
 
-            $dStmt = $pdo->prepare('
-                SELECT unit, status, dispatched_at, arrived_at
-                FROM tanod_dispatch_logs
-                WHERE incident_id = ?
-                ORDER BY id ASC
-            ');
-            $dStmt->execute([(int)$case['id']]);
-            $dispatchLogs = $dStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $dispatchLogs = [];
+            if (residentTableExists($pdo, 'tanod_dispatch_records')) {
+                $dStmt = $pdo->prepare('
+                    SELECT unit, status, dispatched_at, dispatched_by_name,
+                           acknowledged_at, acknowledged_by_name, arrived_at, arrived_by_name,
+                           findings, action_taken, updated_by_name, updated_at
+                    FROM tanod_dispatch_records
+                    WHERE incident_id = ?
+                    ORDER BY id ASC
+                ');
+                $dStmt->execute([(int) $case['id']]);
+                $dispatchLogs = $dStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            } elseif (residentTableExists($pdo, 'tanod_dispatch_logs')) {
+                $dStmt = $pdo->prepare('
+                    SELECT unit, status, dispatched_at, arrived_at
+                    FROM tanod_dispatch_logs
+                    WHERE incident_id = ?
+                    ORDER BY id ASC
+                ');
+                $dStmt->execute([(int) $case['id']]);
+                $dispatchLogs = $dStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            }
+
+            $findings = [];
+            if (residentTableExists($pdo, 'case_findings')) {
+                $findingStmt = $pdo->prepare('
+                    SELECT observations, action_taken, findings, recommended_next_steps,
+                           submitted_by_name, created_at
+                    FROM case_findings
+                    WHERE incident_id = ?
+                    ORDER BY created_at ASC, id ASC
+                ');
+                $findingStmt->execute([(int) $case['id']]);
+                $findings = $findingStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            }
+
+            $resolutions = [];
+            if (residentTableExists($pdo, 'case_resolutions')) {
+                $resolutionStmt = $pdo->prepare('
+                    SELECT outcome, conclusion, follow_up_at, resulting_status,
+                           resolved_by_name, resolved_at
+                    FROM case_resolutions
+                    WHERE incident_id = ?
+                    ORDER BY resolved_at ASC, id ASC
+                ');
+                $resolutionStmt->execute([(int) $case['id']]);
+                $resolutions = $resolutionStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            }
+
+            $closures = [];
+            if (residentTableExists($pdo, 'case_workflow_closures')) {
+                $closureStmt = $pdo->prepare('
+                    SELECT outcome, conclusion, closed_by_name, closed_at
+                    FROM case_workflow_closures
+                    WHERE incident_id = ?
+                    ORDER BY closed_at ASC, id ASC
+                ');
+                $closureStmt->execute([(int) $case['id']]);
+                $closures = $closureStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            }
 
             residentRespond([
                 'success' => true,
                 'case' => $case,
                 'milestones' => $milestones,
                 'endorsements' => $endorsements,
-                'dispatch_logs' => $dispatchLogs
+                'dispatch_logs' => $dispatchLogs,
+                'findings' => $findings,
+                'resolutions' => $resolutions,
+                'closures' => $closures
             ]);
 
 case 'incident_create':

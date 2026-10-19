@@ -19,22 +19,26 @@ const escapeHtml = (val) => String(val ?? '').replace(/[&<>"']/g, (c) => ({
 }[c]));
 
 const formatDate = (val) => (val && val !== '—') ? new Date(String(val).replace(' ', 'T')).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+const formatDateTime = (val) => (val && val !== '—') ? new Date(String(val).replace(' ', 'T')).toLocaleString() : '—';
 
 function statusPill(status) {
     const s = String(status || '').toUpperCase().trim();
-    if (s === 'RESOLVED' || s === 'CLOSED') {
+    if (s === 'CLOSED' || s === 'RESOLVED') {
         return `<span class="pill pill-active">Resolved</span>`;
     }
     if (s === 'DISPATCHED' || s === 'UNIT DISPATCHED') {
-        return `<span class="pill pill-blue">Unit Dispatched</span>`;
+        return `<span class="pill pill-blue">Dispatched</span>`;
     }
     if (s === 'IN_PROGRESS' || s === 'IN PROGRESS') {
         return `<span class="pill pill-blue">In Progress</span>`;
     }
     if (s === 'FOR_RESOLUTION' || s === 'LUPON') {
-        return `<span class="pill pill-pending">Lupon Mediation</span>`;
+        return `<span class="pill pill-pending">Awaiting Resolution (Lupon)</span>`;
     }
-    return `<span class="pill pill-pending">Under Review</span>`;
+    if (s === 'PENDING' || s === 'UNDER_REVIEW' || s === 'UNDER REVIEW' || !s) {
+        return `<span class="pill pill-pending">Pending Triage</span>`;
+    }
+    return `<span class="pill pill-pending">${escapeHtml(status)}</span>`;
 }
 
 function showNotice(msg, isError = false) {
@@ -321,16 +325,27 @@ async function openReportDetails(reportId) {
     const stepReview = document.getElementById('step-review');
     const stepAction = document.getElementById('step-action');
     const stepResolved = document.getElementById('step-resolved');
+    const stepInProgress = document.getElementById('step-in-progress');
+    const stepAwaitingResolution = document.getElementById('step-awaiting-resolution');
+    const stepFindings = document.getElementById('step-findings');
     const timelineEl = document.getElementById('trackingTimeline');
 
     let milestones = [];
     let endorsements = [];
+    let dispatchLogs = [];
+    let findings = [];
+    let resolutions = [];
+    let closures = [];
     let caseData = report;
 
     try {
         const res = await requestResident('get_milestones', { reference_number: ref });
         milestones = res.milestones || [];
         endorsements = res.endorsements || [];
+        dispatchLogs = res.dispatch_logs || [];
+        findings = res.findings || [];
+        resolutions = res.resolutions || [];
+        closures = res.closures || [];
         if (res.case) caseData = { ...report, ...res.case };
     } catch (err) {
         console.error('Milestone fetch error:', err);
@@ -339,37 +354,44 @@ async function openReportDetails(reportId) {
     const isPnpEscalated = endorsements.some(e => e.type === 'PNP_TRANSMITTAL') || 
                            milestones.some(m => String(m.status_snapshot).includes('ESCALATED') || String(m.action_note).includes('PNP'));
     
-    const latestSnapshot = milestones.length > 0 ? milestones[milestones.length - 1].status_snapshot : caseData.status;
-    const currentStatus = String(latestSnapshot || caseData.status || '').toUpperCase().trim();
-
-    [stepReported, stepReview, stepAction, stepResolved].forEach(s => {
+    const currentStatus = String(caseData.status || report.status || 'PENDING').toUpperCase().trim();
+    const steps = [stepReported, stepReview, stepAction, stepResolved, stepInProgress, stepAwaitingResolution, stepFindings];
+    steps.forEach(s => {
         if (s) s.className = 'stepper-step';
     });
     if (stepReported) stepReported.classList.add('is-done');
 
     const isPending = ['PENDING', 'UNDER_REVIEW', 'UNDER REVIEW'].includes(currentStatus);
     const isInProgress = ['IN_PROGRESS', 'IN PROGRESS'].includes(currentStatus);
-    const isDispatched = ['DISPATCHED', 'UNIT DISPATCHED', 'CRITICAL', 'ESCALATED_PNP'].includes(currentStatus);
+    const isDispatched = ['DISPATCHED', 'UNIT DISPATCHED', 'ESCALATED_PNP'].includes(currentStatus);
     const isLupon = ['FOR_RESOLUTION', 'LUPON'].includes(currentStatus);
-    const isResolved = ['RESOLVED', 'CLOSED'].includes(currentStatus);
+    const isResolved = currentStatus === 'RESOLVED' || currentStatus === 'CLOSED';
+    const isConcluded = isResolved;
+    const hasFindings = findings.length > 0;
+    const isPastTriage = !isPending;
+    const hasDispatch = isDispatched
+        || dispatchLogs.length > 0
+        || milestones.some(m => ['DISPATCHED', 'UNIT DISPATCHED', 'ESCALATED_PNP'].includes(String(m.status_snapshot || '').toUpperCase()));
+    const isPastProgress = hasDispatch || isLupon || isConcluded;
+    const hasMediation = isLupon
+        || milestones.some(m => ['FOR_RESOLUTION', 'LUPON'].includes(String(m.status_snapshot || '').toUpperCase()))
+        || endorsements.some(item => `${item.type || ''} ${item.status || ''}`.toUpperCase().includes('LUPON'))
+        || resolutions.some(item => String(item.outcome || '').toUpperCase() === 'SETTLED_THROUGH_MEDIATION');
 
-    if (isPending) {
-        if (stepReview) stepReview.classList.add('is-active');
-    } else if (isInProgress) {
-        if (stepReview) stepReview.classList.add('is-done');
-        if (stepAction) stepAction.classList.add('is-active');
-    } else if (isDispatched) {
-        if (stepReview) stepReview.classList.add('is-done');
-        if (stepAction) stepAction.classList.add('is-active'); 
-    } else if (isLupon) {
-        if (stepReview) stepReview.classList.add('is-done');
-        if (stepAction) stepAction.classList.add('is-done');
-        if (stepResolved) stepResolved.classList.add('is-active');
-    } else if (isResolved) {
-        if (stepReview) stepReview.classList.add('is-done');
-        if (stepAction) stepAction.classList.add('is-done');
-        if (stepResolved) stepResolved.classList.add('is-done');
-    }
+    const setStepState = (step, reached, active = false) => {
+        if (!step) return;
+        if (reached) step.classList.add('is-done');
+        if (active) {
+            step.classList.remove('is-done');
+            step.classList.add('is-active');
+        }
+    };
+    setStepState(stepReview, isPastTriage, isPending);
+    setStepState(stepInProgress, isInProgress || isPastProgress, isInProgress);
+    setStepState(stepAction, hasDispatch, isDispatched);
+    setStepState(stepAwaitingResolution, hasMediation, isLupon);
+    setStepState(stepFindings, hasFindings, hasFindings && !isConcluded);
+    setStepState(stepResolved, isConcluded);
 
     const pnpBadge = isPnpEscalated ? `<span class="pill pill-critical" style="margin-left: 6px;">Escalated to PNP</span>` : '';
     const fields = [
@@ -411,11 +433,11 @@ async function openReportDetails(reportId) {
         {
             id: 'stage-review',
             title: '2. Desk Review',
-            badge: (isInProgress || isDispatched || isLupon || isResolved) ? 'Verified' : 'Under Review',
-            badgeClass: (isInProgress || isDispatched || isLupon || isResolved) ? 'pill-active' : 'pill-pending',
+            badge: isPastTriage ? 'Reviewed' : 'Pending Triage',
+            badgeClass: isPastTriage ? 'pill-active' : 'pill-pending',
             date: formatDate(findMilestone(['IN_PROGRESS', 'DESK_REVIEW'])?.created_at || caseData.created_at),
             isReached: !isPending,
-            residentMessage: (isInProgress || isDispatched || isLupon || isResolved)
+            residentMessage: isPastTriage
                 ? 'Report screened and verified by barangay desk. Prioritized for action.'
                 : 'Awaiting desk officer assessment and priority confirmation.',
             details: [
@@ -426,11 +448,11 @@ async function openReportDetails(reportId) {
         {
             id: 'stage-dispatch',
             title: '3. Unit Dispatched',
-            badge: (isDispatched || isLupon || isResolved) ? 'Dispatched' : 'Pending Deployment',
-            badgeClass: (isDispatched || isLupon || isResolved) ? 'pill-blue' : 'pill-pending',
+            badge: hasDispatch ? 'Dispatched' : 'Pending Deployment',
+            badgeClass: hasDispatch ? 'pill-blue' : 'pill-pending',
             date: findMilestone(['DISPATCHED', 'CRITICAL', 'ESCALATED_PNP'])?.created_at ? formatDate(findMilestone(['DISPATCHED', 'CRITICAL', 'ESCALATED_PNP']).created_at) : '—',
-            isReached: isDispatched || isLupon || isResolved,
-            residentMessage: (isDispatched || isLupon || isResolved)
+            isReached: hasDispatch,
+            residentMessage: hasDispatch
                 ? `Response team (${caseData.deployed_unit || 'Barangay Tanod Unit'}) has been deployed to the location.`
                 : 'Response unit will be mobilized following desk review clearance.',
             details: [
@@ -442,15 +464,17 @@ async function openReportDetails(reportId) {
         {
             id: 'stage-resolved',
             title: '4. Resolved',
-            badge: isResolved ? 'Case Closed' : (isLupon ? 'Mediation Scheduled' : 'Pending Closure'),
-            badgeClass: isResolved ? 'pill-active' : 'pill-pending',
-            date: findMilestone(['RESOLVED', 'CLOSED'])?.created_at ? formatDate(findMilestone(['RESOLVED', 'CLOSED']).created_at) : '—',
-            isReached: isResolved,
+            badge: isResolved ? 'Resolved' : (isLupon ? 'Mediation Scheduled' : 'Pending Resolution'),
+            badgeClass: isConcluded ? 'pill-active' : 'pill-pending',
+            date: (closures[closures.length - 1]?.closed_at || resolutions[resolutions.length - 1]?.resolved_at || findMilestone(['RESOLVED', 'CLOSED'])?.created_at)
+                ? formatDate(closures[closures.length - 1]?.closed_at || resolutions[resolutions.length - 1]?.resolved_at || findMilestone(['RESOLVED', 'CLOSED']).created_at)
+                : '—',
+            isReached: isConcluded,
             residentMessage: isResolved
-                ? 'The incident has been verified resolved on-site by responding personnel.'
+                ? 'A resolution has been recorded for this case.'
                 : (isLupon ? 'Case endorsed to Lupong Tagapamayapa for amicable conciliation hearing.' : 'Final disposition pending on-site report submission.'),
             details: [
-                ['Final Disposition', isResolved ? 'Amicably Settled / Peace Restored' : 'Pending Action'],
+                ['Final Disposition', isConcluded ? 'See the resolution details below.' : 'Pending Action'],
                 ['Handling Officer', findMilestone(['RESOLVED', 'CLOSED'])?.officer_in_charge || caseData.assigned_officer_name || 'Desk Officer']
             ]
         }
@@ -484,6 +508,142 @@ async function openReportDetails(reportId) {
             </div>
         </details>
     `).join('');
+
+    const outcomeLabel = (outcome) => ({
+        RESOLVED_THROUGH_INTERVENTION: 'Resolved Through Intervention',
+        SETTLED_THROUGH_MEDIATION: 'Settled Through Mediation',
+        REFERRED_TO_ANOTHER_AUTHORITY: 'Referred to Another Authority',
+        WITHDRAWN: 'Withdrawn',
+        OTHER: 'Other'
+    }[String(outcome || '').toUpperCase()] || String(outcome || 'Case update').replaceAll('_', ' '));
+    const statusLabel = (status) => ({
+        PENDING: 'Pending Triage',
+        UNDER_REVIEW: 'Pending Triage',
+        IN_PROGRESS: 'In Progress',
+        DISPATCHED: 'Dispatched',
+        FOR_RESOLUTION: 'Awaiting Resolution',
+        RESOLVED: 'Resolved',
+        CLOSED: 'Resolved'
+    }[String(status || '').toUpperCase()] || String(status || 'Case update').replaceAll('_', ' '));
+
+    const activityEvents = [];
+    milestones.forEach(m => {
+        const status = String(m.status_snapshot || '').toUpperCase();
+        activityEvents.push({
+            title: statusLabel(status),
+            date: m.created_at,
+            actor: m.officer_in_charge || 'Barangay personnel',
+            details: [m.action_note, m.deployed_unit ? `Assigned unit: ${m.deployed_unit}` : ''].filter(Boolean)
+        });
+    });
+    dispatchLogs.forEach(log => {
+        if (log.dispatched_at) {
+            activityEvents.push({
+                title: 'Unit Dispatched',
+                date: log.dispatched_at,
+                actor: log.dispatched_by_name || 'Barangay personnel',
+                details: [log.unit ? `Assigned unit: ${log.unit}` : '', log.status ? `Status: ${log.status}` : ''].filter(Boolean)
+            });
+        }
+        if (log.acknowledged_at) {
+            activityEvents.push({
+                title: 'Dispatch Acknowledged',
+                date: log.acknowledged_at,
+                actor: log.acknowledged_by_name || 'Barangay personnel',
+                details: [log.unit ? `Assigned unit: ${log.unit}` : ''].filter(Boolean)
+            });
+        }
+        if (log.arrived_at) {
+            activityEvents.push({
+                title: 'Unit Arrival Recorded',
+                date: log.arrived_at,
+                actor: log.arrived_by_name || 'Barangay personnel',
+                details: [log.unit ? `Assigned unit: ${log.unit}` : ''].filter(Boolean)
+            });
+        }
+        if (log.findings || log.action_taken) {
+            activityEvents.push({
+                title: 'Field Response Submitted',
+                date: log.updated_at || log.arrived_at || log.dispatched_at,
+                actor: log.updated_by_name || 'Barangay personnel',
+                details: [
+                    log.unit ? `Assigned unit: ${log.unit}` : '',
+                    log.findings ? `Findings: ${log.findings}` : '',
+                    log.action_taken ? `Action taken: ${log.action_taken}` : ''
+                ].filter(Boolean)
+            });
+        }
+    });
+    endorsements.forEach(item => {
+        activityEvents.push({
+            title: `Referral: ${String(item.type || item.status || 'Case referred').replaceAll('_', ' ')}`,
+            date: item.referred_at || item.endorsed_at,
+            actor: 'Barangay personnel',
+            details: [item.status ? `Status: ${item.status}` : ''].filter(Boolean)
+        });
+    });
+    findings.forEach(item => {
+        activityEvents.push({
+            title: 'Officer Findings Recorded',
+            date: item.created_at,
+            actor: item.submitted_by_name || 'Barangay officer',
+            details: [
+                item.observations ? `Observations: ${item.observations}` : '',
+                item.action_taken ? `Action taken: ${item.action_taken}` : '',
+                item.findings ? `Findings: ${item.findings}` : '',
+                item.recommended_next_steps ? `Recommended next steps: ${item.recommended_next_steps}` : ''
+            ].filter(Boolean)
+        });
+    });
+    resolutions.forEach(item => {
+        activityEvents.push({
+            title: `Resolution: ${outcomeLabel(item.outcome)}`,
+            date: item.resolved_at,
+            actor: item.resolved_by_name || 'Barangay officer',
+            details: [
+                item.conclusion || '',
+                item.follow_up_at ? `Follow-up: ${formatDateTime(item.follow_up_at)}` : '',
+                item.resulting_status ? `Status recorded: ${statusLabel(item.resulting_status)}` : ''
+            ].filter(Boolean)
+        });
+    });
+    closures.forEach(item => {
+        activityEvents.push({
+            title: 'Resolution Finalized',
+            date: item.closed_at,
+            actor: item.closed_by_name || 'Barangay officer',
+            details: [outcomeLabel(item.outcome), item.conclusion].filter(Boolean)
+        });
+    });
+    if (currentStatus && !milestones.some(m => String(m.status_snapshot || '').toUpperCase() === currentStatus)) {
+        activityEvents.push({
+            title: `Current status: ${statusLabel(currentStatus)}`,
+            date: caseData.updated_at || caseData.created_at,
+            actor: caseData.assigned_officer_name || 'Barangay personnel',
+            details: ['Current status from the official case record.']
+        });
+    }
+
+    activityEvents.sort((a, b) => {
+        const aTime = a.date ? new Date(String(a.date).replace(' ', 'T')).getTime() : 0;
+        const bTime = b.date ? new Date(String(b.date).replace(' ', 'T')).getTime() : 0;
+        return aTime - bTime;
+    });
+    timelineEl.insertAdjacentHTML('beforeend', activityEvents.map(event => `
+        <details class="milestone-accordion" style="margin-bottom: 10px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface);">
+            <summary style="padding: 10px 14px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 700; font-size: 13px; background: rgba(0,0,0,0.02); user-select: none;">
+                <span>${escapeHtml(event.title)}</span>
+                <span style="display: flex; align-items: center; gap: 8px;">
+                    <small style="color: var(--muted); font-size: 11px;">${escapeHtml(formatDateTime(event.date))}</small>
+                    <span class="chevron" style="font-size: 11px; color: var(--muted);">▼</span>
+                </span>
+            </summary>
+            <div style="padding: 12px 14px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.5;">
+                <p style="margin: 0 0 8px; color: var(--muted);">Recorded by ${escapeHtml(event.actor)}</p>
+                ${event.details.map(detail => `<p style="margin: 0 0 6px; color: var(--ink); white-space: pre-wrap;">${escapeHtml(detail)}</p>`).join('')}
+            </div>
+        </details>
+    `).join(''));
 
     document.getElementById('reportDetailDialog').showModal();
 }
@@ -657,35 +817,6 @@ document.getElementById('profileForm')?.addEventListener('submit', async (e) => 
     } catch (err) {
         showNotice(err.message, true);
     }
-});
-
-const mobileMenuBtn = document.getElementById('mobileMenuBtn');
-const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
-const sidebarBackdrop = document.getElementById('sidebarBackdrop');
-const adminSidebar = document.getElementById('adminSidebar');
-
-function openDrawer() {
-    if (adminSidebar) adminSidebar.classList.add('is-open');
-    if (sidebarBackdrop) sidebarBackdrop.classList.add('is-open');
-    document.body.style.overflow = 'hidden';
-}
-
-function closeDrawer() {
-    if (adminSidebar) adminSidebar.classList.remove('is-open');
-    if (sidebarBackdrop) sidebarBackdrop.classList.remove('is-open');
-    document.body.style.overflow = '';
-}
-
-mobileMenuBtn?.addEventListener('click', openDrawer);
-sidebarCloseBtn?.addEventListener('click', closeDrawer);
-sidebarBackdrop?.addEventListener('click', closeDrawer);
-
-document.querySelectorAll('.admin-nav-link').forEach(link => {
-    link.addEventListener('click', () => {
-        if (window.innerWidth <= 768) {
-            closeDrawer();
-        }
-    });
 });
 
 const initialView = location.hash.slice(1);

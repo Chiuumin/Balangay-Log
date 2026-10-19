@@ -4,6 +4,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', '0');
 
 require_once __DIR__ . '/../auth.php';
+require_once __DIR__ . '/../lib/case_workflow.php';
 
 // Safe conditional include for sms_helper.php to prevent unexpected server response errors
 $smsHelperPath = __DIR__ . '/../sms_helper.php';
@@ -57,17 +58,19 @@ if (!isLoggedIn()) {
     sendFail('Your session has ended. Please sign in again.', 401);
 }
 
-$userRole = strtoupper(trim((string) getUserRole()));
-if ($userRole !== 'CAPTAIN' && $userRole !== 'OFFICER' && $userRole !== 'ADMIN' && $userRole !== 'SYSTEM_ADMIN') {
-    sendFail('Access restricted (Current role: ' . $userRole . ').', 403);
-}
-
 $captainId = (int) ($_SESSION['user_id'] ?? 0);
-$userRows = dbRows($db, 'SELECT id, full_name, username, contact_number, profile_picture FROM users WHERE id = ? LIMIT 1', [$captainId]);
+$userRows = dbRows($db, 'SELECT id, full_name, username, contact_number, profile_picture, user_type, status FROM users WHERE id = ? LIMIT 1', [$captainId]);
 $captain = $userRows[0] ?? [];
 
 if (empty($captain)) {
     sendFail('User account record not found in database.', 401);
+}
+$userRole = strtoupper(trim((string) $captain['user_type']));
+if (strtoupper((string) $captain['status']) !== 'ACTIVE') {
+    sendFail('Your account is not active.', 401);
+}
+if (!in_array($userRole, ['CAPTAIN', 'OFFICER', 'ADMIN', 'SYSTEM_ADMIN'], true)) {
+    sendFail('You do not have permission to access this dashboard.', 403);
 }
 
 try {
@@ -195,10 +198,10 @@ try {
         }
 
         $ins = $db->prepare("
-            INSERT INTO endorsements (case_id, tracking_id, type, status, referred_by_user_id, referred_at, remarks)
-            VALUES (?, ?, 'CAPTAIN_ENDORSEMENT', 'PENDING', ?, NOW(), ?)
+            INSERT INTO endorsements (case_id, type, status, referred_by_user_id, referred_at, remarks)
+            VALUES (?, 'CAPTAIN_ENDORSEMENT', 'PENDING', ?, NOW(), ?)
         ");
-        $ins->execute([$incId, $refNumber, $captainId, $remarks]);
+        $ins->execute([$incId, $captainId, $remarks]);
 
         sendJson(['success' => true, 'message' => "Captain endorsement requested for case #{$refNumber}."]);
     } elseif ($action === 'analytics_data') {
@@ -392,28 +395,49 @@ try {
             sendFail('Analytics data could not be loaded. Please try again.', 500);
         }
     } elseif ($action === 'case_endorse') {
+        if (!caseWorkflowCan($userRole, 'approve_referral')) {
+            sendFail('Only a Captain or administrator may approve a Captain referral.', 403);
+        }
         $id = (int) ($input['id'] ?? 0);
         $remarks = trim((string) ($input['remarks'] ?? ''));
-        
-        $eRows = dbRows($db, "SELECT e.id, e.case_id, e.type, ir.reference_number, ir.status AS case_status,
-                ir.complainant_name, ir.complainant_phone, ir.assigned_officer_name
-            FROM endorsements e 
-            JOIN incident_reports ir ON ir.id = e.case_id
-            WHERE e.id = ? AND e.status = 'PENDING'", [$id]);
-        $e =$eRows[0] ?? null;
-
-        if (!$e) {
-            sendFail('Endorsement record not found or already signed.', 404);
-        }
-
-        $db->prepare("UPDATE endorsements SET status = 'ENDORSED', endorsed_by_user_id = ?, endorsed_at = NOW(), remarks = ? WHERE id = ?")
-           ->execute([$captainId, $remarks ?: null, $id]);
-
+        $db->beginTransaction();
         try {
-            $captainName = $captain['full_name'] ?? 'Punong Barangay';$milestoneNote = "Officially endorsed and signed by Punong Barangay {$captainName}.";
-            $db->prepare("INSERT INTO case_milestones (incident_id, tracking_id, status_snapshot, officer_in_charge, action_note) VALUES (?, ?, 'FOR_RESOLUTION', ?, ?)")
-               ->execute([$e['case_id'],$e['reference_number'], $captainName,$milestoneNote]);
-        } catch (Throwable $ignore) {}
+            $endorsementStmt = $db->prepare("SELECT e.id, e.case_id, e.type, ir.reference_number, ir.status AS case_status,
+                    ir.complainant_name, ir.complainant_phone, ir.assigned_officer_name
+                FROM endorsements e
+                JOIN incident_reports ir ON ir.id = e.case_id
+                WHERE e.id = ? AND e.status = 'PENDING'
+                LIMIT 1 FOR UPDATE");
+            $endorsementStmt->execute([$id]);
+            $e = $endorsementStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$e) {
+                $db->rollBack();
+                sendFail('Endorsement record not found or already signed.', 404);
+            }
+            if (in_array($e['case_status'], ['RESOLVED', 'CLOSED'], true)) {
+                $db->rollBack();
+                sendFail('Resolved or closed cases cannot be edited through endorsement.', 409);
+            }
+            if (!in_array($e['case_status'], ['IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION'], true)) {
+                $db->rollBack();
+                sendFail('This case is not in a state that can receive Captain endorsement.', 409);
+            }
+            $updateEndorsement = $db->prepare("UPDATE endorsements SET status = 'ENDORSED', endorsed_by_user_id = ?, endorsed_at = NOW(), remarks = ? WHERE id = ? AND status = 'PENDING'");
+            $updateEndorsement->execute([$captainId, $remarks ?: null, $id]);
+            if ($updateEndorsement->rowCount() !== 1) {
+                $db->rollBack();
+                sendFail('Endorsement record was already updated.', 409);
+            }
+            $captainName = $captain['full_name'] ?? 'Punong Barangay';
+            $milestoneNote = "Officially endorsed and signed by {$captainName}.";
+            $db->prepare('INSERT INTO case_milestones (incident_id, tracking_id, status_snapshot, officer_in_charge, action_note) VALUES (?, ?, ?, ?, ?)')
+               ->execute([$e['case_id'], $e['reference_number'], $e['case_status'], $captainName, $milestoneNote]);
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            error_log('Captain endorsement update failed: ' . $e->getMessage());
+            sendFail('The endorsement could not be recorded. No changes were made.', 500);
+        }
 
         try {
             if (function_exists('sendIprogSms')) {

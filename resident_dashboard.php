@@ -61,7 +61,12 @@ if (!$initials) $initials = 'JD';
                     <span class="admin-brand-mark">B</span>
                     <span><strong>BalangayLog</strong><small>BARANGAY DUALE</small></span>
                 </a>
-                <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close Navigation">×</button>
+                <div class="sidebar-header-actions">
+                    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" type="button" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">
+                        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+                    </button>
+                    <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close Navigation">×</button>
+                </div>
             </div>
 
             <div class="admin-identity">
@@ -421,7 +426,7 @@ if (!$initials) $initials = 'JD';
         </form>
     </dialog>
 
-    <dialog class="admin-dialog" id="reportDetailDialog" style="width: min(640px, calc(100vw - 32px)); max-height: 92vh;">
+    <dialog class="admin-dialog resident-status-dialog" id="reportDetailDialog">
         <div class="dialog-heading">
             <div>
                 <p class="eyebrow">CASE STATUS TRACKING</p>
@@ -430,7 +435,7 @@ if (!$initials) $initials = 'JD';
             <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
         </div>
 
-        <div class="tracking-stepper" id="trackingStepper">
+        <div class="tracking-stepper resident-status-stepper" id="trackingStepper">
             <div class="stepper-step is-done" id="step-reported">
                 <div class="stepper-node">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -452,6 +457,16 @@ if (!$initials) $initials = 'JD';
                 <span class="stepper-label">Desk Review</span>
             </div>
 
+            <div class="stepper-step" id="step-in-progress">
+                <div class="stepper-node">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="9"></circle>
+                        <path d="M12 7v5l3 2"></path>
+                    </svg>
+                </div>
+                <span class="stepper-label">In Progress</span>
+            </div>
+
             <div class="stepper-step" id="step-action">
                 <div class="stepper-node">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -459,6 +474,29 @@ if (!$initials) $initials = 'JD';
                     </svg>
                 </div>
                 <span class="stepper-label">Unit Dispatched</span>
+            </div>
+
+            <div class="stepper-step" id="step-awaiting-resolution">
+                <div class="stepper-node">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3v18"></path>
+                        <path d="M5 7h14"></path>
+                        <path d="M7 7l-4 7h8L7 7z"></path>
+                        <path d="M17 7l-4 7h8l-4-7z"></path>
+                    </svg>
+                </div>
+                <span class="stepper-label">Awaiting Resolution</span>
+            </div>
+
+            <div class="stepper-step" id="step-findings">
+                <div class="stepper-node">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <path d="M14 2v6h6"></path>
+                        <path d="m9 15 2 2 4-4"></path>
+                    </svg>
+                </div>
+                <span class="stepper-label">Findings</span>
             </div>
 
             <div class="stepper-step" id="step-resolved">
@@ -470,11 +508,12 @@ if (!$initials) $initials = 'JD';
                 </div>
                 <span class="stepper-label">Resolved</span>
             </div>
+
         </div>
 
-        <div style="max-height: calc(92vh - 240px); overflow-y: auto; padding-right: 6px;">
+        <div class="resident-status-scroll" id="reportDetailScroll">
             <div id="reportDetailContent" class="detail-content" style="border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 16px;"></div>
-            <h3 style="font-size: 13px; font-weight: 800; font-family: 'Manrope', sans-serif; margin-bottom: 12px; color: var(--ink);">Milestone History</h3>
+            <h3 class="resident-status-history-title">Milestone History</h3>
             <div class="tracking-timeline" id="trackingTimeline"></div>
         </div>
 
@@ -483,6 +522,7 @@ if (!$initials) $initials = 'JD';
         </div>
     </dialog>
 
+    <script src="sidebar.js?v=<?= time() ?>"></script>
     <script src="officer-ai.js?v=<?= time() ?>"></script>
     <script src="resident-dashboard.js?v=<?= time() ?>"></script>
 </body>

@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/auth.php';
-requireRole(['OFFICER', 'CAPTAIN']);
+requireRole(['OFFICER', 'CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN']);
 
 $pdo = getDatabaseConnection();
 $userId = (int) ($_SESSION['user_id'] ?? 0);
@@ -10,7 +10,11 @@ $stmt->execute([$userId]);
 $userRecord = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
 $officerName = htmlspecialchars((string) ($userRecord['full_name'] ?? 'Barangay Officer'), ENT_QUOTES, 'UTF-8');
-$roleLabel = ($userRecord['user_type'] ?? 'OFFICER') === 'CAPTAIN' ? 'Barangay Captain' : 'Desk Officer';
+$roleLabel = match (strtoupper((string) ($userRecord['user_type'] ?? 'OFFICER'))) {
+    'CAPTAIN' => 'Barangay Captain',
+    'ADMIN', 'SYSTEM_ADMIN' => 'Administrator',
+    default => 'Desk Officer',
+};
 $profilePic = !empty($userRecord['profile_picture']) ? htmlspecialchars((string) $userRecord['profile_picture'], ENT_QUOTES, 'UTF-8') : null;
 $usernameVal = htmlspecialchars((string) ($userRecord['username'] ?? $userRecord['email_or_phone'] ?? '—'), ENT_QUOTES, 'UTF-8');
 $contactVal = htmlspecialchars((string) ($userRecord['contact_number'] ?? ''), ENT_QUOTES, 'UTF-8');
@@ -234,6 +238,25 @@ if (!$initials) $initials = 'OF';
         .tanod-indicator.available { background: var(--green); }
         .tanod-indicator.deployed { background: var(--gold); }
         .tanod-indicator.off_duty { background: #94a3b8; }
+        .dispatch-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 12px; margin: 16px 0; }
+        .dispatch-summary-card { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; background: var(--white); }
+        .dispatch-summary-card span { display: block; color: var(--muted); font-size: 11px; font-weight: 700; }
+        .dispatch-summary-card strong { display: block; margin-top: 5px; color: var(--ink); font-size: 23px; }
+        .dispatch-board-stack { display: grid; gap: 12px; margin-top: 14px; }
+        .dispatch-case-card { border: 1px solid var(--line); border-radius: 8px; padding: 15px; background: var(--white); }
+        .dispatch-case-card__top { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; }
+        .dispatch-case-card__meta { display: grid; gap: 5px; min-width: 0; }
+        .dispatch-case-card__progress { display: grid; gap: 5px; padding: 10px; margin-top: 12px; border-radius: 6px; background: var(--surface, #f6f8f8); font-size: 12px; }
+        .dispatch-case-card__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        .dispatch-response-form { display: grid; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+        .tanod-card__details { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+        .tanod-card__actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .tanod-availability-select { min-width: 115px; flex: 1; }
+        @media (max-width: 700px) {
+            .dispatch-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .dispatch-case-card__top { flex-direction: column; }
+            .dispatch-case-card__actions > button { flex: 1 1 140px; }
+        }
         .notif-container { position: relative; }
         .notification-bell-btn {
             position: relative;
@@ -368,7 +391,12 @@ if (!$initials) $initials = 'OF';
                     <span class="admin-brand-mark">B</span>
                     <span><strong>BalangayLog</strong><small>BARANGAY DUALE</small></span>
                 </a>
-                <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close Navigation">×</button>
+                <div class="sidebar-header-actions">
+                    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" type="button" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">
+                        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+                    </button>
+                    <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close Navigation">×</button>
+                </div>
             </div>
 
             <div class="admin-identity">
@@ -492,7 +520,7 @@ if (!$initials) $initials = 'OF';
                     <article class="metric-tile metric-green">
                         <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">RESOLVED TODAY</span>
                         <strong id="metricResolvedToday">0</strong>
-                        <small>Closed since midnight</small>
+                        <small>Resolved since midnight</small>
                     </article>
                 </div>
 
@@ -519,9 +547,23 @@ if (!$initials) $initials = 'OF';
                     <button class="button button-quiet" type="button" data-refresh-cases>Refresh Records</button>
                 </div>
                 <div class="content-panel">
+                    <div class="blotter-summary" aria-label="Case summaries">
+                        <button type="button" class="blotter-summary-card is-selected" data-blotter-summary-filter="ALL" aria-pressed="true">
+                            <span>All Cases</span><strong id="blotterCountAll">0</strong>
+                        </button>
+                        <button type="button" class="blotter-summary-card" data-blotter-summary-filter="NEEDS_ACTION" aria-pressed="false">
+                            <span>Needs Action</span><strong id="blotterCountNeedsAction">0</strong>
+                        </button>
+                        <button type="button" class="blotter-summary-card" data-blotter-summary-filter="IN_PROGRESS" aria-pressed="false">
+                            <span>In Progress</span><strong id="blotterCountInProgress">0</strong>
+                        </button>
+                        <button type="button" class="blotter-summary-card" data-blotter-summary-filter="RESOLVED" aria-pressed="false">
+                            <span>Resolved</span><strong id="blotterCountResolved">0</strong>
+                        </button>
+                    </div>
                     <div class="toolbar">
-                        <div class="segmented" role="group">
-                            <button type="button" class="segment is-selected" data-blotter-filter="ALL">All Records</button>
+                        <div class="segmented" role="group" aria-label="Filter cases by status">
+                            <button type="button" class="segment is-selected" data-blotter-filter="ALL">All Cases</button>
                             <button type="button" class="segment" data-blotter-filter="PENDING">Pending</button>
                             <button type="button" class="segment" data-blotter-filter="IN_PROGRESS">In Progress</button>
                             <button type="button" class="segment" data-blotter-filter="DISPATCHED">Dispatched</button>
@@ -530,28 +572,147 @@ if (!$initials) $initials = 'OF';
                         </div>
                         <div class="search-field">
                             <label for="blotterSearchInput" class="sr-only">Search blotter records</label>
-                            <input id="blotterSearchInput" name="blotter_search" type="search" autocomplete="off" aria-label="Search reference, complainant, purok" placeholder="Search reference, complainant, purok...">
+                            <input id="blotterSearchInput" name="blotter_search" type="search" autocomplete="off" aria-label="Search reference number, complainant, category, or purok" placeholder="Search reference, complainant, category, or purok...">
                         </div>
                     </div>
                     <div class="table-scroll">
-                        <table>
+                        <table class="blotter-table">
+                            <colgroup>
+                                <col style="width: 13%;">
+                                <col style="width: 15%;">
+                                <col style="width: 13%;">
+                                <col style="width: 8%;">
+                                <col style="width: 8%;">
+                                <col style="width: 14%;">
+                                <col style="width: 12%;">
+                                <col style="width: 9%;">
+                                <col style="width: 8%;">
+                            </colgroup>
                             <thead>
                                 <tr>
-                                    <th>Ref Number</th>
+                                    <th>Reference Number</th>
                                     <th>Complainant</th>
                                     <th>Category</th>
                                     <th>Purok</th>
                                     <th>Priority</th>
                                     <th>Status</th>
-                                    <th>Assigned</th>
+                                    <th>Assigned To</th>
                                     <th>Date Encoded</th>
-                                    <th></th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="blotterTableRows"></tbody>
                         </table>
                     </div>
                     <p class="empty-message" id="blotterEmptyMsg" hidden>No cases match your filter criteria.</p>
+                </div>
+            </section>
+
+            <section class="admin-view" id="view-case-detail" hidden>
+                <div class="section-heading case-detail-heading">
+                    <div>
+                        <button class="button button-quiet" type="button" data-case-back>Back to All Cases</button>
+                        <p class="eyebrow" style="margin-top: 14px;">CASE RECORD</p>
+                        <h2 id="caseDetailTitle">Case Details</h2>
+                        <p id="caseDetailSubtitle"></p>
+                    </div>
+                    <div id="caseDetailStatus"></div>
+                </div>
+                <div id="caseDetailLoading" class="content-panel" hidden>Loading case details…</div>
+                <div id="caseDetailContent" class="case-detail-layout" hidden>
+                    <div class="case-detail-main">
+                        <section class="content-panel case-detail-section">
+                            <h3>Incident Details</h3>
+                            <div class="case-detail-fields" id="caseIncidentFields"></div>
+                        </section>
+                        <section class="content-panel case-detail-section" id="casePeopleSection">
+                            <h3>People Involved</h3>
+                            <div class="case-detail-fields" id="casePeopleFields"></div>
+                        </section>
+                        <section class="content-panel case-detail-section" id="caseAssignmentSection">
+                            <h3>Assignment</h3>
+                            <div class="case-detail-fields" id="caseAssignmentFields"></div>
+                        </section>
+                        <section class="content-panel case-detail-section">
+                            <h3>Case Progress</h3>
+                            <ol class="case-timeline" id="caseTimeline"></ol>
+                        </section>
+                        <section class="content-panel case-detail-section" id="caseFindingsSection" hidden>
+                            <h3>Findings and Evidence</h3>
+                            <div id="caseFindingsList"></div>
+                            <form id="caseFindingForm" class="case-finding-form" hidden>
+                                <label for="caseFindingObservations">Observations</label>
+                                <textarea id="caseFindingObservations" name="observations" rows="3" maxlength="4000" required></textarea>
+                                <label for="caseFindingPersons">Persons contacted (optional)</label>
+                                <textarea id="caseFindingPersons" name="persons_contacted" rows="2" maxlength="4000"></textarea>
+                                <label for="caseFindingAction">Action taken</label>
+                                <textarea id="caseFindingAction" name="action_taken" rows="3" maxlength="4000" required></textarea>
+                                <label for="caseFindingSummary">Findings</label>
+                                <textarea id="caseFindingSummary" name="findings" rows="3" maxlength="4000" required></textarea>
+                                <label for="caseFindingNextSteps">Recommended next steps (optional)</label>
+                                <textarea id="caseFindingNextSteps" name="recommended_next_steps" rows="2" maxlength="4000"></textarea>
+                                <button class="button button-primary" type="submit">Record Findings</button>
+                            </form>
+                        </section>
+                        <section class="content-panel case-detail-section" id="caseResolutionSection" hidden>
+                            <h3>Resolution</h3>
+                            <div id="caseResolutionContent"></div>
+                            <div id="caseClosureConfirmation" class="case-resolution-review" hidden>
+                                <h4>Finalize resolution</h4>
+                                <p>Review the saved outcome and conclusion before finalizing this case as Resolved.</p>
+                                <p><strong>Finalized by:</strong> <span id="caseClosureActor"></span></p>
+                                <p><strong>Finalization date:</strong> <span id="caseClosureDate"></span> (server records the final timestamp)</p>
+                                <div class="case-resolution-review__actions">
+                                    <button class="button button-quiet" type="button" id="caseClosureBack">Back</button>
+                                    <button class="button button-primary" type="button" id="caseClosureConfirm">Confirm Resolution</button>
+                                </div>
+                            </div>
+                            <form id="caseResolutionForm" class="case-finding-form" hidden>
+                                <div id="caseResolutionInputs">
+                                <label for="caseResolutionOutcome">Outcome</label>
+                                <select id="caseResolutionOutcome" name="outcome" required>
+                                    <option value="">Select an outcome</option>
+                                    <option value="RESOLVED_THROUGH_INTERVENTION">Resolved Through Intervention</option>
+                                    <option value="SETTLED_THROUGH_MEDIATION">Settled Through Mediation</option>
+                                    <option value="REFERRED_TO_ANOTHER_AUTHORITY">Referred to Another Authority</option>
+                                    <option value="WITHDRAWN">Withdrawn</option>
+                                    <option value="OTHER">Other</option>
+                                </select>
+                                <label for="caseResolutionConclusion">Written conclusion (minimum 30 characters)</label>
+                                <textarea id="caseResolutionConclusion" name="conclusion" rows="4" maxlength="4000" minlength="30" required placeholder="Describe what happened, the action taken, and why this outcome is appropriate."></textarea>
+                                <label for="caseSettlementTerms">Settlement terms (required for mediation)</label>
+                                <textarea id="caseSettlementTerms" name="settlement_terms" rows="3" maxlength="4000"></textarea>
+                                <label for="caseRemainingObligations">Remaining obligations (optional)</label>
+                                <textarea id="caseRemainingObligations" name="remaining_obligations" rows="2" maxlength="4000"></textarea>
+                                <label for="caseFollowUpAt">Follow-up date and time (optional)</label>
+                                <input id="caseFollowUpAt" name="follow_up_at" type="datetime-local">
+                                <label class="case-review-confirmation">
+                                    <input id="caseFindingsReviewed" name="findings_reviewed" type="checkbox" value="1" required>
+                                    I reviewed the findings and confirm they support this outcome.
+                                </label>
+                                <label class="case-review-confirmation" id="caseCloseNowLabel" hidden>
+                                    <input id="caseCloseNow" name="close_case" type="checkbox" value="1">
+                                    Finalize this resolution (authorized Captain or administrator only).
+                                </label>
+                                </div>
+                                <div class="case-resolution-review" id="caseResolutionReview" hidden>
+                                    <h4>Review before finalizing</h4>
+                                    <div id="caseResolutionReviewSummary"></div>
+                                    <div class="case-resolution-review__actions">
+                                        <button class="button button-quiet" type="button" id="caseResolutionEdit">Back and edit</button>
+                                        <button class="button button-primary" type="button" id="caseResolutionConfirm">Confirm and save</button>
+                                    </div>
+                                </div>
+                                <button class="button button-primary" type="submit" id="caseResolutionReviewBtn">Review outcome</button>
+                            </form>
+                        </section>
+                    </div>
+                    <aside class="content-panel case-context-actions">
+                        <h3>Available Actions</h3>
+                        <p class="case-next-step"><strong>Next Step:</strong> <span id="caseNextStep">Loading case workflow…</span></p>
+                        <p id="caseActionHint"></p>
+                        <div id="caseActionButtons" class="case-action-list"></div>
+                    </aside>
                 </div>
             </section>
 
@@ -563,7 +724,7 @@ if (!$initials) $initials = 'OF';
                     </div>
                 </div>
                 <div class="notice" style="margin-bottom: 16px; background: #fbf8eb; border-color: #ecdca6; color: #82621c;">
-                    <strong>Review Guidelines:</strong> Click on any case title or reference code to open the legal jurisdiction review and entity inspection modal[cite: 16].
+                    <strong>Review Guidelines:</strong> Select a case reference or View Case to review the record, activity timeline, and available actions.
                 </div>
                 <div class="content-panel">
                     <div class="queue-card-list" id="dedicatedTriageContainer"></div>
@@ -598,13 +759,28 @@ if (!$initials) $initials = 'OF';
                 <div class="section-heading">
                     <div>
                         <h2>Tanod Patrol &amp; Dispatch Board</h2>
-                        <p>Assign and monitor on-duty responders for on-site verification.</p>
+                        <p>Manage responder records, assign field teams, and follow response progress from one board.</p>
                     </div>
+                    <button type="button" class="button button-primary" id="addResponderBtn">Add Responder</button>
+                </div>
+                <div class="dispatch-summary-grid" aria-label="Responder summary">
+                    <div class="dispatch-summary-card"><span>On Duty</span><strong id="dispatchCountOnDuty">0</strong></div>
+                    <div class="dispatch-summary-card"><span>Available</span><strong id="dispatchCountAvailable">0</strong></div>
+                    <div class="dispatch-summary-card"><span>Assigned</span><strong id="dispatchCountAssigned">0</strong></div>
+                    <div class="dispatch-summary-card"><span>Off Duty</span><strong id="dispatchCountOffDuty">0</strong></div>
+                </div>
+                <div class="content-panel" style="margin-bottom: 16px;">
+                    <div class="panel-heading" style="padding-bottom: 10px; border-bottom: 1px solid var(--line);">
+                        <h3>Active Dispatch Queue</h3>
+                        <span class="pill pill-active" id="dispatchQueueCount">0 cases</span>
+                    </div>
+                    <p class="notice" id="dispatchMigrationNotice" hidden>Apply <code>tanod_dispatch_migration.sql</code> for responder assignments. Field findings also require <code>case_workflow_migration.sql</code>.</p>
+                    <div class="dispatch-board-stack" id="dispatchQueueContainer"></div>
                 </div>
                 <div class="content-panel">
                     <div class="panel-heading" style="padding-bottom: 10px; border-bottom: 1px solid var(--line);">
-                        <h3>On-Duty Responder Roster</h3>
-                        <span class="pill pill-active" id="activeTanodCount">2 Available</span>
+                        <h3>Responder Roster</h3>
+                        <span class="pill pill-active" id="activeTanodCount">0 Available</span>
                     </div>
                     <div class="tanod-grid" id="tanodRosterContainer"></div>
                 </div>
@@ -894,16 +1070,8 @@ if (!$initials) $initials = 'OF';
             </div>
         </div>
 
-        <!-- Direct Action Footer Buttons including Captain Endorsement Request -->
         <div class="dialog-actions" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
             <button class="button button-quiet" type="button" data-close-dialog>Close</button>
-            <div class="queue-action-group" id="modalActionButtons" style="display: flex; gap: 6px; flex-wrap: wrap;">
-                <button class="btn-action-primary" data-action="accept" id="modalBtnAccept">Accept &amp; Blotter</button>
-                <button class="btn-action-quiet" data-action="dispatch" id="modalBtnDispatch">Dispatch</button>
-                <button class="btn-action-quiet" data-action="endorse_lupon" id="modalBtnLupon">Endorse Lupon</button>
-                <button class="btn-action-quiet" data-action="request_captain" id="modalBtnCaptain" style="color: #b45309; border-color: #fde68a; background: #fffbeb;">Endorse / Refer to Captain</button>
-                <button class="btn-action-danger" data-action="reject" id="modalBtnReject">Flag / Reject</button>
-            </div>
         </div>
     </dialog>
 
@@ -920,12 +1088,9 @@ if (!$initials) $initials = 'OF';
             <input type="hidden" name="reference_number" id="dispatchRefInput">
             <div style="margin-top: 10px;">
                 <label for="dispatchUnitSelect">Assigned Unit / On-Duty Tanod</label>
-                <select name="deployed_unit" id="dispatchUnitSelect" required style="margin-top: 6px;">
-                    <option value="Unit Alpha (Tanod Ramon Diaz, Tanod Elena Flores)">Unit Alpha (Ramon Diaz, Elena Flores)</option>
-                    <option value="Tanod Patrol 1 (Tanod Ramon Diaz)">Tanod Patrol 1 (Ramon Diaz)</option>
-                    <option value="Tanod Patrol 2 (Tanod Elena Flores)">Tanod Patrol 2 (Elena Flores)</option>
-                    <option value="Immediate Tanod Response Team">Immediate Tanod Response Team</option>
+                <select name="responder_ids[]" id="dispatchUnitSelect" multiple required size="5" style="margin-top: 6px;">
                 </select>
+                <small>Select one responder or use Ctrl/⌘ to select a team.</small>
             </div>
             <div style="margin-top: 12px;">
                 <label for="dispatchNotesTextarea">Dispatch Directive Notes</label>
@@ -934,6 +1099,26 @@ if (!$initials) $initials = 'OF';
             <div class="dialog-actions" style="margin-top: 14px;">
                 <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
                 <button class="button button-primary" type="submit" style="background: var(--coral); border-color: var(--coral);">Confirm Dispatch</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog class="admin-dialog" id="responderModal" style="width: min(480px, calc(100vw - 32px));">
+        <form id="responderForm" method="dialog">
+            <div class="dialog-heading">
+                <div><p class="eyebrow">RESPONDER ROSTER</p><h2 id="responderModalTitle">Add Responder</h2></div>
+                <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
+            </div>
+            <input type="hidden" name="tanod_id" id="responderIdInput">
+            <label for="responderNameInput">Full name</label>
+            <input id="responderNameInput" name="name" maxlength="150" required>
+            <label for="responderStationInput" style="margin-top: 10px;">Station / patrol area</label>
+            <input id="responderStationInput" name="station" maxlength="120" placeholder="Barangay Base">
+            <label for="responderContactInput" style="margin-top: 10px;">Contact information</label>
+            <input id="responderContactInput" name="contact_number" maxlength="30" type="tel">
+            <div class="dialog-actions" style="margin-top: 14px;">
+                <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
+                <button class="button button-primary" type="submit">Save Responder</button>
             </div>
         </form>
     </dialog>
@@ -951,6 +1136,17 @@ if (!$initials) $initials = 'OF';
             <input type="hidden" name="reference_number" id="luponRefInput">
             <input type="hidden" name="action_mode" id="luponActionMode" value="endorse">
 
+            <div id="luponDestinationFields" style="display: none; margin-top: 8px;">
+                <label for="luponDestinationSelect">Referral destination</label>
+                <select id="luponDestinationSelect" name="destination" style="margin-top: 6px;">
+                    <option value="LUPON">Lupon Mediation</option>
+                    <option value="CAPTAIN">Barangay Captain</option>
+                </select>
+            </div>
+            <div id="luponReasonFields" style="display: none; margin-top: 12px;">
+                <label for="luponReasonInput">Reason for referral</label>
+                <textarea id="luponReasonInput" name="reason" rows="3" maxlength="1000" placeholder="Explain why this case is being referred..." style="margin-top: 6px;" required></textarea>
+            </div>
             <div id="luponEndorseFields">
                 <div style="margin-top: 8px;">
                     <label for="luponMediatorInput">Assigned Mediator / Officer</label>
@@ -962,11 +1158,6 @@ if (!$initials) $initials = 'OF';
                 </div>
             </div>
 
-            <div id="luponSettleFields" style="display: none; margin-top: 8px;">
-                <label for="luponSettlementTextarea">Terms of Amicable Settlement</label>
-                <textarea id="luponSettlementTextarea" name="settlement_notes" rows="4" placeholder="Enter terms agreed upon by both parties..." style="margin-top: 6px;">Both parties appeared before the Lupon. Mutual amicable settlement reached and signed.</textarea>
-            </div>
-
             <div class="dialog-actions" style="margin-top: 14px;">
                 <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
                 <button class="button button-primary" type="submit" id="luponSubmitBtn" style="background: #173d3b; border-color: #173d3b;">Confirm Action</button>
@@ -974,6 +1165,7 @@ if (!$initials) $initials = 'OF';
         </form>
     </dialog>
 
+    <script src="sidebar.js?v=<?= time() ?>"></script>
     <script src="officer-ai.js?v=<?= time() ?>"></script>
     <script src="officer-dashboard.js?v=<?= time() ?>"></script>
 </body>
