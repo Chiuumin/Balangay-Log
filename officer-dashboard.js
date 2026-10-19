@@ -13,15 +13,8 @@ const viewTitles = {
 };
 
 const state = {
-    cases: [],
-    triageQueue: [],
-    urgentCases: [],
-    luponCases: [],
-    tanods: [],
-    notifications: [],
-    criticalCase: null,
-    filter: 'ALL',
-    lastNotifCount: 0
+    cases: [], triageQueue: [], urgentCases: [], luponCases: [], tanods: [],
+    notifications: [], criticalCase: null, filter: 'ALL', lastNotifCount: 0
 };
 
 const escapeHtml = (val) => String(val ?? '').replace(/[&<>"']/g, (c) => ({
@@ -67,17 +60,13 @@ function showNotice(msg, isError = false) {
     clearTimeout(showNotice.timeout);
     showNotice.timeout = setTimeout(() => { pageNotice.hidden = true; }, 4500);
 }
-
-// Expose showNotice to global window scope for officer-ai.js
 window.showNotice = showNotice;
 
+const csrfToken = () => (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
 async function requestOfficer(action, payload = {}, options = {}) {
-    const headers = { 
-        'X-CSRF-Token': (document.querySelector('meta[name="csrf-token"]') || {}).content || ''
-    };
-    if (!options.formData) {
-        headers['Content-Type'] = 'application/json';
-    }
+    const headers = { 'X-CSRF-Token': csrfToken() };
+    if (!options.formData) headers['Content-Type'] = 'application/json';
     const response = await fetch(officerApi, {
         method: action ? 'POST' : 'GET',
         credentials: 'same-origin',
@@ -97,9 +86,14 @@ function setView(view) {
     history.replaceState(null, '', `#${view}`);
 }
 
-// -------------------------------------------------------------
-// TAB RENDERERS
-// -------------------------------------------------------------
+const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+const setHtml = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+function refLink(ref, extraStyle = '') {
+    return `<span class="queue-id" data-trigger-review="true" data-ref="${escapeHtml(ref)}" title="Click to open the full case review"
+                  style="cursor: pointer; text-decoration: underline; color: var(--teal); font-weight: 800; white-space: nowrap !important; word-break: keep-all !important; ${extraStyle}">${escapeHtml(ref)}</span>`;
+}
+
 function renderTriageQueue() {
     const container = document.getElementById('triageQueueContainer');
     const dedicated = document.getElementById('dedicatedTriageContainer');
@@ -119,29 +113,20 @@ function renderTriageQueue() {
 
     const html = queue.map(item => `
         <div class="queue-item-card" data-ref="${escapeHtml(item.reference_number)}">
-            <div class="queue-meta-block" style="flex: 1; max-width: 65%;">
+            <div class="queue-meta-block">
                 <div class="queue-header-tag">
-                    <!-- ONLY THE CASE IDENTIFIER IS CLICKABLE TO OPEN FULL REVIEW POPUP -->
-                    <span class="queue-id" 
-                          data-trigger-review="true" 
-                          data-ref="${escapeHtml(item.reference_number)}" 
-                          title="Click reference code to open full case details" 
-                          style="cursor: pointer; text-decoration: underline; color: var(--teal); font-weight: 800;">
-                        ${escapeHtml(item.reference_number)}
-                    </span>
+                    ${refLink(item.reference_number)}
                     ${priorityPill(item.priority_level)}
                     <span class="pill pill-pending">Review Pending</span>
                 </div>
                 <h3 class="queue-title" style="margin-top: 4px; cursor: default;">${escapeHtml(item.incident_type)}</h3>
                 <p class="queue-details">
-                    <strong>${escapeHtml(item.complainant_name)}</strong> • 
-                    ${escapeHtml(item.complainant_phone || 'No phone')} • 
-                    ${escapeHtml(item.purok)} • 
+                    <strong>${escapeHtml(item.complainant_name)}</strong> •
+                    ${escapeHtml(item.complainant_phone || 'No phone')} •
+                    ${escapeHtml(item.purok)} •
                     ${timeAgo(item.created_at)}
                 </p>
-                <p style="margin: 6px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.4;">
-                    ${escapeHtml(item.narrative_description)}
-                </p>
+                <p style="margin: 6px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.4;">${escapeHtml(item.narrative_description)}</p>
             </div>
             <div class="queue-action-group">
                 <button class="btn-action-primary" data-action="accept" data-ref="${escapeHtml(item.reference_number)}">Accept &amp; Blotter</button>
@@ -161,33 +146,27 @@ function renderUrgentCases() {
     const cases = state.urgentCases;
     const badge = document.getElementById('emergencyNavBadge');
     if (badge) badge.textContent = cases.length;
-
     if (!container) return;
     if (cases.length === 0) {
         container.innerHTML = '<p class="empty-message">No critical or emergency incidents pending.</p>';
         return;
     }
-
     container.innerHTML = cases.map(c => `
         <div class="queue-item-card" style="border-left: 4px solid var(--coral);" data-ref="${escapeHtml(c.reference_number)}">
             <div class="queue-meta-block">
                 <div class="queue-header-tag">
-                    <span class="queue-id" data-trigger-review="true" data-ref="${escapeHtml(c.reference_number)}" style="cursor: pointer; text-decoration: underline; color: var(--teal); font-weight: 800;">
-                        ${escapeHtml(c.reference_number)}
-                    </span>
+                    ${refLink(c.reference_number)}
                     ${priorityPill(c.priority_level)}
                     ${statusPill(c.status)}
                 </div>
                 <h3 class="queue-title" style="cursor: default;">${escapeHtml(c.incident_type)}</h3>
                 <p class="queue-details">
-                    <strong>${escapeHtml(c.complainant_name)}</strong> • 
-                    ${escapeHtml(c.purok)} • 
-                    Reported: ${timeAgo(c.created_at)} • 
+                    <strong>${escapeHtml(c.complainant_name)}</strong> •
+                    ${escapeHtml(c.purok)} •
+                    Reported: ${timeAgo(c.created_at)} •
                     Responder: <strong>${escapeHtml(c.deployed_unit || 'Unassigned')}</strong>
                 </p>
-                <p style="margin: 4px 0 0; font-size: 11.5px; color: var(--muted);">
-                    ${escapeHtml(c.narrative_description)}
-                </p>
+                <p style="margin: 4px 0 0; font-size: 11.5px; color: var(--muted);">${escapeHtml(c.narrative_description)}</p>
             </div>
             <div class="queue-action-group">
                 <button class="button button-danger" data-action="dispatch" data-ref="${escapeHtml(c.reference_number)}">
@@ -204,31 +183,25 @@ function renderLuponCases() {
     const cases = state.luponCases;
     const badge = document.getElementById('luponNavBadge');
     if (badge) badge.textContent = cases.length;
-
     if (!container) return;
     if (cases.length === 0) {
         container.innerHTML = '<p class="empty-message">No cases currently scheduled for Lupon mediation.</p>';
         return;
     }
-
     container.innerHTML = cases.map(c => `
         <div class="queue-item-card" data-ref="${escapeHtml(c.reference_number)}">
             <div class="queue-meta-block">
                 <div class="queue-header-tag">
-                    <span class="queue-id" data-trigger-review="true" data-ref="${escapeHtml(c.reference_number)}" style="cursor: pointer; text-decoration: underline; color: var(--teal); font-weight: 800;">
-                        ${escapeHtml(c.reference_number)}
-                    </span>
+                    ${refLink(c.reference_number)}
                     ${statusPill(c.status)}
                 </div>
                 <h3 class="queue-title" style="cursor: default;">${escapeHtml(c.incident_type)}</h3>
                 <p class="queue-details">
-                    Complainant: <strong>${escapeHtml(c.complainant_name)}</strong> • 
-                    Location: ${escapeHtml(c.purok)} • 
+                    Complainant: <strong>${escapeHtml(c.complainant_name)}</strong> •
+                    Location: ${escapeHtml(c.purok)} •
                     Mediator: <strong>${escapeHtml(c.assigned_officer || 'Barangay Captain / Secretary')}</strong>
                 </p>
-                <p style="margin: 4px 0 0; font-size: 11.5px; color: var(--muted);">
-                    ${escapeHtml(c.narrative_description)}
-                </p>
+                <p style="margin: 4px 0 0; font-size: 11.5px; color: var(--muted);">${escapeHtml(c.narrative_description)}</p>
             </div>
             <div class="queue-action-group">
                 <button class="btn-action-primary" data-action="settle_lupon" data-ref="${escapeHtml(c.reference_number)}">Mark as Settled</button>
@@ -244,27 +217,25 @@ function renderTanodBoard() {
     const available = tanods.filter(t => t.status === 'AVAILABLE').length;
     const countEl = document.getElementById('activeTanodCount');
     if (countEl) countEl.textContent = `${available} Available`;
-
     if (!container) return;
     container.innerHTML = tanods.map(t => {
         const isAvail = t.status === 'AVAILABLE';
+        const where = t.status === 'DEPLOYED' && t.case_ref ? `${escapeHtml(t.case_ref)} • ${escapeHtml(t.purok || '')}` : escapeHtml(t.station || '');
         return `
             <div class="tanod-card">
                 <div class="tanod-card-header">
-                    <span class="tanod-indicator ${t.status.toLowerCase()}"></span>
+                    <span class="tanod-indicator ${String(t.status).toLowerCase()}"></span>
                     <div>
                         <strong style="display: block; font-size: 13.5px; color: var(--ink);">${escapeHtml(t.name)}</strong>
-                        <small style="color: var(--muted);">${escapeHtml(t.station)}</small>
+                        <small style="color: var(--muted);">${where}</small>
                     </div>
                 </div>
                 <div>
-                    ${isAvail 
+                    ${isAvail
                         ? `<button class="button button-primary" style="width: 100%; justify-content: center;" data-action="assign_tanod" data-tanod="${escapeHtml(t.name)}">Assign to Incident</button>`
-                        : `<button class="button button-quiet" style="width: 100%; justify-content: center;" disabled>${t.status === 'DEPLOYED' ? 'Currently Deployed' : 'Off Duty'}</button>`
-                    }
+                        : `<button class="button button-quiet" style="width: 100%; justify-content: center;" disabled>${t.status === 'DEPLOYED' ? 'Currently Deployed' : 'Off Duty'}</button>`}
                 </div>
-            </div>
-        `;
+            </div>`;
     }).join('');
 }
 
@@ -275,25 +246,17 @@ function renderBlotterTable() {
         return [c.reference_number, c.complainant_name, c.incident_type, c.purok, c.status]
             .some(v => String(v || '').toLowerCase().includes(search));
     });
-
-    if (state.filter !== 'ALL') {
-        cases = cases.filter(c => String(c.status).toUpperCase() === state.filter);
-    }
+    if (state.filter !== 'ALL') cases = cases.filter(c => String(c.status).toUpperCase() === state.filter);
 
     const tbody = document.getElementById('blotterTableRows');
     if (!tbody) return;
-
     tbody.innerHTML = cases.map(c => `
         <tr>
-            <td>
-                <strong class="queue-id" data-trigger-review="true" data-ref="${escapeHtml(c.reference_number)}" style="font-family: monospace; cursor: pointer; text-decoration: underline; color: var(--teal);">
-                    ${escapeHtml(c.reference_number)}
-                </strong>
-            </td>
+            <td>${refLink(c.reference_number, 'font-family: monospace;')}</td>
             <td><strong>${escapeHtml(c.complainant_name)}</strong></td>
             <td>${escapeHtml(c.incident_type)}</td>
             <td>${escapeHtml(c.purok)}</td>
-            <td>${priorityPill(c.priority_level)}</td>
+            <td>${priorityPill(c.priority_level)}${c.severity_review_status === 'PENDING_CAPTAIN' ? ' <span class="pill pill-pending" title="Downgrade or review pending Captain approval">Review</span>' : ''}</td>
             <td>${statusPill(c.status)}</td>
             <td>${escapeHtml(c.deployed_unit || 'Desk')}</td>
             <td>${formatDate(c.created_at)}</td>
@@ -338,7 +301,6 @@ function renderNotifications() {
         dropdownList.innerHTML = '<p class="empty-message" style="margin: 24px 0;">No active alerts.</p>';
         return;
     }
-
     dropdownList.innerHTML = notifs.map(n => {
         const isCrit = n.priority_level === 'Critical' || n.status === 'CRITICAL';
         return `
@@ -349,15 +311,11 @@ function renderNotifications() {
                     </span>
                     <span class="notif-item-time">${timeAgo(n.created_at)}</span>
                 </div>
-                <p class="notif-item-desc">
-                    Reported by <strong>${escapeHtml(n.complainant_name)}</strong> in ${escapeHtml(n.purok)}
-                </p>
-            </div>
-        `;
+                <p class="notif-item-desc">Reported by <strong>${escapeHtml(n.complainant_name)}</strong> in ${escapeHtml(n.purok)}</p>
+            </div>`;
     }).join('');
 }
 
-// Notification Popover listeners
 const notifBellBtn = document.getElementById('notifBellBtn');
 const notifDropdown = document.getElementById('notifDropdown');
 
@@ -369,17 +327,12 @@ notifBellBtn?.addEventListener('click', (e) => {
 document.getElementById('notifDropdownList')?.addEventListener('click', (e) => {
     const item = e.target.closest('.notif-item');
     if (!item) return;
-    const ref = item.dataset.ref;
     notifDropdown?.classList.remove('is-active');
-    const refInput = document.getElementById('dispatchRefInput');
-    if (refInput) refInput.value = ref;
-    document.getElementById('dispatchModal')?.showModal();
+    openCaseReview(item.dataset.ref);
 });
 
 document.addEventListener('click', (e) => {
-    if (!e.target.closest('.notif-container')) {
-        notifDropdown?.classList.remove('is-active');
-    }
+    if (!e.target.closest('.notif-container')) notifDropdown?.classList.remove('is-active');
 });
 
 // -------------------------------------------------------------
@@ -396,21 +349,16 @@ async function refreshOperationsData() {
         state.criticalCase = data.critical_case;
         state.notifications = data.notifications || [];
 
-        const mPending = document.getElementById('metricPendingTriage');
-        if (mPending) mPending.textContent = data.metrics?.pending_triage ?? 0;
-        const mDispatch = document.getElementById('metricActiveDispatched');
-        if (mDispatch) mDispatch.textContent = data.metrics?.active_dispatched ?? 0;
-        const mInvestigate = document.getElementById('metricUnderInvestigation');
-        if (mInvestigate) mInvestigate.textContent = data.metrics?.under_investigation ?? 0;
-        const mResolved = document.getElementById('metricResolvedToday');
-        if (mResolved) mResolved.textContent = data.metrics?.resolved_today ?? 0;
+        setText('metricPendingTriage', data.metrics?.pending_triage ?? 0);
+        setText('metricActiveDispatched', data.metrics?.active_dispatched ?? 0);
+        setText('metricUnderInvestigation', data.metrics?.under_investigation ?? 0);
+        setText('metricResolvedToday', data.metrics?.resolved_today ?? 0);
 
         const banner = document.getElementById('criticalBanner');
         if (banner) {
             if (state.criticalCase) {
                 banner.hidden = false;
-                const head = document.getElementById('criticalBannerHeading');
-                if (head) head.textContent = `Critical Case (${state.criticalCase.reference_number}) Needs Attention: ${state.criticalCase.incident_type}`;
+                setText('criticalBannerHeading', `Critical Case (${state.criticalCase.reference_number}) Needs Attention: ${state.criticalCase.incident_type}`);
                 document.getElementById('criticalDispatchBtn')?.setAttribute('data-ref', state.criticalCase.reference_number);
             } else {
                 banner.hidden = true;
@@ -426,22 +374,17 @@ async function refreshOperationsData() {
 
         if (data.officer) {
             const officerName = data.officer.full_name || 'Barangay Officer';
-            const nameEl = document.getElementById('officerDisplayName');
-            if (nameEl) nameEl.textContent = officerName;
-
+            setText('officerDisplayName', officerName);
             const settingsName = document.getElementById('settingsName');
             if (settingsName) settingsName.value = officerName;
-            const settingsProfileName = document.getElementById('settingsProfileName');
-            if (settingsProfileName) settingsProfileName.textContent = officerName;
-
+            setText('settingsProfileName', officerName);
             const settingsContact = document.getElementById('settingsContact');
             if (settingsContact) settingsContact.value = data.officer.contact_number || '';
 
             const initials = officerName.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('') || 'OF';
-            const initialsEl = document.getElementById('officerInitials');
-            if (initialsEl) initialsEl.textContent = initials;
+            setText('officerInitials', initials);
+            setText('settingsAvatarInitials', initials);
             const cardAvatar = document.getElementById('settingsAvatarInitials');
-            if (cardAvatar) cardAvatar.textContent = initials;
 
             const pic = data.officer.profile_picture;
             const profilePicEl = document.getElementById('officerProfilePic');
@@ -449,7 +392,6 @@ async function refreshOperationsData() {
                 profilePicEl.hidden = !pic;
                 if (pic) profilePicEl.src = pic + '?v=' + Date.now();
             }
-
             const settingsPreview = document.getElementById('settingsAvatarPreview');
             if (settingsPreview) {
                 if (pic) {
@@ -466,283 +408,340 @@ async function refreshOperationsData() {
         showNotice(err.message, true);
     }
 }
-
-// Expose refresh to window so officer-ai.js can trigger re-renders after override
 window.refreshOperationsData = refreshOperationsData;
-
-// Background polling every 10 seconds
 setInterval(refreshOperationsData, 10000);
 
 // -------------------------------------------------------------
-// REAL-TIME AI NARRATIVE INSPECTION (WALK-IN MODAL)
+// LIVE ANALYSIS WHILE ENCODING
 // -------------------------------------------------------------
 let triageDebounceTimer = null;
+let inspectSeq = 0;
+
+const PRIORITY_BADGE_STYLE = {
+    Critical: ['var(--coral, #d61818)', '#fff'],
+    High: ['#d97706', '#fff'],
+    Moderate: ['#0284c7', '#fff'],
+    Low: ['#059669', '#fff']
+};
+
+function resetInspectPanel() {
+    setHtml('detectedKeywordsContainer', '<span style="font-size: 11.5px; color: var(--muted);">Type narrative details above to start AI classification...</span>');
+    setText('aiReasoningBox', 'Waiting for narrative facts to evaluate jurisdiction and emergency level...');
+    const scoreBadge = document.getElementById('aiUrgencyScoreBadge');
+    if (scoreBadge) { scoreBadge.textContent = 'Priority: Pending'; scoreBadge.style.background = ''; scoreBadge.style.color = ''; }
+    setText('aiAssessedCategoryBadge', 'Category: Pending');
+    const hc = document.getElementById('aiGeneratedCategoryInput'); if (hc) hc.value = '';
+    const hp = document.getElementById('aiGeneratedPriorityInput'); if (hp) hp.value = '';
+}
+
+let aiTimer = null;
+let aiSeq = 0;
+let lastAiText = '';
+
+async function postInspect(action, text) {
+    const response = await fetch('api/encode_case.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+        body: JSON.stringify({ action, narrative_description: text })
+    });
+    return response.json();
+}
+
+const GUIDANCE_WARN_STYLE = 'margin: 0 0 8px; padding: 8px 10px; border-radius: 6px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; line-height: 1.4;';
+
+function guidanceListHtml(title, items, ordered, style) {
+    if (!items.length) return '';
+    const tag = ordered ? 'ol' : 'ul';
+    return `<div style="margin-top: 8px;"><strong>${escapeHtml(title)}</strong>` +
+        `<${tag} style="margin: 4px 0 0 18px; padding: 0; ${style}">${items.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</${tag}></div>`;
+}
+
+function renderInspect(result, sourceLabel) {
+    const cat = result.incident_type || 'Others';
+    const prio = result.priority_level || 'Low';
+    const hc = document.getElementById('aiGeneratedCategoryInput'); if (hc) hc.value = cat;
+    const hp = document.getElementById('aiGeneratedPriorityInput'); if (hp) hp.value = prio;
+    setText('aiAssessedCategoryBadge', `Category: ${cat}`);
+
+    const pct = Math.round(Number(result.ai_urgency_score || 0) * 100);
+    const scoreBadge = document.getElementById('aiUrgencyScoreBadge');
+    if (scoreBadge) {
+        scoreBadge.textContent = `Priority: ${prio} (${pct}%)`;
+        const [bg, fg] = PRIORITY_BADGE_STYLE[prio] || PRIORITY_BADGE_STYLE.Low;
+        scoreBadge.style.background = bg;
+        scoreBadge.style.color = fg;
+    }
+
+    const kws = Array.isArray(result.detected_keywords) ? result.detected_keywords : [];
+    setHtml('detectedKeywordsContainer', kws.length === 0
+        ? '<span style="font-size: 11px; color: var(--muted);">No immediate threat indicators identified.</span>'
+        : kws.map(kw => `<span class="pill" style="background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; font-weight: 700; margin-right: 4px; margin-bottom: 4px;">🔍 ${escapeHtml(kw)}</span>`).join(''));
+
+    const list = (v) => (Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim() !== '') : []);
+    const rulesActions = list(result.recommended_actions).slice(0, 3);
+    const aiSteps = list(result.ai_next_steps).slice(0, 5);
+    const questions = list(result.questions_for_resident).slice(0, 5);
+    const dis = (result.disagreement && result.disagreement.any) ? result.disagreement : null;
+
+    const warn = dis
+        ? `<div style="${GUIDANCE_WARN_STYLE}">⚠️ The rules and the AI disagree. ${escapeHtml(dis.message || '')}</div>`
+        : '';
+    const summary = (typeof result.summary === 'string' && result.summary.trim() !== '')
+        ? `<div style="margin-bottom: 6px;"><strong>Summary:</strong> ${escapeHtml(result.summary)}</div>`
+        : '';
+
+    const stepsHtml = aiSteps.length
+        ? guidanceListHtml('Proceed with the following actions:', rulesActions, true, 'color: var(--teal, #19766c); font-weight: 700;') +
+          guidanceListHtml('Suggested by the AI (check before acting):', aiSteps, true, 'color: var(--ink);')
+        : guidanceListHtml('Proceed with the following actions:', rulesActions, true, 'color: var(--teal, #19766c); font-weight: 700;');
+    const questionsHtml = guidanceListHtml('Ask the resident:', questions, false, 'color: var(--ink);');
+
+    setHtml('aiReasoningBox', `
+        <div style="font-size: 12px; line-height: 1.5; color: var(--ink);">
+            ${warn}
+            <div style="font-size: 11px; color: var(--muted); margin-bottom: 4px;">Source: ${escapeHtml(sourceLabel)}</div>
+            ${summary}
+            <strong>Evaluation:</strong> ${escapeHtml(result.reasoning || '')}
+            <div style="margin-top: 5px;"><strong>Jurisdiction:</strong> ${escapeHtml(result.legal_routing || '')}</div>
+            ${stepsHtml}
+            ${questionsHtml}
+            <div style="margin-top: 8px; font-size: 10.5px; color: var(--muted);">Suggestions only. The desk officer makes the final decision.</div>
+        </div>`);
+}
 
 async function inspectNarrativeWithAI(narrativeText) {
     const trimmed = String(narrativeText || '').trim();
-    const statusContainer = document.getElementById('aiTriageStatus');
-    const badgeContainer = document.getElementById('detectedKeywordsContainer');
-    const reasoningBox = document.getElementById('aiReasoningBox');
-    const scoreBadge = document.getElementById('aiUrgencyScoreBadge');
-    const categoryBadge = document.getElementById('aiAssessedCategoryBadge');
-    
-    const hiddenCategory = document.getElementById('aiGeneratedCategoryInput');
-    const hiddenPriority = document.getElementById('aiGeneratedPriorityInput');
+    clearTimeout(aiTimer);
+    if (trimmed.length < 3) { lastAiText = ''; resetInspectPanel(); return; }
 
-    if (!trimmed || trimmed.length < 15) {
-        if (badgeContainer) badgeContainer.innerHTML = '<span style="font-size: 11.5px; color: var(--muted);">Type narrative details above to start AI classification...</span>';
-        if (reasoningBox) reasoningBox.textContent = 'Waiting for narrative facts to evaluate jurisdiction and emergency level...';
-        if (scoreBadge) {
-            scoreBadge.textContent = 'Priority: Low (0%)';
-            scoreBadge.style.background = '';
-            scoreBadge.style.color = '';
-        }
-        if (categoryBadge) categoryBadge.textContent = 'Category: Pending';
-        return;
-    }
-
-    if (statusContainer) {
-        statusContainer.textContent = 'AI is evaluating narrative...';
-        statusContainer.classList.add('pulse');
-    }
+    const seq = ++inspectSeq;
+    const statusEl = document.getElementById('aiTriageStatus');
+    if (statusEl) { statusEl.textContent = 'Analyzing narrative...'; statusEl.classList.add('pulse'); }
 
     try {
-        const response = await fetch('api/encode_case.php', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': (document.querySelector('meta[name="csrf-token"]') || {}).content || ''
-            },
-            body: JSON.stringify({
-                action: 'inspect_triage',
-                narrative_description: trimmed
-            })
-        });
+        const result = await postInspect('inspect_triage', trimmed);
+        if (seq !== inspectSeq) return;
 
-        const result = await response.json();
+        if (statusEl) { statusEl.textContent = 'Rules analysis updated'; statusEl.classList.remove('pulse'); }
+        if (!result.success) { setText('aiReasoningBox', result.error || result.message || 'Could not analyze the narrative.'); return; }
 
-        if (statusContainer) {
-            statusContainer.textContent = 'AI Classification Applied';
-            statusContainer.classList.remove('pulse');
-        }
+        renderInspect(result, 'Rules');
+        scheduleAiInspect(trimmed);
+    } catch (err) {
+        if (seq !== inspectSeq) return;
+        if (statusEl) { statusEl.textContent = 'Analysis failed.'; statusEl.classList.remove('pulse'); }
+        setText('aiReasoningBox', err.message);
+    }
+}
 
-        if (!result.success) {
-            if (reasoningBox) reasoningBox.textContent = result.error || 'Failed to inspect narrative.';
-            return;
-        }
+function scheduleAiInspect(text) {
+    clearTimeout(aiTimer);
+    const isThreatWord = /\b(baril|namaril|binaril|patay|pinatay|saksak|sinaksak|sunog|banta|dugo)\b/i.test(text);
+    if ((text.length < 15 && !isThreatWord) || text === lastAiText) return;
+    aiTimer = setTimeout(() => inspectNarrativeAI(text), 900);
+}
 
-        // 1. Assign AI-determined Category to Hidden Input & UI Badge
-        if (result.incident_type) {
-            if (hiddenCategory) hiddenCategory.value = result.incident_type;
-            if (categoryBadge) categoryBadge.textContent = `Category: ${result.incident_type}`;
-        }
+async function inspectNarrativeAI(text) {
+    const seq = ++aiSeq;
+    const rulesSeq = inspectSeq;
+    const statusEl = document.getElementById('aiTriageStatus');
+    if (statusEl) { statusEl.textContent = 'Checking with AI...'; statusEl.classList.add('pulse'); }
 
-        // 2. Assign AI-determined Priority to Hidden Input & Score Badge
-        if (result.priority_level) {
-            if (hiddenPriority) hiddenPriority.value = result.priority_level;
-            const pct = Math.round(Number(result.ai_urgency_score || 0) * 100);
-            if (scoreBadge) {
-                scoreBadge.textContent = `${result.priority_level} (${pct}%)`;
-                if (result.priority_level === 'Critical') {
-                    scoreBadge.style.background = 'var(--coral)';
-                    scoreBadge.style.color = '#fff';
-                } else if (result.priority_level === 'High') {
-                    scoreBadge.style.background = '#d97706';
-                    scoreBadge.style.color = '#fff';
-                } else if (result.priority_level === 'Moderate') {
-                    scoreBadge.style.background = '#0284c7';
-                    scoreBadge.style.color = '#fff';
-                } else {
-                    scoreBadge.style.background = '#059669';
-                    scoreBadge.style.color = '#fff';
-                }
-            }
-        }
+    try {
+        const result = await postInspect('inspect_triage_ai', text);
+        if (seq !== aiSeq || rulesSeq !== inspectSeq) return;
+        if (statusEl) statusEl.classList.remove('pulse');
+        if (!result.success) { if (statusEl) statusEl.textContent = 'Rules analysis updated'; return; }
 
-        // 3. Render Threat Keywords
-        if (badgeContainer) {
-            const keywords = Array.isArray(result.detected_keywords) ? result.detected_keywords : [];
-            if (keywords.length === 0) {
-                badgeContainer.innerHTML = '<span style="font-size: 11px; color: var(--muted);">No immediate threat indicators identified.</span>';
-            } else {
-                badgeContainer.innerHTML = keywords.map(kw => `
-                    <span class="pill" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); font-weight: 700; margin-right: 4px; margin-bottom: 4px;">
-                        🔍 ${escapeHtml(kw)}
-                    </span>
-                `).join('');
-            }
-        }
-
-        // 4. Render Step-by-Step AI Reasoning & Action Guidance
-        if (reasoningBox) {
-            reasoningBox.innerHTML = `
-                <div style="font-size: 12.5px; line-height: 1.5; color: var(--ink);">
-                    <strong>Evaluation:</strong> ${escapeHtml(result.reasoning || 'Evaluated under Katarungang Pambarangay scope.')}
-                    <div style="margin-top: 6px; color: var(--teal); font-weight: 700;">
-                        Recommended Action: ${escapeHtml(result.ai_recommendation || 'Proceed with standard desk logging.')}
-                    </div>
-                </div>
-            `;
+        lastAiText = text;
+        renderInspect(result, result.ai_used ? 'Rules + AI' : 'Rules only');
+        if (statusEl) {
+            statusEl.textContent = result.ai_used
+                ? 'Rules + AI updated'
+                : 'Rules analysis updated' + (result.ai_note ? ' (' + result.ai_note + ')' : '');
         }
     } catch (err) {
-        if (statusContainer) statusContainer.textContent = 'AI inspection failed.';
-        if (reasoningBox) reasoningBox.textContent = err.message;
+        if (seq !== aiSeq) return;
+        if (statusEl) { statusEl.textContent = 'Rules analysis updated (AI check failed)'; statusEl.classList.remove('pulse'); }
     }
 }
 
 // -------------------------------------------------------------
-// EVENT DELEGATION: POPUP REVIEW (STRICTLY ON REFERENCE ID)
+// CASE REVIEW POPUP
+// -------------------------------------------------------------
+const PILL_STYLE = {
+    Critical: 'background: var(--coral); color: #fff;',
+    High: 'background: #d97706; color: #fff;',
+    Moderate: 'background: #0284c7; color: #fff;',
+    Low: 'background: #059669; color: #fff;'
+};
+const KP_STYLE = {
+    EXEMPT:    { bg: 'rgba(239, 68, 68, 0.12)', border: 'var(--coral)', color: 'var(--coral)', pill: 'background:#fee2e2;color:#991b1b;' },
+    VERIFY:    { bg: 'rgba(217, 119, 6, 0.12)', border: '#d97706', color: '#b45309', pill: 'background:#fef3c7;color:#92400e;' },
+    COMPETENT: { bg: 'rgba(25, 118, 108, 0.10)', border: 'var(--teal)', color: 'var(--teal)', pill: 'background:#e6f3e9;color:#287048;' }
+};
+
+async function openCaseReview(ref) {
+    if (!ref) return;
+    try {
+        const res = await requestOfficer('get_case_review_details', { reference_number: ref });
+        const c = res.case;
+        const a = res.analysis || {};
+        const sev = res.severity || {};
+        const dups = res.duplicates || [];
+        const hist = res.history || { items: [], insights: [] };
+        const beat = res.beat || {};
+
+        setText('modalReviewRef', c.reference_number);
+        setText('modalReviewCategory', c.incident_type || a.incident_type || 'Incident Review');
+        setText('modalComplainantName', c.complainant_name || 'Walk-in Resident');
+        setText('modalComplainantPhone', c.complainant_phone || 'None provided');
+        setText('modalLocationPurok', [c.purok, c.street_address].filter(Boolean).join(' • ') || 'Barangay Duale');
+        setText('modalNarrativeText', c.narrative_description || 'No narrative facts recorded.');
+
+        const prio = c.priority_level || 'Low';
+        const pBadge = document.getElementById('modalPriorityBadge');
+        if (pBadge) { pBadge.textContent = prio; pBadge.className = 'pill'; pBadge.setAttribute('style', PILL_STYLE[prio] || PILL_STYLE.Low); }
+
+        const routingBanner = document.getElementById('modalLegalRoutingBanner');
+        let sevNotice = document.getElementById('modalSeverityNotice');
+        if (!sevNotice && routingBanner) {
+            sevNotice = document.createElement('div');
+            sevNotice.id = 'modalSeverityNotice';
+            routingBanner.parentNode.insertBefore(sevNotice, routingBanner);
+        }
+        if (sevNotice) {
+            if (sev.auto_raised) {
+                sevNotice.setAttribute('style', 'margin: 0 0 10px; padding: 8px 12px; border-radius: 6px; background: #fee2e2; color: #991b1b; font-size: 12px; font-weight: 700;');
+                sevNotice.textContent = `Severity raised from ${sev.previous} to ${sev.record} by the automatic review (logged in the audit trail).`;
+            } else if (c.severity_review_status === 'PENDING_CAPTAIN') {
+                sevNotice.setAttribute('style', 'margin: 0 0 10px; padding: 8px 12px; border-radius: 6px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700;');
+                sevNotice.textContent = 'A severity change is pending Captain approval. The case keeps its current severity until then.';
+            } else {
+                sevNotice.removeAttribute('style');
+                sevNotice.textContent = '';
+            }
+        }
+
+        const kp = a.kp_status || 'COMPETENT';
+        const st = KP_STYLE[kp] || KP_STYLE.COMPETENT;
+        setText('modalLegalRoutingTitle', a.legal_routing || 'Standard Desk Blotter Recording');
+        setText('modalLegalRoutingDesc', a.legal_routing_desc || a.ai_recommendation || '');
+        const routingTitle = document.getElementById('modalLegalRoutingTitle');
+        if (routingTitle) routingTitle.style.color = st.color;
+        if (routingBanner) { routingBanner.style.background = st.bg; routingBanner.style.border = `1px solid ${st.border}`; }
+        const pill = document.getElementById('modalVawcStatusPill');
+        if (pill) { pill.textContent = a.legal_pill || 'KP Competent'; pill.className = 'pill'; pill.setAttribute('style', st.pill); }
+
+        const wp = document.getElementById('modalWeaponFlag');
+        if (wp) {
+            wp.innerHTML = (a.weapon_flag && a.weapon_flag !== 'NONE')
+                ? `<span style="color: var(--coral); font-weight: 800;">⚠️ ${escapeHtml(a.weapon_flag)}</span>`
+                : '<span style="color: var(--muted);">NONE DETECTED</span>';
+        }
+        setText('modalMedicalFlag', a.medical_flag || 'No injury or medical emergency indicated.');
+        setText('modalSubstanceFlag', a.substance_flag || 'No intoxication or substance use indicated.');
+
+        const ent = a.entities || {};
+        const entLines = [];
+        if ((ent.respondents || []).length) entLines.push(`<div><strong>Respondent(s):</strong> ${ent.respondents.map(escapeHtml).join(', ')}</div>`);
+        if ((ent.aliases || []).length) entLines.push(`<div><strong>Alias:</strong> ${ent.aliases.map(escapeHtml).join(', ')}</div>`);
+        if ((ent.vehicles || []).length) entLines.push(`<div><strong>Vehicles:</strong> ${ent.vehicles.map(escapeHtml).join(', ')}</div>`);
+        if ((ent.plates || []).length) entLines.push(`<div><strong>Plates:</strong> ${ent.plates.map(escapeHtml).join(', ')}</div>`);
+        const actions = Array.isArray(a.recommended_actions) ? a.recommended_actions : [];
+        setHtml('modalAiReasoning', `
+            <div style="line-height: 1.5;">
+                <div><strong>Why:</strong> ${escapeHtml(a.reasoning || '')}</div>
+                ${actions.length ? `<div style="margin-top: 6px;"><strong>Recommended actions:</strong><ol style="margin: 4px 0 0 18px; padding: 0;">${actions.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ol></div>` : ''}
+                ${entLines.length ? `<div style="margin-top: 6px;">${entLines.join('')}</div>` : ''}
+                <div style="margin-top: 6px; font-size: 10.5px; color: var(--muted);">Decision support only. The final legal determination rests with the Punong Barangay or the Lupon Secretary.</div>
+            </div>`);
+
+        const kws = Array.isArray(a.detected_keywords) ? a.detected_keywords : [];
+        const neg = Array.isArray(a.negated_terms) ? a.negated_terms : [];
+        setHtml('modalDetectedKeywords',
+            (kws.length === 0 && neg.length === 0)
+                ? '<span style="font-size: 11px; color: var(--muted);">No specific threat words flagged.</span>'
+                : kws.map(kw => `<span class="pill" style="background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; font-weight: 800; font-size: 11.5px; padding: 3px 8px;">🔍 ${escapeHtml(kw)}</span>`).join(' ')
+                  + neg.map(n => `<span class="pill" style="background: #eef2f2; color: #52676f; font-size: 11px;" title="Mentioned but ignored">ignored: ${escapeHtml(n)}</span>`).join(' '));
+
+        setHtml('modalDuplicateBox', dups.length === 0
+            ? '<span style="color: var(--muted);">✓ No duplicate or related report in this Purok within 4 hours.</span>'
+            : dups.map(d => `
+                <div style="border-left: 3px solid ${d.label === 'LIKELY DUPLICATE' ? 'var(--coral)' : 'var(--gold)'}; padding-left: 8px; margin-bottom: 6px;">
+                    <div><strong>${escapeHtml(d.label)}</strong> • ${d.similarity}% keyword overlap • ${d.minutes_apart} min apart</div>
+                    <div>${refLink(d.reference_number)} ${escapeHtml(d.incident_type)} • ${escapeHtml(d.status)}${d.shared_terms.length ? ` • shared: ${d.shared_terms.map(escapeHtml).join(', ')}` : ''}</div>
+                    ${d.linked
+                        ? '<span style="font-size: 11px; color: var(--muted);">Already linked</span>'
+                        : `<button type="button" class="btn-action-quiet" style="margin-top: 4px;" data-action="link_duplicate" data-ref="${escapeHtml(d.reference_number)}" data-primary="${escapeHtml(c.reference_number)}">Link as duplicate report</button>`}
+                </div>`).join(''));
+
+        const insights = (hist.insights || []).map(i =>
+            `<div style="margin-bottom: 4px; padding: 6px 8px; border-radius: 6px; font-size: 11.5px; ${i.level === 'high' ? 'background:#fee2e2;color:#991b1b;font-weight:700;' : 'background:#eef2f2;color:#40575f;'}">${i.level === 'high' ? '📊 ' : 'ℹ️ '}${escapeHtml(i.text)}</div>`).join('');
+        const items = (hist.items || []).map(h => `
+            <div style="display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding: 3px 0;">
+                <span>${refLink(h.reference_number)} • ${escapeHtml(h.incident_type)} <span style="color: var(--muted);">(${escapeHtml((h.reasons || []).join(', '))})</span></span>
+                <span class="pill ${h.priority_level === 'Critical' ? 'pill-rejected' : 'pill-pending'}">${escapeHtml(h.status)}</span>
+            </div>`).join('');
+        setHtml('modalHistoryList', (insights + items) || '<span style="color: var(--muted);">✓ No related earlier reports in the past 12 months.</span>');
+
+        setText('modalBeatRecommendation', beat.summary || `${c.purok} sector patrol beat`);
+
+        ['modalBtnAccept', 'modalBtnDispatch', 'modalBtnLupon', 'modalBtnReject'].forEach(id => {
+            const b = document.getElementById(id);
+            if (b) b.setAttribute('data-ref', c.reference_number);
+        });
+        const luponBtn = document.getElementById('modalBtnLupon');
+        if (luponBtn) {
+            const blocked = kp === 'EXEMPT';
+            luponBtn.disabled = blocked;
+            luponBtn.style.opacity = blocked ? '0.4' : '1';
+            luponBtn.style.cursor = blocked ? 'not-allowed' : 'pointer';
+            luponBtn.title = blocked ? (a.legal_routing || 'Exempt from Katarungang Pambarangay') : (kp === 'VERIFY' ? 'Verify eligibility before endorsing' : 'Endorse to Katarungang Pambarangay');
+        }
+        const rejectBtn = document.getElementById('modalBtnReject');
+        if (rejectBtn) {
+            const locked = prio === 'Critical' || prio === 'High';
+            rejectBtn.disabled = locked;
+            rejectBtn.style.opacity = locked ? '0.4' : '1';
+            rejectBtn.title = locked ? 'High and Critical cases cannot be closed with the quick Flag button.' : '';
+        }
+
+        const dlg = document.getElementById('caseReviewModal');
+        if (dlg && !dlg.open) dlg.showModal();
+    } catch (err) {
+        showNotice('Failed to open case review: ' + err.message, true);
+    }
+}
+
+// -------------------------------------------------------------
+// CLICK DELEGATION
 // -------------------------------------------------------------
 document.addEventListener('click', async (e) => {
-    // Check if clicked element is the reference code trigger
     const idTrigger = e.target.closest('[data-trigger-review="true"]');
     if (idTrigger) {
         e.preventDefault();
-        const ref = idTrigger.dataset.ref;
-        if (!ref) return;
-
-        try {
-            const res = await requestOfficer('get_case_review_details', { reference_number: ref });
-            if (!res.success) return showNotice(res.message, true);
-
-            const c = res.case;
-            const ai = res.ai_analysis || {};
-            const duplicates = res.duplicates || [];
-            const history = res.history_matches || [];
-
-            // 1. Basic Resident & Case Info
-            document.getElementById('modalReviewRef').textContent = c.reference_number;
-            document.getElementById('modalReviewCategory').textContent = c.incident_type;
-            document.getElementById('modalComplainantName').textContent = c.complainant_name || 'Walk-in Resident';
-            document.getElementById('modalComplainantPhone').textContent = c.complainant_phone || 'None provided';
-            document.getElementById('modalLocationPurok').textContent = c.purok || 'Barangay Duale';
-            document.getElementById('modalNarrativeText').textContent = c.narrative_description || 'No narrative facts recorded.';
-
-            // Priority Badge
-            const pBadge = document.getElementById('modalPriorityBadge');
-            pBadge.textContent = c.priority_level;
-            pBadge.className = 'pill ' + (c.priority_level === 'Critical' ? 'pill-rejected' : c.priority_level === 'High' ? 'pill-pending' : 'pill-active');
-
-            // 2. Multi-Agent System: Statutory Jurisdiction (Agent 1)
-            const routingTitle = document.getElementById('modalLegalRoutingTitle');
-            const routingDesc = document.getElementById('modalLegalRoutingDesc');
-            const routingBanner = document.getElementById('modalLegalRoutingBanner');
-            const vawcPill = document.getElementById('modalVawcStatusPill');
-
-            routingTitle.textContent = ai.legal_routing || 'Standard Desk Blotter Recording';
-            routingDesc.textContent = ai.legal_routing_desc || ai.ai_recommendation || 'Proceed with regular desk intake.';
-
-            if (ai.vawc_minor_flag) {
-                routingBanner.style.background = 'rgba(239, 68, 68, 0.15)';
-                routingBanner.style.borderColor = 'var(--coral)';
-                routingTitle.style.color = 'var(--coral)';
-                vawcPill.textContent = '🛑 RA 9262 RESTRICTION';
-                vawcPill.className = 'pill pill-rejected';
-            } else {
-                routingBanner.style.background = 'rgba(25, 118, 108, 0.1)';
-                routingBanner.style.borderColor = 'var(--teal)';
-                routingTitle.style.color = 'var(--teal)';
-                vawcPill.textContent = 'KP Competent';
-                vawcPill.className = 'pill pill-active';
-            }
-
-            // 3. Multi-Agent System: Safety Entities & Beat (Agent 2)
-            const wpEl = document.getElementById('modalWeaponFlag');
-            wpEl.textContent = ai.weapon_flag !== 'NONE' ? `⚠️ ${ai.weapon_flag}` : 'NONE DETECTED';
-            wpEl.style.color = ai.weapon_flag !== 'NONE' ? 'var(--coral)' : 'var(--ink)';
-
-            document.getElementById('modalMedicalFlag').textContent = ai.medical_flag || 'No acute trauma mentioned.';
-            document.getElementById('modalSubstanceFlag').textContent = ai.substance_flag || 'No intoxication reported.';
-            document.getElementById('modalBeatRecommendation').textContent = `${c.purok} Sector Patrol Beat`;
-
-            // Reasoning & Keywords
-            document.getElementById('modalAiReasoning').textContent = ai.reasoning || 'Triage evaluation completed.';
-            const kwContainer = document.getElementById('modalDetectedKeywords');
-            const kws = ai.detected_keywords || [];
-            kwContainer.innerHTML = kws.map(kw => `
-                <span class="pill" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-weight: 700;">
-                    🔍 ${escapeHtml(kw)}
-                </span>
-            `).join('');
-
-            // 4. Multi-Agent System: Duplicate Cluster Sentinel (Agent 3)
-            const dupContainer = document.getElementById('modalDuplicateBox');
-            if (duplicates.length === 0) {
-                dupContainer.innerHTML = '<span style="color: var(--muted);">✓ No recent cluster or duplicate in this Purok within 2 hours.</span>';
-            } else {
-                dupContainer.innerHTML = duplicates.map(d => `
-                    <div style="border-left: 2px solid var(--gold); padding-left: 6px; margin-bottom: 2px;">
-                        <strong style="color: var(--gold);">${escapeHtml(d.reference_number)}</strong>: ${escapeHtml(d.incident_type)} (${timeAgo(d.created_at)})
-                    </div>
-                `).join('');
-            }
-
-            // 5. Multi-Agent System: Recidivism Pattern Graph (Agent 4)
-            const histContainer = document.getElementById('modalHistoryList');
-            if (history.length === 0) {
-                histContainer.innerHTML = '<span style="color: var(--muted);">✓ No previous blotters on record for this complainant.</span>';
-            } else {
-                histContainer.innerHTML = history.map(h => `
-                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 2px;">
-                        <span>${escapeHtml(h.reference_number)} • ${escapeHtml(h.incident_type)}</span>
-                        <span class="pill pill-pending">${escapeHtml(h.status)}</span>
-                    </div>
-                `).join('');
-            }
-
-            // Bind Action Buttons inside the review modal
-            ['modalBtnAccept', 'modalBtnDispatch', 'modalBtnLupon', 'modalBtnReject'].forEach(btnId => {
-                const btn = document.getElementById(btnId);
-                if (btn) btn.setAttribute('data-ref', c.reference_number);
-            });
-
-            // Prevent mediation endorsement if prohibited by law (e.g., VAWC or Minor)
-            const luponBtn = document.getElementById('modalBtnLupon');
-            if (luponBtn) {
-                luponBtn.disabled = !!ai.vawc_minor_flag;
-                luponBtn.title = ai.vawc_minor_flag ? 'Cannot mediate VAWC cases under RA 9262' : 'Endorse to Katarungang Pambarangay';
-            }
-
-            document.getElementById('caseReviewModal').showModal();
-
-        } catch (err) {
-            showNotice('Failed to open case review: ' + err.message, true);
-        }
+        await openCaseReview(idTrigger.dataset.ref);
         return;
     }
 
-    // Check for Walk-In Encode Modal Triggers
     const encodeTrigger = e.target.closest('#openEncodeModalBtn, #sidebarEncodeCaseBtn, [data-open-encode]');
     if (encodeTrigger) {
         e.preventDefault();
         const encodeDialog = document.getElementById('encodeCaseDialog');
         const form = document.getElementById('encodeCaseForm');
-
         if (form) form.reset();
-
-        const badgeContainer = document.getElementById('detectedKeywordsContainer');
-        if (badgeContainer) badgeContainer.innerHTML = '<span style="font-size: 11.5px; color: var(--muted);">Type narrative details above to start AI classification...</span>';
-        const reasoningBox = document.getElementById('aiReasoningBox');
-        if (reasoningBox) reasoningBox.textContent = 'Waiting for narrative facts to evaluate jurisdiction and emergency level...';
-        const scoreBadge = document.getElementById('aiUrgencyScoreBadge');
-        if (scoreBadge) {
-            scoreBadge.textContent = 'Priority: Low (0%)';
-            scoreBadge.style.background = '';
-            scoreBadge.style.color = '';
-        }
-        const categoryBadge = document.getElementById('aiAssessedCategoryBadge');
-        if (categoryBadge) categoryBadge.textContent = 'Category: Pending';
-
+        inspectSeq++;
+        resetInspectPanel();
         if (encodeDialog && typeof encodeDialog.showModal === 'function') {
-            encodeDialog.showModal();
+            if (!encodeDialog.open) encodeDialog.showModal();
         } else if (encodeDialog) {
             encodeDialog.setAttribute('open', '');
         }
         return;
     }
 
-    // Table Row Actions (Accept, Dispatch, Lupon, Flag)
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
     const action = btn.dataset.action;
@@ -784,16 +783,20 @@ document.addEventListener('click', async (e) => {
             document.getElementById('luponModal').showModal();
         } else if (action === 'assign_tanod') {
             const tanod = btn.dataset.tanod;
-            document.getElementById('dispatchUnitSelect').value = `Tanod Patrol (${tanod})`;
+            const sel = document.getElementById('dispatchUnitSelect');
+            if (sel) sel.value = `Tanod Patrol (${tanod})`;
             setView('blotter');
             showNotice(`Select a case to assign ${tanod}`);
+        } else if (action === 'link_duplicate') {
+            const res = await requestOfficer('link_duplicate', { reference_number: ref, primary_reference: btn.dataset.primary });
+            showNotice(res.message);
+            await openCaseReview(btn.dataset.primary);
         }
     } catch (err) {
         showNotice(err.message, true);
     }
 });
 
-// Banner quick dispatch button
 document.getElementById('criticalDispatchBtn')?.addEventListener('click', (e) => {
     const ref = e.currentTarget.getAttribute('data-ref');
     if (ref) {
@@ -802,7 +805,6 @@ document.getElementById('criticalDispatchBtn')?.addEventListener('click', (e) =>
     }
 });
 
-// Dispatch Form Submission
 document.getElementById('dispatchForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = Object.fromEntries(new FormData(e.currentTarget).entries());
@@ -816,28 +818,16 @@ document.getElementById('dispatchForm')?.addEventListener('submit', async (e) =>
     }
 });
 
-// Lupon Form Submission
 document.getElementById('luponForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const mode = document.getElementById('luponActionMode').value;
     const ref = document.getElementById('luponRefInput').value;
     const formData = new FormData(e.currentTarget);
-
     try {
-        if (mode === 'endorse') {
-            const res = await requestOfficer('endorse_lupon', {
-                reference_number: ref,
-                mediator: formData.get('mediator'),
-                schedule: formData.get('schedule')
-            });
-            showNotice(res.message);
-        } else {
-            const res = await requestOfficer('settle_lupon', {
-                reference_number: ref,
-                notes: formData.get('settlement_notes')
-            });
-            showNotice(res.message);
-        }
+        const res = mode === 'endorse'
+            ? await requestOfficer('endorse_lupon', { reference_number: ref, mediator: formData.get('mediator'), schedule: formData.get('schedule') })
+            : await requestOfficer('settle_lupon', { reference_number: ref, notes: formData.get('settlement_notes') });
+        showNotice(res.message);
         document.getElementById('luponModal').close();
         await refreshOperationsData();
     } catch (err) {
@@ -845,39 +835,112 @@ document.getElementById('luponForm')?.addEventListener('submit', async (e) => {
     }
 });
 
-// Encode Case Submission
+// -------------------------------------------------------------
+// CONTACT PHONE: exactly 11 digits (09XXXXXXXXX)
+// -------------------------------------------------------------
+const PHONE_MESSAGES = {
+    limit: 'A Philippine mobile number has only 11 digits (09XXXXXXXXX), so no more digits can be added.',
+    long: 'This number has more than 11 digits, so it might be wrong. Please re-enter the phone number (09XXXXXXXXX). The number you entered has been cleared.',
+    short: 'This number has fewer digits than a Philippine mobile number, which has 11 digits (09XXXXXXXXX). Please re-enter the phone number. The number you typed has been cleared.',
+    prefix: 'A Philippine mobile number starts with 09 (09XXXXXXXXX). Please re-enter the phone number. The number you typed has been cleared.'
+};
+const phoneInput = document.getElementById('complainantPhoneInput');
+let phoneErrorEl = null;
+let phoneLastGood = '';
+
+function showPhoneError(kind, clearBox = true) {
+    if (!phoneInput) return;
+    if (!phoneErrorEl) {
+        phoneErrorEl = document.createElement('p');
+        phoneErrorEl.id = 'complainantPhoneError';
+        phoneErrorEl.setAttribute('role', 'alert');
+        phoneErrorEl.style.cssText = 'margin: 4px 0 0; font-size: 12px; font-weight: 700; color: #d61818; line-height: 1.4;';
+        phoneInput.insertAdjacentElement('afterend', phoneErrorEl);
+        phoneInput.setAttribute('aria-describedby', 'complainantPhoneError');
+    }
+    phoneErrorEl.textContent = PHONE_MESSAGES[kind];
+    phoneErrorEl.hidden = false;
+    if (clearBox) {
+        phoneInput.value = '';
+        phoneLastGood = '';
+        phoneInput.setAttribute('aria-invalid', 'true');
+    }
+}
+
+function hidePhoneError() {
+    if (phoneErrorEl) phoneErrorEl.hidden = true;
+    if (phoneInput) phoneInput.removeAttribute('aria-invalid');
+}
+
+function isSingleDigitInsertion(prev, cur) {
+    if (prev.length !== 11 || cur.length !== 12) return false;
+    for (let i = 0; i < cur.length; i++) {
+        if (cur.slice(0, i) + cur.slice(i + 1) === prev) return true;
+    }
+    return false;
+}
+
+function validatePhoneField(focusOnError) {
+    if (!phoneInput) return true;
+    const digits = phoneInput.value.replace(/\D/g, '');
+    if (digits === '') { phoneInput.value = ''; phoneLastGood = ''; return true; }
+    let kind = null;
+    if (digits.length > 11) kind = 'long';
+    else if (digits.length < 11) kind = 'short';
+    else if (!digits.startsWith('09')) kind = 'prefix';
+    if (!kind) { phoneInput.value = digits; phoneLastGood = digits; hidePhoneError(); return true; }
+    showPhoneError(kind);
+    if (focusOnError) phoneInput.focus();
+    return false;
+}
+
+if (phoneInput) {
+    phoneInput.setAttribute('inputmode', 'numeric');
+    phoneInput.addEventListener('focus', () => { phoneLastGood = phoneInput.value.replace(/\D/g, '').slice(0, 11); });
+    phoneInput.addEventListener('input', () => {
+        const digits = phoneInput.value.replace(/\D/g, '');
+        if (digits.length > 11) {
+            if (isSingleDigitInsertion(phoneLastGood, digits)) {
+                const caret = Math.max(0, (phoneInput.selectionStart ?? 12) - 1);
+                phoneInput.value = phoneLastGood;
+                try { phoneInput.setSelectionRange(caret, caret); } catch (e) {}
+                showPhoneError('limit', false);
+            } else {
+                showPhoneError('long');
+            }
+            return;
+        }
+        if (digits !== phoneInput.value) phoneInput.value = digits;
+        phoneLastGood = digits;
+        hidePhoneError();
+    });
+    phoneInput.addEventListener('blur', () => { validatePhoneField(false); });
+    document.getElementById('encodeCaseDialog')?.addEventListener('close', hidePhoneError);
+}
+
 document.getElementById('encodeCaseForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
+    if (!validatePhoneField(true)) return;
     const submitBtn = form.querySelector('button[type="submit"]');
-
     if (submitBtn) submitBtn.disabled = true;
-
     try {
         const formData = new FormData(form);
-        const narrative = (formData.get('narrative_description') || '').trim();
-
+        const narrative = String(formData.get('narrative_description') || '').trim();
         if (!narrative) {
             showNotice('Narrative description is required.', true);
-            if (submitBtn) submitBtn.disabled = false;
             return;
         }
-
-        const payload = {
-            action: 'encode_case',
-            complainant_name: (formData.get('complainant_name') || 'Walk-in Resident').trim(),
-            complainant_phone: (formData.get('complainant_phone') || 'N/A').trim(),
-            incident_type: (formData.get('incident_type') || 'General Incident').trim(),
-            purok: (formData.get('purok') || 'Purok 1').trim(),
-            street_address: (formData.get('street_address') || '').trim(),
+        const res = await requestOfficer('encode_case', {
+            complainant_name: String(formData.get('complainant_name') || '').trim(),
+            complainant_phone: String(formData.get('complainant_phone') || '').trim(),
+            purok: String(formData.get('purok') || '').trim(),
+            street_address: String(formData.get('street_address') || '').trim(),
             narrative_description: narrative,
-            priority_level: formData.get('priority_level') || 'Low'
-        };
-
-        const res = await requestOfficer('encode_case', payload);
+            incident_type: String(formData.get('incident_type') || '').trim()
+        });
         const encodeDialog = document.getElementById('encodeCaseDialog');
         if (encodeDialog) encodeDialog.close();
-
         showNotice(res.message || 'Case recorded successfully.');
         await refreshOperationsData();
     } catch (err) {
@@ -887,17 +950,17 @@ document.getElementById('encodeCaseForm')?.addEventListener('submit', async (e) 
     }
 });
 
-// Real-Time Debounce for Narrative Textarea in Encode Form
 document.addEventListener('input', (e) => {
     if (e.target && (e.target.matches('#encodeCaseForm textarea[name="narrative_description"]') || e.target.id === 'narrativeDescriptionInput')) {
         clearTimeout(triageDebounceTimer);
-        triageDebounceTimer = setTimeout(() => {
-            inspectNarrativeWithAI(e.target.value);
-        }, 600);
+        clearTimeout(aiTimer);
+        triageDebounceTimer = setTimeout(() => inspectNarrativeWithAI(e.target.value), 450);
     }
 });
 
-// Profile and Password Form Submissions
+// -------------------------------------------------------------
+// PROFILE, PASSWORD, FILTERS, DRAWER, THEME, LOGOUT
+// -------------------------------------------------------------
 document.getElementById('profileForm')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -906,8 +969,8 @@ document.getElementById('profileForm')?.addEventListener('submit', async (event)
         const result = await requestOfficer('profile_update', {}, { formData });
         showNotice(result.message || 'Profile updated successfully.');
         await refreshOperationsData();
-    } catch (error) { 
-        showNotice(error.message, true); 
+    } catch (error) {
+        showNotice(error.message, true);
     }
 });
 
@@ -918,35 +981,27 @@ document.getElementById('passwordForm')?.addEventListener('submit', async (event
         const result = await requestOfficer('password_update', payload);
         event.currentTarget.reset();
         showNotice(result.message || 'Password updated successfully.');
-    } catch (error) { 
-        showNotice(error.message, true); 
+    } catch (error) {
+        showNotice(error.message, true);
     }
 });
 
 const photoInput = document.getElementById('settingsPhotoInput');
 const avatarPreview = document.getElementById('settingsAvatarPreview');
 const avatarInitials = document.getElementById('settingsAvatarInitials');
-
 if (photoInput) {
     photoInput.addEventListener('change', function () {
         const file = this.files && this.files[0];
         if (!file) return;
-
         const reader = new FileReader();
-        reader.onload = function (e) {
-            if (avatarPreview) {
-                avatarPreview.src = e.target.result;
-                avatarPreview.style.display = 'block';
-            }
-            if (avatarInitials) {
-                avatarInitials.style.display = 'none';
-            }
+        reader.onload = function (ev) {
+            if (avatarPreview) { avatarPreview.src = ev.target.result; avatarPreview.style.display = 'block'; }
+            if (avatarInitials) avatarInitials.style.display = 'none';
         };
         reader.readAsDataURL(file);
     });
 }
 
-// Blotter filters & search
 document.querySelectorAll('[data-blotter-filter]').forEach(tab => {
     tab.addEventListener('click', () => {
         state.filter = tab.dataset.blotterFilter;
@@ -954,34 +1009,26 @@ document.querySelectorAll('[data-blotter-filter]').forEach(tab => {
         renderBlotterTable();
     });
 });
-
 document.getElementById('blotterSearchInput')?.addEventListener('input', renderBlotterTable);
 document.querySelector('[data-refresh-cases]')?.addEventListener('click', refreshOperationsData);
 document.querySelectorAll('[data-close-dialog]').forEach(btn => btn.addEventListener('click', () => btn.closest('dialog').close()));
-
-// View Switching
 navLinks.forEach(link => link.addEventListener('click', () => setView(link.dataset.view)));
 
-// Mobile Drawer
 const mobileMenuBtn = document.getElementById('mobileMenuBtn');
 const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
 const sidebarBackdrop = document.getElementById('sidebarBackdrop');
 const adminSidebar = document.getElementById('adminSidebar');
-
 function toggleDrawer(open) {
     if (adminSidebar) adminSidebar.classList.toggle('is-open', open);
     if (sidebarBackdrop) sidebarBackdrop.classList.toggle('is-open', open);
     document.body.style.overflow = open ? 'hidden' : '';
 }
-
 mobileMenuBtn?.addEventListener('click', () => toggleDrawer(true));
 sidebarCloseBtn?.addEventListener('click', () => toggleDrawer(false));
 sidebarBackdrop?.addEventListener('click', () => toggleDrawer(false));
 
-// Theme Toggle
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const themeToggleLabel = document.getElementById('themeToggleLabel');
-
 function applyTheme(theme) {
     if (theme === 'dark') {
         document.documentElement.setAttribute('data-theme', 'dark');
@@ -995,24 +1042,17 @@ function applyTheme(theme) {
 }
 if (localStorage.getItem('balangay_theme') === 'dark') applyTheme('dark');
 themeToggleBtn?.addEventListener('click', () => {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    applyTheme(isDark ? 'light' : 'dark');
+    applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
 });
 
-// Logout Handler
 document.getElementById('logoutBtn')?.addEventListener('click', async () => {
-    try { 
-        await fetch('api/logout.php', { method: 'POST', credentials: 'same-origin' }); 
-    } catch {}
+    try { await fetch('api/logout.php', { method: 'POST', credentials: 'same-origin' }); } catch {}
     sessionStorage.clear();
     localStorage.removeItem('currentUser');
     localStorage.removeItem('authToken');
     window.location.replace('index.html');
 });
 
-// Initialization & Route Execution
 const initialView = location.hash.slice(1);
-if (initialView && document.getElementById(`view-${initialView}`)) {
-    setView(initialView);
-}
+if (initialView && document.getElementById(`view-${initialView}`)) setView(initialView);
 refreshOperationsData();

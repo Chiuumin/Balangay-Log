@@ -18,7 +18,7 @@ function residentRespond(array $payload, int $status = 200): void
 if (!isLoggedIn() || getUserRole() !== 'RESIDENT') {
     residentRespond(['success' => false, 'message' => 'Resident authentication required.'], 403);
 }
-session_write_close();   // release the session lock; $_SESSION stays readable below
+session_write_close();
 
 try {
     $pdo = getDatabaseConnection();
@@ -38,7 +38,6 @@ try {
     $residentPhone = trim((string) ($resident['contact_number'] ?? $resident['email_or_phone'] ?? ''));
 
     if ($method === 'GET') {
-        // Query cases and dynamically derive current status from the latest milestone log
         $stmt = $pdo->prepare("
             SELECT 
                 r.*,
@@ -57,9 +56,6 @@ try {
         $stmt->execute([$residentName, $residentPhone]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        // ai_recommendation holds two kinds of text: staff-only triage guidance (written at intake) and
-        // the resident-facing text written by officer actions. Only the second kind may be shown.
-        // These prefixes must match the texts written in api/officer_console.php.
         $residentVisibleRec = '/^(Unit Dispatched:|Case settled amicably|Flagged \/ closed)/';
 
         $reports = array_map(function ($row) use ($residentVisibleRec) {
@@ -69,14 +65,13 @@ try {
 
             $rec = (string) ($row['ai_recommendation'] ?? '');
             if ($rec !== '' && preg_match($residentVisibleRec, $rec) !== 1) {
-                $rec = '';   // staff-only triage guidance
+                $rec = '';
             }
             if ($rec === '' && !empty($row['latest_note'])) {
                 $rec = (string) $row['latest_note'];
             }
             $row['ai_recommendation'] = $rec !== '' ? $rec : null;
 
-            // Internal triage fields are never sent to residents.
             $row['ai_urgency_score']        = null;
             $row['original_ai_priority']    = null;
             $row['severity_review_status']  = null;
@@ -110,30 +105,30 @@ try {
     $action = trim((string) ($input['action'] ?? ''));
 
     switch ($action) {
-       case 'get_milestones':
+        case 'get_milestones':
             $refNumber = trim((string) ($input['reference_number'] ?? ''));
             if (!$refNumber) {
                 residentRespond(['success' => false, 'message' => 'Tracking number required.'], 422);
             }
 
-            // Verify resident ownership
-          // Fetch milestones in chronological order
-$mStmt = $pdo->prepare('
-    SELECT id, status_snapshot, milestone_stage, officer_in_charge, deployed_unit, action_note, created_at
-    FROM case_milestones
-    WHERE tracking_id = ?
-    ORDER BY id ASC
-');
-$mStmt->execute([$refNumber]);
-$milestones = $mStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            // Verify resident ownership and get complete incident row
+            $cStmt = $pdo->prepare('
+                SELECT id, reference_number, incident_type, narrative_description, incident_datetime,
+                       purok, priority_level, status, ai_recommendation, deployed_unit, created_at
+                FROM incident_reports
+                WHERE reference_number = ? AND (complainant_name = ? OR complainant_phone = ?)
+                LIMIT 1
+            ');
+            $cStmt->execute([$refNumber, $residentName, $residentPhone]);
+            $case = $cStmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$case) {
-                residentRespond(['success' => false, 'message' => 'Case not found or access denied.'], 404);
+                residentRespond(['success' => false, 'message' => 'Case not found or unauthorized.'], 404);
             }
 
-            // Fetch milestones in chronological order
+            // Fetch all milestones including milestone_stage
             $mStmt = $pdo->prepare('
-                SELECT id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at
+                SELECT id, status_snapshot, milestone_stage, officer_in_charge, deployed_unit, action_note, created_at
                 FROM case_milestones
                 WHERE tracking_id = ?
                 ORDER BY id ASC
@@ -141,7 +136,7 @@ $milestones = $mStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
             $mStmt->execute([$refNumber]);
             $milestones = $mStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            // Fetch endorsements (PNP transmittals or Lupon certifications)
+            // Fetch endorsements (PNP or Lupon)
             $eStmt = $pdo->prepare('
                 SELECT type, status, referred_at, endorsed_at, remarks
                 FROM endorsements
@@ -151,7 +146,7 @@ $milestones = $mStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
             $eStmt->execute([(int)$case['id']]);
             $endorsements = $eStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            // Fetch dispatch log details
+            // Fetch dispatch logs
             $dStmt = $pdo->prepare('
                 SELECT unit, status, dispatched_at, arrived_at
                 FROM tanod_dispatch_logs
@@ -192,7 +187,6 @@ $milestones = $mStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
             $locationDetails = trim("{$houseNo} {$street}");
             $fullNarrative = $narrative . ($locationDetails ? "\n[Location: {$locationDetails}]" : '');
 
-            // Triage decides the priority (it can raise, never lower, the resident's own rating).
             $r = online_case_run([
                 'complainant' => $complainant,
                 'phone'       => $phone,

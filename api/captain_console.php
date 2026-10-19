@@ -165,7 +165,223 @@ try {
 
     $action =$input['action'] ?? '';
 
-    if ($action === 'case_endorse') {
+    if ($action === 'analytics_data') {
+        $filters = is_array($input['filters'] ?? null) ? $input['filters'] : [];
+        foreach (['year', 'month', 'from', 'to', 'category', 'purok', 'status'] as $filterKey) {
+            if (isset($filters[$filterKey]) && !is_scalar($filters[$filterKey])) {
+                sendFail('One or more report filters are invalid.');
+            }
+        }
+        $yearValue = trim((string) ($filters['year'] ?? ''));
+        $monthValue = trim((string) ($filters['month'] ?? ''));
+        $fromValue = trim((string) ($filters['from'] ?? ''));
+        $toValue = trim((string) ($filters['to'] ?? ''));
+        $category = trim((string) ($filters['category'] ?? ''));
+        $purok = trim((string) ($filters['purok'] ?? ''));
+        $status = strtoupper(trim((string) ($filters['status'] ?? '')));
+        $observedStatuses = array_column(dbRows($db, 'SELECT DISTINCT status FROM incident_reports WHERE status <> \'\' ORDER BY status'), 'status');
+        $allowedStatuses = array_values(array_unique(array_merge(
+            ['PENDING', 'IN_PROGRESS', 'FOR_RESOLUTION', 'RESOLVED', 'CRITICAL', 'DISPATCHED', 'CLOSED', 'DISMISSED'],
+            array_map('strtoupper', $observedStatuses)
+        )));
+
+        if ($yearValue !== '' && (!preg_match('/^\d{4}$/', $yearValue) || (int) $yearValue < 2000 || (int) $yearValue > (int) date('Y') + 1)) {
+            sendFail('Select a valid reporting year.');
+        }
+        if ($monthValue !== '' && (!ctype_digit($monthValue) || (int) $monthValue < 1 || (int) $monthValue > 12)) {
+            sendFail('Select a valid month.');
+        }
+        foreach (['from' => $fromValue, 'to' => $toValue] as $field => $dateValue) {
+            if ($dateValue !== '') {
+                $date = DateTimeImmutable::createFromFormat('!Y-m-d', $dateValue);
+                if (!$date || $date->format('Y-m-d') !== $dateValue) {
+                    sendFail('Enter valid start and end dates.');
+                }
+            }
+        }
+        if ($fromValue !== '' && $toValue !== '' && $fromValue > $toValue) {
+            sendFail('The start date must be on or before the end date.');
+        }
+        if ($status !== '' && !in_array($status, $allowedStatuses, true)) {
+            sendFail('Select a valid case status.');
+        }
+        if (strlen($category) > 100 || strlen($purok) > 100) {
+            sendFail('The selected category or purok is invalid.');
+        }
+
+        try {
+            $knownCategories = array_column(dbRows($db, 'SELECT DISTINCT incident_type AS name FROM incident_reports WHERE incident_type <> \'\' ORDER BY name'), 'name');
+            $knownPuroks = array_column(dbRows($db, 'SELECT DISTINCT purok AS name FROM incident_reports WHERE purok <> \'\' ORDER BY name'), 'name');
+            if ($category !== '' && !in_array($category, $knownCategories, true)) {
+                sendFail('Select a valid incident category.');
+            }
+            if ($purok !== '' && !in_array($purok, $knownPuroks, true)) {
+                sendFail('Select a valid purok.');
+            }
+
+            $where = [];
+            $params = [];
+            if ($yearValue !== '') {
+                $where[] = 'ir.incident_datetime >= ? AND ir.incident_datetime < ?';
+                $params[] = $yearValue . '-01-01 00:00:00';
+                $params[] = ((int) $yearValue + 1) . '-01-01 00:00:00';
+            }
+            if ($monthValue !== '') {
+                $where[] = 'MONTH(ir.incident_datetime) = ?';
+                $params[] = (int) $monthValue;
+            }
+            if ($fromValue !== '') {
+                $where[] = 'ir.incident_datetime >= ?';
+                $params[] = $fromValue . ' 00:00:00';
+            }
+            if ($toValue !== '') {
+                $where[] = 'ir.incident_datetime < DATE_ADD(?, INTERVAL 1 DAY)';
+                $params[] = $toValue;
+            }
+            if ($category !== '') {
+                $where[] = 'ir.incident_type = ?';
+                $params[] = $category;
+            }
+            if ($purok !== '') {
+                $where[] = 'ir.purok = ?';
+                $params[] = $purok;
+            }
+            if ($status !== '') {
+                $where[] = 'ir.status = ?';
+                $params[] = $status;
+            }
+
+            $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+            $hasMilestones = (bool) dbRows($db, "SHOW TABLES LIKE 'case_milestones'");
+            $milestoneJoin = $hasMilestones
+                ? "LEFT JOIN (SELECT incident_id, MAX(created_at) AS resolved_at FROM case_milestones
+                    WHERE status_snapshot = 'RESOLVED' GROUP BY incident_id) cm ON cm.incident_id = ir.id"
+                : '';
+            $resolvedAtSql = $hasMilestones ? 'cm.resolved_at' : 'NULL';
+
+            $hasEndorsements = (bool) dbRows($db, "SHOW TABLES LIKE 'endorsements'");
+            $endorsementJoin = '';
+            $endorsementDateSql = 'NULL';
+            $endorsementTypeSql = 'NULL';
+            $receivingOfficeSql = 'NULL';
+            $endorsementColumns = [];
+            if ($hasEndorsements) {
+                $endorsementColumns = array_column(dbRows($db, "SHOW COLUMNS FROM endorsements"), 'Field');
+                if (in_array('case_id', $endorsementColumns, true) && in_array('status', $endorsementColumns, true)) {
+                    $aggregateColumns = [];
+                    if (in_array('endorsed_at', $endorsementColumns, true)) {
+                        $aggregateColumns[] = "MAX(CASE WHEN status = 'ENDORSED' THEN endorsed_at END) AS endorsed_at";
+                        $endorsementDateSql = 'e.endorsed_at';
+                    }
+                    if (in_array('type', $endorsementColumns, true)) {
+                        $aggregateColumns[] = "MAX(CASE WHEN status = 'ENDORSED' THEN type END) AS endorsement_type";
+                        $endorsementTypeSql = 'e.endorsement_type';
+                    }
+                    foreach (['receiving_agency', 'receiving_office', 'referred_to', 'agency_name'] as $officeColumn) {
+                        if (in_array($officeColumn, $endorsementColumns, true)) {
+                            $aggregateColumns[] = "MAX(CASE WHEN status = 'ENDORSED' THEN {$officeColumn} END) AS receiving_office";
+                            $receivingOfficeSql = 'e.receiving_office';
+                            break;
+                        }
+                    }
+                    if ($aggregateColumns) {
+                        $endorsementJoin = 'LEFT JOIN (SELECT case_id, ' . implode(', ', $aggregateColumns) .
+                            ' FROM endorsements GROUP BY case_id) e ON e.case_id = ir.id';
+                    }
+                }
+            }
+
+            $stmt = $db->prepare("SELECT ir.reference_number AS case_no, ir.incident_datetime AS reported_at,
+                    ir.incident_type AS category, ir.purok, ir.priority_level AS priority, ir.status,
+                    {$resolvedAtSql} AS resolved_at, {$endorsementDateSql} AS endorsed_at,
+                    {$endorsementTypeSql} AS endorsement_type, {$receivingOfficeSql} AS receiving_office
+                FROM incident_reports ir {$milestoneJoin} {$endorsementJoin}{$whereSql}
+                ORDER BY ir.incident_datetime DESC, ir.id DESC");
+            $stmt->execute($params);
+            $records = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            $currentYear = (int) date('Y');
+            $observedYears = array_map('intval', array_column(
+                dbRows($db, 'SELECT YEAR(incident_datetime) AS year FROM incident_reports
+                    WHERE YEAR(incident_datetime) BETWEEN 2000 AND ?
+                    GROUP BY YEAR(incident_datetime) ORDER BY year', [$currentYear]),
+                'year'
+            ));
+            $firstYear = max(2000, min($observedYears ?: [$currentYear - 5], $currentYear - 5));
+            $years = range($currentYear, $firstYear);
+            $categories = $knownCategories;
+            $puroks = $knownPuroks;
+            $comparisonWhere = [];
+            $comparisonParams = [];
+            $comparisonWhere[] = 'YEAR(incident_datetime) BETWEEN 2000 AND YEAR(CURDATE())';
+            if ($category !== '') {
+                $comparisonWhere[] = 'incident_type = ?';
+                $comparisonParams[] = $category;
+            }
+            if ($purok !== '') {
+                $comparisonWhere[] = 'purok = ?';
+                $comparisonParams[] = $purok;
+            }
+            if ($status !== '') {
+                $comparisonWhere[] = 'status = ?';
+                $comparisonParams[] = $status;
+            }
+            if ($monthValue !== '') {
+                $comparisonWhere[] = 'MONTH(incident_datetime) = ?';
+                $comparisonParams[] = (int) $monthValue;
+            }
+            $fromMonthDay = $fromValue !== '' ? date('m-d', strtotime($fromValue)) : '';
+            $toMonthDay = $toValue !== '' ? date('m-d', strtotime($toValue)) : '';
+            if ($fromMonthDay !== '' && $toMonthDay !== '') {
+                if ($fromMonthDay <= $toMonthDay) {
+                    $comparisonWhere[] = "DATE_FORMAT(incident_datetime, '%m-%d') BETWEEN ? AND ?";
+                    $comparisonParams[] = $fromMonthDay;
+                    $comparisonParams[] = $toMonthDay;
+                } else {
+                    $comparisonWhere[] = "(DATE_FORMAT(incident_datetime, '%m-%d') >= ? OR DATE_FORMAT(incident_datetime, '%m-%d') <= ?)";
+                    $comparisonParams[] = $fromMonthDay;
+                    $comparisonParams[] = $toMonthDay;
+                }
+            } elseif ($fromMonthDay !== '') {
+                $comparisonWhere[] = "DATE_FORMAT(incident_datetime, '%m-%d') >= ?";
+                $comparisonParams[] = $fromMonthDay;
+            } elseif ($toMonthDay !== '') {
+                $comparisonWhere[] = "DATE_FORMAT(incident_datetime, '%m-%d') <= ?";
+                $comparisonParams[] = $toMonthDay;
+            }
+            $comparisonSql = $comparisonWhere ? ' WHERE ' . implode(' AND ', $comparisonWhere) : '';
+            $yearlyComparison = dbRows($db, "SELECT YEAR(incident_datetime) AS year, COUNT(*) AS total
+                FROM incident_reports{$comparisonSql}
+                GROUP BY YEAR(incident_datetime) ORDER BY year", $comparisonParams);
+
+            $pendingEndorsements = 0;
+            if ($hasEndorsements && in_array('case_id', $endorsementColumns, true) && in_array('status', $endorsementColumns, true)) {
+                $pendingStmt = $db->prepare("SELECT COUNT(DISTINCT e.case_id) FROM endorsements e
+                    JOIN incident_reports ir ON ir.id = e.case_id
+                    WHERE e.status = 'PENDING'" . ($where ? ' AND ' . implode(' AND ', $where) : ''));
+                $pendingStmt->execute($params);
+                $pendingEndorsements = (int) $pendingStmt->fetchColumn();
+            }
+
+            sendJson([
+                'success' => true,
+                'records' => $records,
+                'total' => count($records),
+                'pending_endorsements' => $pendingEndorsements,
+                'yearly_comparison' => $yearlyComparison,
+                'options' => [
+                    'years' => $years,
+                    'categories' => $categories,
+                    'puroks' => $puroks,
+                    'statuses' => $allowedStatuses,
+                ],
+                'coverage_note' => 'Report totals use incident records available in the database. Historical data completeness is not tracked.',
+            ]);
+        } catch (Throwable $e) {
+            error_log('Captain analytics query failed: ' . $e->getMessage());
+            sendFail('Analytics data could not be loaded. Please try again.', 500);
+        }
+    } elseif ($action === 'case_endorse') {
         $id = (int) ($input['id'] ?? 0);
         $remarks = trim((string) ($input['remarks'] ?? ''));
         $eRows = dbRows($db, "SELECT e.id, e.case_id, e.type, ir.reference_number, ir.status AS case_status

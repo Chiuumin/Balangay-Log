@@ -10,7 +10,11 @@ const viewTitles = {
     analytics: 'Analytics & Official Reports',
     settings: 'Settings'
 };
-const state = { cases: [], endorsements: [], lupon: [], trend: [], byPurok: [], byPurokAll: [], byCategory: [], puroks: [], selected: null };
+const state = {
+    cases: [], endorsements: [], lupon: [], trend: [], byPurok: [], byPurokAll: [], byCategory: [], puroks: [], selected: null,
+    analyticsRecords: [], analyticsOptions: {}, yearlyComparison: [], pendingEndorsements: 0,
+    reportRows: [], reportPage: 0, reportSortIndex: -1, reportSortDirection: 1, reportPreviewData: null, reportSummaryFilter: ''
+};
 
 const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const parseDate = (v) => new Date(String(v).replace(' ', 'T'));
@@ -96,6 +100,338 @@ function ringSvg(rate) {
     return `<svg viewBox="0 0 140 140" role="img" aria-label="Resolution rate ${pct}%"><circle class="ring-track" cx="70" cy="70" r="${r}"/><circle class="ring-fill" cx="70" cy="70" r="${r}" stroke-dasharray="${(c * pct) / 100} ${c}"/><text x="70" y="78" text-anchor="middle">${pct}%</text></svg>`;
 }
 
+const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const workflowStatuses = ['PENDING', 'IN_PROGRESS', 'FOR_RESOLUTION', 'RESOLVED', 'CRITICAL'];
+
+function getFilterValues(prefix) {
+    return {
+        year: document.getElementById(`${prefix}Year`)?.value || '',
+        month: document.getElementById(`${prefix}Month`)?.value || '',
+        from: document.getElementById(`${prefix}From`)?.value || '',
+        to: document.getElementById(`${prefix}To`)?.value || '',
+        category: document.getElementById(`${prefix}Category`)?.value || '',
+        purok: document.getElementById(`${prefix}Purok`)?.value || '',
+        status: document.getElementById(`${prefix}Status`)?.value || ''
+    };
+}
+
+function fillSelect(id, values, label, currentValue = null) {
+    const select = document.getElementById(id);
+    if (!select) return;
+    const selected = currentValue === null ? select.value : currentValue;
+    select.innerHTML = `<option value="">${escapeHtml(label)}</option>` + values.map((value) => {
+        const item = typeof value === 'object' ? value.value : value;
+        const text = typeof value === 'object' ? value.label : value;
+        return `<option value="${escapeHtml(item)}">${escapeHtml(text)}</option>`;
+    }).join('');
+    if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+}
+
+function validReportingYears(years) {
+    const currentYear = new Date().getFullYear();
+    return [...new Set(years.map(Number).filter((year) =>
+        Number.isInteger(year) && year >= 2000 && year <= currentYear
+    ))].sort((a, b) => b - a);
+}
+
+function applyAnalyticsOptions(options = {}) {
+    const firstLoad = Object.keys(state.analyticsOptions).length === 0;
+    state.analyticsOptions = options;
+    const years = validReportingYears(options.years || []);
+    const categories = options.categories || [];
+    const puroks = options.puroks || [];
+    const statuses = (options.statuses || workflowStatuses).map((status) => ({ value: status, label: statusLabel(status) }));
+    ['analyticsYear', 'reportYear'].forEach((id) => fillSelect(id, years, id === 'reportYear' ? 'Select year' : 'All years'));
+    ['analyticsCategory', 'reportCategory'].forEach((id) => fillSelect(id, categories, 'All categories'));
+    ['analyticsPurok', 'reportPurok'].forEach((id) => fillSelect(id, puroks, 'All puroks'));
+    ['analyticsStatus', 'reportStatus'].forEach((id) => fillSelect(id, statuses, 'All statuses'));
+    const defaultYear = years.includes(new Date().getFullYear()) ? String(new Date().getFullYear()) : String(years[0] || '');
+    if (firstLoad && !document.getElementById('analyticsYear')?.value && defaultYear) document.getElementById('analyticsYear').value = defaultYear;
+    if (!document.getElementById('reportYear')?.value && defaultYear) document.getElementById('reportYear').value = defaultYear;
+}
+
+async function fetchAnalytics(filters = getFilterValues('analytics')) {
+    const loading = document.getElementById('analyticsLoading');
+    if (loading) loading.hidden = false;
+    try {
+        if (Object.keys(state.analyticsOptions).length === 0 && !filters.year) {
+            filters = { ...filters, year: String(new Date().getFullYear()) };
+        }
+        const data = await requestCaptain('analytics_data', { filters });
+        state.analyticsRecords = data.records || [];
+        state.pendingEndorsements = Number(data.pending_endorsements) || 0;
+        state.yearlyComparison = data.yearly_comparison || [];
+        applyAnalyticsOptions(data.options || {});
+        const availableYears = validReportingYears(data.options?.years || []);
+        if (filters.year && availableYears.length && !availableYears.includes(Number(filters.year))) {
+            const latestYear = String(availableYears[0]);
+            const yearSelect = document.getElementById('analyticsYear');
+            if (yearSelect) yearSelect.value = latestYear;
+            await fetchAnalytics({ ...filters, year: latestYear });
+            return;
+        }
+        const note = document.getElementById('coverageNote');
+        if (note) note.textContent = data.coverage_note || '';
+        renderAnalytics();
+        renderReportTable();
+    } catch (error) {
+        showNotice(error.message, true);
+        throw error;
+    } finally {
+        if (loading) loading.hidden = true;
+    }
+}
+
+function groupCounts(records, key) {
+    const counts = new Map();
+    records.forEach((record) => {
+        const name = String(record[key] || 'Unknown');
+        counts.set(name, (counts.get(name) || 0) + 1);
+    });
+    return [...counts.entries()].map(([label, count]) => ({ label, count }));
+}
+
+function makeMonthTrend(records, yearValue) {
+    const year = Number(yearValue) || new Date().getFullYear();
+    const counts = Array(12).fill(0);
+    records.forEach((record) => {
+        const date = String(record.reported_at || '');
+        const recordYear = Number(date.slice(0, 4));
+        const month = Number(date.slice(5, 7));
+        if (recordYear === year && month >= 1 && month <= 12) counts[month - 1] += 1;
+    });
+    return counts.map((count, index) => ({ label: monthNames[index].slice(0, 3), count }));
+}
+
+function renderAnalytics() {
+    const records = state.analyticsRecords;
+    const total = records.length;
+    const resolved = records.filter((record) => record.status === 'RESOLVED').length;
+    const ongoing = records.filter((record) => ['IN_PROGRESS', 'FOR_RESOLUTION'].includes(record.status)).length;
+    const priority = records.filter((record) => record.status !== 'RESOLVED' && ['CRITICAL', 'HIGH'].includes(String(record.priority || '').toUpperCase())).length;
+    const counts = {
+        analyticsTotal: total,
+        analyticsPending: state.pendingEndorsements,
+        analyticsOngoing: ongoing,
+        analyticsResolved: resolved,
+        analyticsCritical: priority
+    };
+    Object.entries(counts).forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = String(value);
+    });
+
+    const trend = makeMonthTrend(records, document.getElementById('analyticsYear')?.value);
+    const trendContainer = document.getElementById('trendChart2');
+    if (trendContainer) trendContainer.innerHTML = total ? trendSvg(trend) : '';
+    const categories = groupCounts(records, 'category').sort((a, b) => b.count - a.count).map((item) => ({ category: item.label, count: item.count }));
+    const puroks = groupCounts(records, 'purok').sort((a, b) => b.count - a.count).map((item) => ({ purok: item.label, count: item.count }));
+    const statusValues = [...new Set([...(state.analyticsOptions.statuses || workflowStatuses), ...records.map((record) => record.status).filter(Boolean)])];
+    const statuses = statusValues.map((status) => ({ status, count: records.filter((record) => record.status === status).length }));
+    const categoryBars = document.getElementById('categoryBars');
+    if (categoryBars) categoryBars.innerHTML = categories.length ? barsHtml(categories, 'category') : '';
+    const purokBars = document.getElementById('analyticsPurokBars');
+    if (purokBars) purokBars.innerHTML = puroks.length ? barsHtml(puroks, 'purok') : '';
+    const statusBars = document.getElementById('statusBars');
+    if (statusBars) statusBars.innerHTML = total ? barsHtml(statuses, 'status') : '';
+    const comparison = (state.yearlyComparison || []).map((item) => ({ year: String(item.year), count: Number(item.total) }));
+    const comparisonBars = document.getElementById('yearComparison');
+    if (comparisonBars) comparisonBars.innerHTML = comparison.some((item) => item.count > 0) ? barsHtml(comparison, 'year') : '';
+
+    [
+        ['trendEmpty', total],
+        ['categoryEmpty', total],
+        ['statusEmpty', total],
+        ['purokEmpty', total],
+        ['yearComparisonEmpty', comparison.reduce((sum, item) => sum + item.count, 0)]
+    ].forEach(([id, count]) => {
+        const empty = document.getElementById(id);
+        if (empty) empty.hidden = Number(count) > 0;
+    });
+}
+
+function reportTableDefinition(type) {
+    const records = state.analyticsRecords;
+    const makeRow = (cells, values = cells) => ({ cells, values });
+    if (type === 'monthly') {
+        const monthCounts = new Map();
+        const years = new Set();
+        records.forEach((record) => {
+            const date = String(record.reported_at || '');
+            const key = date.slice(0, 7);
+            if (!key) return;
+            years.add(date.slice(0, 4));
+            if (!monthCounts.has(key)) monthCounts.set(key, []);
+            monthCounts.get(key).push(record);
+        });
+        const periods = [...years].sort().flatMap((year) => monthNames.map((_, index) => `${year}-${String(index + 1).padStart(2, '0')}`)).sort((a, b) => b.localeCompare(a));
+        const rows = periods.map((key) => {
+            const items = monthCounts.get(key) || [];
+            const date = new Date(`${key}-01T00:00:00`);
+            const pending = items.filter((item) => item.status === 'PENDING').length;
+            const ongoing = items.filter((item) => ['IN_PROGRESS', 'FOR_RESOLUTION'].includes(item.status)).length;
+            const resolved = items.filter((item) => item.status === 'RESOLVED').length;
+            const endorsed = items.filter((item) => item.endorsed_at || item.endorsement_type).length;
+            const month = `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
+            return makeRow([month, items.length, pending, ongoing, resolved, endorsed], [key, items.length, pending, ongoing, resolved, endorsed]);
+        });
+        return { title: 'Monthly Incident Summary', headers: ['Month', 'Total incidents', 'Pending', 'Ongoing', 'Resolved', 'Endorsed'], rows };
+    }
+    if (type === 'yearly') {
+        const byYear = new Map();
+        records.forEach((record) => {
+            const year = String(record.reported_at || '').slice(0, 4) || 'Unknown';
+            if (!byYear.has(year)) byYear.set(year, []);
+            byYear.get(year).push(record);
+        });
+        const rows = [...byYear.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([year, items]) => {
+            const resolved = items.filter((item) => item.status === 'RESOLVED').length;
+            const categories = groupCounts(items, 'category').sort((a, b) => b.count - a.count).map((item) => `${item.label} (${item.count})`).join(', ') || '—';
+            const unresolved = items.length - resolved;
+            const rate = items.length ? `${Math.round(resolved / items.length * 100)}%` : '0%';
+            return makeRow([year, items.length, categories, resolved, unresolved, rate], [year, items.length, categories, resolved, unresolved, parseInt(rate, 10)]);
+        });
+        return { title: 'Yearly Incident Summary', headers: ['Year', 'Total incidents', 'Incidents by category', 'Resolved', 'Unresolved', 'Resolution rate'], rows };
+    }
+    if (type === 'purok') {
+        const rows = [...grouped('purok').entries()].map(([name, items]) => {
+            const common = groupCounts(items, 'category').sort((a, b) => b.count - a.count)[0]?.label || '—';
+            const pending = items.filter((item) => item.status === 'PENDING').length;
+            const resolved = items.filter((item) => item.status === 'RESOLVED').length;
+            return makeRow([name, items.length, common, pending, resolved], [name, items.length, common, pending, resolved]);
+        }).sort((a, b) => b.values[1] - a.values[1]);
+        return { title: 'Purok Incident Summary', headers: ['Purok', 'Total incidents', 'Most common category', 'Pending', 'Resolved'], rows };
+    }
+    if (type === 'resolution') {
+        const rows = records.filter((record) => record.status === 'RESOLVED' || record.endorsed_at || record.endorsement_type).map((record) => {
+            const eventDate = record.resolved_at || record.endorsed_at || '';
+            const destination = record.receiving_office || record.endorsement_type || '—';
+            return makeRow([record.case_no, formatDate(record.reported_at), statusLabel(record.status), formatDate(eventDate), destination],
+                [record.case_no, record.reported_at || '', record.status, eventDate, destination]);
+        });
+        return { title: 'Case Resolution & Endorsement Report', headers: ['Incident reference', 'Date reported', 'Current status', 'Date resolved / endorsed', 'Receiving office / endorsement'], rows };
+    }
+    const rows = records.map((record) => makeRow([
+        record.case_no, formatDate(record.reported_at), record.category, record.purok, statusLabel(record.priority), statusLabel(record.status), formatDate(record.resolved_at)
+    ], [record.case_no, record.reported_at || '', record.category, record.purok, record.priority, record.status, record.resolved_at || '']));
+    return { title: 'Incident Case Register', headers: ['Incident reference', 'Date reported', 'Category', 'Purok', 'Priority', 'Current status', 'Date resolved'], rows };
+}
+
+function renderReportTable() {
+    const type = document.getElementById('tableReportType')?.value || 'monthly';
+    const definition = reportTableDefinition(type);
+    const title = document.getElementById('tableReportTitle');
+    const filterTitles = { ongoing: 'Ongoing Cases', resolved: 'Resolved Cases', priority: 'Critical / High Priority' };
+    if (title) title.textContent = `${definition.title}${filterTitles[state.reportSummaryFilter] ? ` · ${filterTitles[state.reportSummaryFilter]}` : ''}`;
+    const query = document.getElementById('reportTableSearch')?.value.trim().toLowerCase() || '';
+    let rows = definition.rows.filter((row) => !query || row.cells.join(' ').toLowerCase().includes(query));
+    if (state.reportSummaryFilter === 'ongoing') rows = rows.filter((row) => ['IN_PROGRESS', 'FOR_RESOLUTION'].includes(row.values[5]));
+    if (state.reportSummaryFilter === 'resolved') rows = rows.filter((row) => row.values[5] === 'RESOLVED');
+    if (state.reportSummaryFilter === 'priority') rows = rows.filter((row) => row.values[5] !== 'RESOLVED' && ['CRITICAL', 'HIGH'].includes(String(row.values[4] || '').toUpperCase()));
+    if (state.reportSortIndex >= 0) {
+        const index = state.reportSortIndex;
+        rows = rows.sort((a, b) => String(a.values[index] ?? '').localeCompare(String(b.values[index] ?? ''), undefined, { numeric: true }) * state.reportSortDirection);
+    }
+    state.reportRows = rows;
+    const pageSize = 20;
+    const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+    state.reportPage = Math.min(state.reportPage, pages - 1);
+    const start = state.reportPage * pageSize;
+    const table = document.getElementById('reportTable');
+    if (table) {
+        table.querySelector('thead').innerHTML = `<tr>${definition.headers.map((header, index) => `<th scope="col" data-sort-index="${index}" aria-sort="${state.reportSortIndex === index ? (state.reportSortDirection === 1 ? 'ascending' : 'descending') : 'none'}"><button type="button" class="sort-button">${escapeHtml(header)} <span aria-hidden="true">↕</span></button></th>`).join('')}</tr>`;
+        table.querySelector('tbody').innerHTML = rows.slice(start, start + pageSize).map((row) => `<tr>${row.cells.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('');
+    }
+    const empty = document.getElementById('reportTableEmpty');
+    if (empty) empty.hidden = rows.length > 0;
+    const resultCount = document.getElementById('reportResultCount');
+    if (resultCount) resultCount.textContent = `${rows.length} ${rows.length === 1 ? 'row' : 'rows'}`;
+    const pageLabel = document.getElementById('reportPageLabel');
+    if (pageLabel) pageLabel.textContent = `Page ${state.reportPage + 1} of ${pages}`;
+    const previous = document.getElementById('reportPrev');
+    const next = document.getElementById('reportNext');
+    if (previous) previous.disabled = state.reportPage === 0;
+    if (next) next.disabled = state.reportPage >= pages - 1;
+}
+
+const reportTitles = {
+    monthly: 'Monthly Incident Report',
+    annual: 'Annual Incident Report',
+    category: 'Incident Summary by Category',
+    purok: 'Incident Summary by Purok',
+    resolution: 'Case Resolution Report',
+    endorsement: 'Case Endorsement Report',
+    custom: 'Custom Date Range Report',
+    dilg: 'Monthly Incident Report'
+};
+
+function selectedReportPeriod(filters) {
+    if (filters.from || filters.to) return `${filters.from || 'Beginning'} to ${filters.to || 'Present'}`;
+    if (filters.year && filters.month) return `${monthNames[Number(filters.month) - 1]} ${filters.year}`;
+    if (filters.year) return filters.year;
+    return 'All available records';
+}
+
+function renderReportPreview(data, type, filters) {
+    const preview = document.getElementById('reportPreview');
+    const printButton = document.getElementById('printReport');
+    if (!preview || !printButton) return;
+    const sourceRecords = data.records || [];
+    const records = type === 'resolution'
+        ? sourceRecords.filter((record) => record.status === 'RESOLVED')
+        : type === 'endorsement'
+            ? sourceRecords.filter((record) => Boolean(record.endorsed_at || record.endorsement_type))
+            : sourceRecords;
+    state.reportPreviewData = { records, type, filters };
+    if (!records.length) {
+        preview.innerHTML = `<p class="empty-message">No records found for the selected reporting period.</p>`;
+        preview.hidden = false;
+        printButton.disabled = true;
+        return;
+    }
+    const savedRecords = state.analyticsRecords;
+    state.analyticsRecords = records;
+    const tableType = ['monthly', 'dilg'].includes(type) ? 'monthly'
+        : type === 'annual' ? 'yearly'
+        : type === 'category' ? 'purok'
+            : type === 'purok' ? 'purok'
+                : ['resolution', 'endorsement'].includes(type) ? 'resolution'
+                    : 'register';
+    const definition = reportTableDefinition(tableType);
+    state.analyticsRecords = savedRecords;
+    const resolved = records.filter((record) => record.status === 'RESOLVED').length;
+    const unresolved = records.length - resolved;
+    const critical = records.filter((record) => record.status !== 'RESOLVED' && ['CRITICAL', 'HIGH'].includes(String(record.priority || '').toUpperCase())).length;
+    let tableHeaders = definition.headers;
+    let tableRows = definition.rows;
+    if (type === 'category') {
+        const grouped = groupCounts(records, 'category').sort((a, b) => b.count - a.count);
+        tableHeaders = ['Incident category', 'Total incidents'];
+        tableRows = grouped.map((item) => ({ cells: [item.label, item.count] }));
+    }
+    if (type === 'purok') {
+        const grouped = groupCounts(records, 'purok').sort((a, b) => b.count - a.count);
+        tableHeaders = ['Purok', 'Total incidents'];
+        tableRows = grouped.map((item) => ({ cells: [item.label, item.count] }));
+    }
+    const tableHtml = `<div class="table-scroll"><table class="print-report-table"><thead><tr>${tableHeaders.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${tableRows.map((row) => `<tr>${row.cells.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    const summary = `<div class="report-summary"><div><span>Total records included</span><strong>${records.length}</strong></div><div><span>Resolved</span><strong>${resolved}</strong></div><div><span>Unresolved</span><strong>${unresolved}</strong></div><div><span>Critical / high priority</span><strong>${critical}</strong></div></div>`;
+    preview.innerHTML = `<header class="report-preview-header"><p>System-generated report</p><h2>${escapeHtml(reportTitles[type] || 'Incident Report')}</h2><div><span>Reporting period</span><strong>${escapeHtml(selectedReportPeriod(filters))}</strong></div><div><span>Date generated</span><strong>${escapeHtml(new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }))}</strong></div></header><section><h3>Summary</h3>${summary}</section><section><h3>${escapeHtml(definition.title)}</h3>${tableHtml}</section><footer class="report-preview-footer">Report data is based on available system records; historical completeness is not tracked.</footer>`;
+    preview.hidden = false;
+    printButton.disabled = false;
+}
+
+function setReportTab(name) {
+    document.querySelectorAll('[data-report-tab]').forEach((tab) => {
+        const active = tab.dataset.reportTab === name;
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+        tab.tabIndex = active ? 0 : -1;
+    });
+    document.querySelectorAll('.analytics-tab-panel').forEach((panel) => {
+        panel.hidden = panel.id !== `${name}Panel`;
+    });
+}
+
 function renderHeatmap() {
     const period = document.getElementById('heatPeriod')?.value || 'month';
     const items = period === 'all' ? state.byPurokAll : state.byPurok;
@@ -140,7 +476,7 @@ function renderCases() {
     const search = document.getElementById('caseSearch')?.value.trim().toLowerCase() || '';
     const status = document.getElementById('caseStatusFilter')?.value || '';
     const rows = state.cases.filter((c) => (!status || c.status === status)
-        && (!search || [c.case_no, c.title, c.purok, c.severity, c.category].some((v) => String(v || '').toLowerCase().includes(search))));
+        && (!search || [c.case_no, c.title, c.purok, c.severity, c.category, c.status].some((v) => String(v || '').toLowerCase().includes(search))));
     const tbody = document.getElementById('caseRows');
     if (tbody) {
         tbody.innerHTML = rows.map((c) => `<tr>
@@ -270,6 +606,7 @@ async function refreshData() {
         state.byCategory = data.by_category || []; 
         state.puroks = data.puroks || [];
         renderAll(data);
+        await fetchAnalytics();
     } catch (error) { 
         showNotice(error.message, true); 
     }
@@ -316,6 +653,60 @@ document.querySelectorAll('[data-open-advisory]').forEach((b) => b.addEventListe
 document.getElementById('caseSearch')?.addEventListener('input', renderCases);
 document.getElementById('caseStatusFilter')?.addEventListener('change', renderCases);
 document.getElementById('heatPeriod')?.addEventListener('change', renderHeatmap);
+document.getElementById('analyticsFilters')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    state.reportPage = 0;
+    state.reportSortIndex = -1;
+    state.reportSummaryFilter = '';
+    await fetchAnalytics(getFilterValues('analytics'));
+});
+document.getElementById('resetAnalyticsFilters')?.addEventListener('click', async () => {
+    document.getElementById('analyticsFilters')?.reset();
+    document.getElementById('reportTableSearch').value = '';
+    state.reportPage = 0;
+    state.reportSortIndex = -1;
+    state.reportSummaryFilter = '';
+    await fetchAnalytics(getFilterValues('analytics'));
+});
+document.querySelectorAll('[data-report-tab]').forEach((tab) => {
+    tab.addEventListener('click', () => setReportTab(tab.dataset.reportTab));
+    tab.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const tabs = [...document.querySelectorAll('[data-report-tab]')];
+        const current = tabs.indexOf(tab);
+        const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+            : (current + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length;
+        tabs[nextIndex].focus();
+        setReportTab(tabs[nextIndex].dataset.reportTab);
+    });
+});
+document.getElementById('tableReportType')?.addEventListener('change', () => { state.reportPage = 0; state.reportSortIndex = -1; state.reportSummaryFilter = ''; renderReportTable(); });
+document.getElementById('reportTableSearch')?.addEventListener('input', () => { state.reportPage = 0; state.reportSummaryFilter = ''; renderReportTable(); });
+document.getElementById('reportPrev')?.addEventListener('click', () => { state.reportPage = Math.max(0, state.reportPage - 1); renderReportTable(); });
+document.getElementById('reportNext')?.addEventListener('click', () => { state.reportPage += 1; renderReportTable(); });
+document.getElementById('reportTable')?.addEventListener('click', (event) => {
+    const header = event.target.closest('th[data-sort-index]');
+    if (!header) return;
+    const index = Number(header.dataset.sortIndex);
+    if (state.reportSortIndex === index) state.reportSortDirection *= -1;
+    else { state.reportSortIndex = index; state.reportSortDirection = 1; }
+    state.reportPage = 0;
+    renderReportTable();
+});
+document.querySelectorAll('[data-summary-filter]').forEach((card) => card.addEventListener('click', () => {
+    const filter = card.dataset.summaryFilter;
+    if (filter === 'pending') { setView('endorsements'); return; }
+    setView('analytics');
+    setReportTab('tabular');
+    const tableType = document.getElementById('tableReportType');
+    const search = document.getElementById('reportTableSearch');
+    if (tableType) tableType.value = 'register';
+    if (search) search.value = '';
+    state.reportSummaryFilter = filter;
+    state.reportPage = 0;
+    renderReportTable();
+}));
 document.getElementById('criticalReview')?.addEventListener('click', () => {
     const cs = document.getElementById('caseSearch');
     if (cs) cs.value = 'critical'; 
@@ -331,13 +722,79 @@ document.addEventListener('click', (event) => {
 });
 
 document.querySelectorAll('[data-generate-report]').forEach((button) => button.addEventListener('click', async () => {
-    button.disabled = true;
-    try {
-        const result = await requestCaptain('report_generate', { month: new Date().toISOString().slice(0, 7) });
-        showNotice(result.message || 'Monthly DILG report is ready.');
-        if (result.url) window.open(result.url, '_blank', 'noopener');
-    } catch (error) { showNotice(error.message, true); } finally { button.disabled = false; }
+    const now = new Date();
+    const type = document.getElementById('reportType');
+    if (type) type.value = 'dilg';
+    document.getElementById('reportYear').value = String(now.getFullYear());
+    document.getElementById('reportMonth').value = String(now.getMonth() + 1);
+    document.getElementById('reportFrom').value = '';
+    document.getElementById('reportTo').value = '';
+    const preview = document.getElementById('reportPreview');
+    if (preview) { preview.hidden = true; preview.innerHTML = ''; }
+    document.getElementById('printReport').disabled = true;
+    setView('analytics');
+    setReportTab('generate');
 }));
+document.getElementById('reportType')?.addEventListener('change', (event) => {
+    if (event.currentTarget.value === 'custom') {
+        document.getElementById('reportYear').value = '';
+        document.getElementById('reportMonth').value = '';
+    } else if (event.currentTarget.value === 'annual') {
+        document.getElementById('reportMonth').value = '';
+        document.getElementById('reportFrom').value = '';
+        document.getElementById('reportTo').value = '';
+    } else if (['monthly', 'dilg'].includes(event.currentTarget.value)) {
+        const now = new Date();
+        document.getElementById('reportYear').value = String(now.getFullYear());
+        document.getElementById('reportMonth').value = String(now.getMonth() + 1);
+        document.getElementById('reportFrom').value = '';
+        document.getElementById('reportTo').value = '';
+    }
+});
+document.getElementById('reportForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const type = document.getElementById('reportType').value;
+    const filters = getFilterValues('report');
+    const preview = document.getElementById('reportPreview');
+    preview.hidden = true;
+    preview.innerHTML = '';
+    state.reportPreviewData = null;
+    document.getElementById('printReport').disabled = true;
+    if (['monthly', 'dilg'].includes(type) && (!filters.year || !filters.month)) {
+        showNotice('Select a year and month for a monthly report.', true);
+        return;
+    }
+    if (type === 'annual' && !filters.year) {
+        showNotice('Select a year for the annual report.', true);
+        return;
+    }
+    if (type === 'custom' && (!filters.from || !filters.to || filters.from > filters.to)) {
+        showNotice('Enter a valid start and end date for the custom report.', true);
+        return;
+    }
+    const submit = form.querySelector('[type="submit"]');
+    submit.disabled = true;
+    try {
+        const result = await requestCaptain('analytics_data', { filters });
+        renderReportPreview(result, type, filters);
+    } catch (error) {
+        preview.hidden = false;
+        preview.innerHTML = '<p class="empty-message">The report could not be generated. Please try again.</p>';
+    } finally {
+        submit.disabled = false;
+    }
+});
+document.getElementById('reportForm')?.addEventListener('change', () => {
+    const preview = document.getElementById('reportPreview');
+    preview.hidden = true;
+    preview.innerHTML = '';
+    state.reportPreviewData = null;
+    document.getElementById('printReport').disabled = true;
+});
+document.getElementById('printReport')?.addEventListener('click', () => {
+    if (state.reportPreviewData?.records?.length) window.print();
+});
 
 document.getElementById('advisoryForm')?.addEventListener('submit', (event) => {
     event.preventDefault();

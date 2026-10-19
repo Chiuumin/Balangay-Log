@@ -41,6 +41,7 @@ if (!$initials) $initials = 'OF';
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="admin-dashboard.css?v=<?= time() ?>" />
     <style>
+        /* Red Critical Banner */
         .critical-alert-banner {
             display: flex;
             align-items: center;
@@ -95,6 +96,8 @@ if (!$initials) $initials = 'OF';
             background: #fdf2f2;
             transform: translateX(2px);
         }
+
+        /* Queue List & Interactive Cards */
         .queue-card-list {
             display: flex;
             flex-direction: column;
@@ -135,27 +138,15 @@ if (!$initials) $initials = 'OF';
             text-decoration: underline;
             color: var(--teal);
         }
-       .queue-title {
-             margin: 0;
-             font-size: 14.5px;
-             font-weight: 800;
-             color: var(--ink);
-             cursor: default;
-             user-select: text;
-        }
-
-/* Ensure only tracking numbers indicate interactivity */
-        .queue-id {
-             font-family: monospace;
-             font-size: 12.5px;
+        .queue-title {
+            margin: 0;
+            font-size: 14.5px;
             font-weight: 800;
-            color: var(--teal);
-             cursor: pointer;
-             text-decoration: underline;
-             transition: opacity 0.15s ease;
+            color: var(--ink);
+            cursor: pointer;
         }
-        .queue-id:hover {
-             opacity: 0.8;
+        .queue-title:hover {
+            color: var(--teal);
         }
         .queue-details {
             font-size: 11.5px;
@@ -207,6 +198,8 @@ if (!$initials) $initials = 'OF';
         .btn-action-danger:hover {
             background: #fff3f1;
         }
+
+        /* Tanod Roster Cards */
         .tanod-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -236,6 +229,8 @@ if (!$initials) $initials = 'OF';
         .tanod-indicator.available { background: var(--green); }
         .tanod-indicator.deployed { background: var(--gold); }
         .tanod-indicator.off_duty { background: #94a3b8; }
+
+        /* Notification Popover */
         .notif-container { position: relative; }
         .notification-bell-btn {
             position: relative;
@@ -312,6 +307,8 @@ if (!$initials) $initials = 'OF';
         .notif-item-title { font-size: 12px; font-weight: 800; color: var(--ink); }
         .notif-item-time { font-size: 10px; color: var(--muted); }
         .notif-item-desc { font-size: 11px; color: var(--muted); margin: 0; }
+
+        /* Dark Mode Overrides */
         [data-theme="dark"] .queue-item-card,
         [data-theme="dark"] .tanod-card {
             background: #112222;
@@ -350,6 +347,7 @@ if (!$initials) $initials = 'OF';
     <div class="admin-shell">
         <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
+        <!-- Sticky Mobile Top Bar -->
         <header class="mobile-top-header">
             <button class="mobile-hamburger-btn" id="mobileMenuBtn" type="button" aria-label="Open Navigation">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
@@ -364,6 +362,7 @@ if (!$initials) $initials = 'OF';
             </a>
         </header>
 
+        <!-- Sidebar Drawer -->
         <aside class="admin-sidebar" id="adminSidebar">
             <div class="sidebar-header-row">
                 <a class="admin-brand" href="officer_dashboard.php" aria-label="BalangayLog Officer Portal">
@@ -427,7 +426,9 @@ if (!$initials) $initials = 'OF';
             </div>
         </aside>
 
+        <!-- Main Workspace -->
         <main class="admin-main">
+            <!-- Top Navigation & Desk Controls -->
             <header class="admin-topbar">
                 <div>
                     <h1 id="viewTitle" style="font-size: 22px; font-weight: 800; margin: 0; font-family: 'Manrope', sans-serif;">Desk Operations</h1>
@@ -461,6 +462,7 @@ if (!$initials) $initials = 'OF';
 
             <div class="notice" id="pageNotice" role="status" hidden></div>
 
+            <!-- VIEW 1: DASHBOARD -->
             <section class="admin-view" id="view-dashboard">
                 <div class="critical-alert-banner" id="criticalBanner" hidden>
                     <div class="critical-alert-content">
@@ -512,6 +514,7 @@ if (!$initials) $initials = 'OF';
                 </div>
             </section>
 
+            <!-- VIEW 2: ALL CASES / BLOTTER -->
             <section class="admin-view" id="view-blotter" hidden>
                 <div class="section-heading">
                     <div>
@@ -557,6 +560,7 @@ if (!$initials) $initials = 'OF';
                 </div>
             </section>
 
+            <!-- VIEW 3: INCOMING TRIAGE QUEUE -->
             <section class="admin-view" id="view-triage" hidden>
                 <div class="section-heading">
                     <div>
@@ -565,13 +569,14 @@ if (!$initials) $initials = 'OF';
                     </div>
                 </div>
                 <div class="notice" style="margin-bottom: 16px; background: #fbf8eb; border-color: #ecdca6; color: #82621c;">
-                    <strong>Review Guidelines:</strong> Click on any case title or reference code to open the legal jurisdiction review and entity inspection modal[cite: 16].
+                    <strong>Review Guidelines:</strong> Click on any case title or reference code to open the legal jurisdiction review and entity inspection modal.
                 </div>
                 <div class="content-panel">
                     <div class="queue-card-list" id="dedicatedTriageContainer"></div>
                 </div>
             </section>
 
+            <!-- VIEW 4: URGENT / EMERGENCY -->
             <section class="admin-view" id="view-emergency" hidden>
                 <div class="section-heading">
                     <div>
@@ -584,6 +589,7 @@ if (!$initials) $initials = 'OF';
                 </div>
             </section>
 
+            <!-- VIEW 5: LUPON / MEDIATION -->
             <section class="admin-view" id="view-lupon" hidden>
                 <div class="section-heading">
                     <div>
@@ -596,6 +602,7 @@ if (!$initials) $initials = 'OF';
                 </div>
             </section>
 
+            <!-- VIEW 6: TANOD DISPATCH BOARD -->
             <section class="admin-view" id="view-dispatch" hidden>
                 <div class="section-heading">
                     <div>
@@ -612,6 +619,7 @@ if (!$initials) $initials = 'OF';
                 </div>
             </section>
 
+            <!-- VIEW 7: PROFILE & SETTINGS -->
             <section class="admin-view" id="view-settings" hidden>
                 <div class="section-heading">
                     <div>
@@ -673,6 +681,7 @@ if (!$initials) $initials = 'OF';
                         </form>
                     </div>
 
+                    <!-- Change Password Card -->
                     <div class="content-panel password-card">
                         <div class="panel-heading">
                             <div>
@@ -707,220 +716,208 @@ if (!$initials) $initials = 'OF';
         </main>
     </div>
 
-    <!-- MODAL: ENCODE WALK-IN CASE (AI-Driven Category & Priority) -->
-    <dialog class="admin-dialog" id="encodeCaseDialog" style="width: min(640px, calc(100vw - 32px)); max-height: 90vh;">
-        <form id="encodeCaseForm" method="dialog">
-            <div class="dialog-heading">
-                <div>
-                    <h2 style="font-size: 19px; font-weight: 800; font-family: 'Manrope', sans-serif;">Encode Walk-In Desk Blotter</h2>
-                    <p style="margin: 3px 0 0; color: var(--muted); font-size: 12px;">Transcribe citizen narrative. Category and Priority are evaluated automatically by AI[cite: 17].</p>
-                </div>
-                <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
+  <!-- MODAL: ENCODE WALK-IN CASE -->
+<dialog class="admin-dialog" id="encodeCaseDialog" style="width: min(640px, calc(100vw - 32px)); max-height: 90vh; padding: 24px; border-radius: 8px; border: 1px solid var(--line); box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+    <form id="encodeCaseForm" method="dialog" style="display: flex; flex-direction: column; gap: 0;">
+        <!-- Header -->
+        <div class="dialog-heading" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+            <div>
+                <h2 style="font-size: 21px; font-weight: 800; font-family: 'Manrope', sans-serif; color: #172b35; margin: 0;">Encode Walk-In Desk Blotter</h2>
+                <p style="margin: 4px 0 0; color: #687b83; font-size: 13px;">Transcribe citizen narrative. Category and Priority are evaluated automatically by AI.</p>
             </div>
-            <div style="max-height: calc(90vh - 170px); overflow-y: auto; padding-right: 6px; display: grid; gap: 14px;">
-                <div style="border-bottom: 1px solid var(--line); padding-bottom: 12px;">
-                    <p class="eyebrow" style="color: var(--teal); font-weight: 800; margin-bottom: 8px;">COMPLAINANT INFORMATION</p>
-                    <div class="form-row">
-                        <div>
-                            <label for="complainantNameInput">Complainant Full Name *</label>
-                            <input id="complainantNameInput" name="complainant_name" required autocomplete="name" placeholder="e.g., Marites Ramos">
-                        </div>
-                        <div>
-                            <label for="complainantPhoneInput">Contact Phone (09XXXXXXXXX) *</label>
-                            <input id="complainantPhoneInput" name="complainant_phone" required autocomplete="tel" placeholder="09171234567">
-                        </div>
-                    </div>
-                    <div class="form-row" style="margin-top: 10px;">
-                        <div>
-                            <label for="purokSelect">Purok / Zone *</label>
-                            <select id="purokSelect" name="purok" required autocomplete="address-level3">
-                                <option value="">Select Purok</option>
-                                <option value="Purok 1">Purok 1</option>
-                                <option value="Purok 2">Purok 2</option>
-                                <option value="Purok 3">Purok 3</option>
-                                <option value="Purok 4">Purok 4</option>
-                                <option value="Purok 5">Purok 5</option>
-                                <option value="Purok 6">Purok 6</option>
-                                <option value="Purok 7">Purok 7</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="streetAddressInput">
-                                Street Address / Landmark
-                                <input id="streetAddressInput" name="street_address" autocomplete="street-address" placeholder="e.g., Lot 5, Batol St.">
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-                <div>
-                    <p class="eyebrow" style="color: var(--teal); font-weight: 800; margin-bottom: 8px;">INCIDENT NARRATIVE &amp; AI CLASSIFICATION</p>
-                    <div>
-                        <label for="narrativeDescriptionInput">Blotter Narrative &amp; Facts *</label>
-                        <textarea id="narrativeDescriptionInput" name="narrative_description" rows="5" required placeholder="Type the incident narrative facts here. The AI will evaluate the details to automatically categorize and assign priority..."></textarea>
-                    </div>
-
-                    <input type="hidden" name="incident_type" id="aiGeneratedCategoryInput" value="General Incident">
-                    <input type="hidden" name="priority_level" id="aiGeneratedPriorityInput" value="Low">
-
-                    <div class="ai-inspection-panel" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line, rgba(255, 255, 255, 0.08)); border-radius: 8px; padding: 14px; margin-top: 14px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--muted);" id="aiTriageStatus">
-                                🤖 AI Automated Triage &amp; Categorization[cite: 17]
-                            </span>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <span id="aiAssessedCategoryBadge" class="pill pill-blue" style="font-weight: 700; font-size: 11px;">Category: Pending</span>
-                                <span id="aiUrgencyScoreBadge" class="pill" style="font-weight: 800; font-size: 11px;">Priority: Low (0%)</span>
-                            </div>
-                        </div>
-
-                        <div style="margin-bottom: 10px;">
-                            <label style="font-size: 11.5px; font-weight: 700; display: block; margin-bottom: 4px; color: var(--ink);">
-                                Identified Threat &amp; Disturbance Keywords:
-                            </label>
-                            <div id="detectedKeywordsContainer" style="display: flex; flex-wrap: wrap; gap: 4px;">
-                                <span style="font-size: 11.5px; color: var(--muted);">Type narrative details above to start AI classification...</span>
-                            </div>
-                        </div>
-
-                        <div style="border-top: 1px dashed var(--line, rgba(255, 255, 255, 0.15)); padding-top: 10px;">
-                            <label style="font-size: 11.5px; font-weight: 700; display: block; margin-bottom: 3px; color: var(--ink);">
-                                AI Assessment &amp; Action Recommendation:
-                            </label>
-                            <div id="aiReasoningBox" style="font-size: 12.5px; color: var(--muted); background: rgba(0, 0, 0, 0.15); padding: 10px; border-radius: 6px; line-height: 1.5;">
-                                Waiting for narrative facts to evaluate jurisdiction and emergency level...
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="dialog-actions" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line);">
-                <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
-                <button class="button button-primary" type="submit" style="background: #173d3b; border-color: #173d3b;">Encode &amp; Log Case</button>
-            </div>
-        </form>
-    </dialog>
-
-    <!-- MODAL: DEEP CASE REVIEW & MULTI-AGENT DECISION SUPPORT -->
-<dialog class="admin-dialog" id="caseReviewModal" style="width: min(760px, calc(100vw - 32px)); max-height: 92vh;">
-    <div class="dialog-heading" style="border-bottom: 1px solid var(--line); padding-bottom: 10px;">
-        <div>
-            <span class="eyebrow" id="modalReviewRef" style="font-size: 11px; font-weight: 800; letter-spacing: 0.5px;">IR-0000</span>
-            <h2 id="modalReviewCategory" style="font-size: 20px; font-weight: 800; font-family: 'Manrope', sans-serif; margin-top: 2px;">Incident Review</h2>
+            <button class="icon-button" type="button" data-close-dialog aria-label="Close" style="width: 32px; height: 32px; border: 1px solid #dce5e6; border-radius: 6px; background: #fff; cursor: pointer; display: grid; place-items: center; color: #687b83;">×</button>
         </div>
-        <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
-    </div>
 
-    <div style="max-height: calc(92vh - 180px); overflow-y: auto; padding-right: 6px; display: grid; gap: 14px; margin-top: 12px;">
-
-        <!-- ========================================== -->
-        <!-- SECTION 1: BASIC RESIDENT & CASE DETAILS   -->
-        <!-- ========================================== -->
-        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 8px; padding: 14px;">
-            <p class="eyebrow" style="color: var(--teal); font-weight: 800; margin-bottom: 8px;">1. RESIDENT &amp; INCIDENT INFORMATION</p>
+        <div style="max-height: calc(90vh - 170px); overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 16px; margin-top: 14px;">
             
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
-                <div>
-                    <span class="meta-label">COMPLAINANT</span>
-                    <strong id="modalComplainantName" style="font-size: 13px; display: block; margin-top: 2px;">—</strong>
+            <!-- SECTION 1: COMPLAINANT INFORMATION -->
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <p class="eyebrow" style="color: #19766c; font-weight: 800; font-size: 11px; margin: 0; letter-spacing: 0.5px;">COMPLAINANT INFORMATION</p>
+                
+                <!-- Row 1: Name and Phone -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                    <div style="display: flex; flex-direction: column; gap: 5px;">
+                        <label for="complainantNameInput" style="font-size: 12.5px; font-weight: 700; color: #172b35;">Complainant Full Name *</label>
+                        <input id="complainantNameInput" name="complainant_name" required autocomplete="name" placeholder="e.g., Marites Ramos" style="width: 100%; min-height: 38px; padding: 8px 12px; border: 1px solid #dce5e6; border-radius: 6px; background: #edf3f8; font-size: 13px; color: #172b35; outline: none; box-sizing: border-box;">
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 5px;">
+                        <label for="complainantPhoneInput" style="font-size: 12.5px; font-weight: 700; color: #172b35;">Contact Phone (09XXXXXXXXX) *</label>
+                        <input id="complainantPhoneInput" name="complainant_phone" required autocomplete="tel" placeholder="09171234567" style="width: 100%; min-height: 38px; padding: 8px 12px; border: 1px solid #dce5e6; border-radius: 6px; background: #edf3f8; font-size: 13px; color: #172b35; outline: none; box-sizing: border-box;">
+                    </div>
                 </div>
-                <div>
-                    <span class="meta-label">PHONE NUMBER</span>
-                    <strong id="modalComplainantPhone" style="font-size: 13px; display: block; margin-top: 2px;">—</strong>
-                </div>
-                <div>
-                    <span class="meta-label">PUROK / LOCATION</span>
-                    <strong id="modalLocationPurok" style="font-size: 13px; display: block; margin-top: 2px;">—</strong>
+
+                <!-- Row 2: Purok and Street Address -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 2px;">
+                    <div style="display: flex; flex-direction: column; gap: 5px;">
+                        <label for="purokSelect" style="font-size: 12.5px; font-weight: 700; color: #172b35;">Purok / Zone *</label>
+                        <select id="purokSelect" name="purok" required autocomplete="address-level3" style="width: 100%; min-height: 38px; padding: 8px 12px; border: 1px solid #dce5e6; border-radius: 6px; background: #edf3f8; font-size: 13px; color: #172b35; outline: none; box-sizing: border-box;">
+                            <option value="">Select Purok</option>
+                            <option value="Purok 1">Purok 1</option>
+                            <option value="Purok 2">Purok 2</option>
+                            <option value="Purok 3">Purok 3</option>
+                            <option value="Purok 4">Purok 4</option>
+                            <option value="Purok 5">Purok 5</option>
+                            <option value="Purok 6">Purok 6</option>
+                            <option value="Purok 7">Purok 7</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 5px;">
+                        <label for="streetAddressInput" style="font-size: 12.5px; font-weight: 700; color: #172b35;">Street Address / Landmark</label>
+                        <input id="streetAddressInput" name="street_address" autocomplete="street-address" placeholder="e.g., Lot 5, Batol St." style="width: 100%; min-height: 38px; padding: 8px 12px; border: 1px solid #dce5e6; border-radius: 6px; background: #edf3f8; font-size: 13px; color: #172b35; outline: none; box-sizing: border-box;">
+                    </div>
                 </div>
             </div>
 
-            <div style="margin-top: 12px;">
-                <span class="meta-label">RECORDED BLOTTER NARRATIVE</span>
-                <div id="modalNarrativeText" style="margin-top: 4px; padding: 10px 12px; border-radius: 6px; background: rgba(0,0,0,0.18); border: 1px solid var(--line); font-size: 13px; line-height: 1.5; color: var(--ink);">
-                    —
+            <!-- SECTION 2: INCIDENT NARRATIVE & AI CLASSIFICATION -->
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <p class="eyebrow" style="color: #19766c; font-weight: 800; font-size: 11px; margin: 0; letter-spacing: 0.5px;">INCIDENT NARRATIVE &amp; AI CLASSIFICATION</p>
+                
+                <div style="display: flex; flex-direction: column; gap: 5px; width: 100%;">
+                    <label for="narrativeDescriptionInput" style="font-size: 12.5px; font-weight: 700; color: #172b35;">Blotter Narrative &amp; Facts *</label>
+                    <textarea id="narrativeDescriptionInput" 
+                              name="narrative_description" 
+                              rows="4" 
+                              required 
+                              placeholder="Enter full narrative facts as stated by complainant..." 
+                              style="width: 100%; min-height: 105px; padding: 10px 12px; border: 1px solid #19766c; border-radius: 6px; background: #ffffff; font-size: 13px; color: #172b35; font-family: inherit; line-height: 1.5; resize: vertical; box-sizing: border-box; outline: none;"></textarea>
+                </div>
+
+                <!-- Hidden inputs for AI values -->
+                <input type="hidden" name="incident_type" id="aiGeneratedCategoryInput" value="General Incident">
+                <input type="hidden" name="priority_level" id="aiGeneratedPriorityInput" value="Low">
+
+                <!-- AI Inspection Card -->
+                <div class="ai-inspection-panel" style="background: #ffffff; border: 1px solid #dce5e6; border-radius: 8px; padding: 14px; margin-top: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                        <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #687b83;" id="aiTriageStatus">
+                             AI AUTOMATED TRIAGE &amp; CATEGORIZATION
+                        </span>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <span id="aiAssessedCategoryBadge" class="pill pill-blue" style="font-weight: 700; font-size: 11.5px; padding: 4px 10px; border-radius: 4px; background: #e0f2fe; color: #0369a1;">Category: Pending</span>
+                            <span id="aiUrgencyScoreBadge" class="pill" style="font-weight: 700; font-size: 11.5px; padding: 4px 10px; border-radius: 4px; background: #f1f5f9; color: #475569;">Priority: Low (0%)</span>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 10px;">
+                        <span style="font-size: 12px; font-weight: 700; display: block; margin-bottom: 4px; color: #172b35;">
+                            Identified Threat &amp; Disturbance Keywords:
+                        </span>
+                        <div id="detectedKeywordsContainer" style="display: flex; flex-wrap: wrap; gap: 4px;">
+                            <span style="font-size: 12px; color: #687b83;">Type narrative details above to start AI classification...</span>
+                        </div>
+                    </div>
+
+                    <div style="border-top: 1px dashed #dce5e6; padding-top: 10px;">
+                        <span style="font-size: 12px; font-weight: 700; display: block; margin-bottom: 4px; color: #172b35;">
+                            AI Assessment &amp; Action Recommendation:
+                        </span>
+                        <div id="aiReasoningBox" style="font-size: 12.5px; color: #687b83; background: #e2e8f0; padding: 10px 14px; border-radius: 6px; line-height: 1.5;">
+                            Waiting for narrative facts to evaluate jurisdiction and emergency level...
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- ========================================== -->
-        <!-- SECTION 2: MULTI-AGENT DECISION SUPPORT    -->
-        <!-- ========================================== -->
-        <div style="background: rgba(25, 118, 108, 0.05); border: 1px solid rgba(25, 118, 108, 0.3); border-radius: 8px; padding: 14px; display: grid; gap: 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <p class="eyebrow" style="color: var(--teal); font-weight: 800; margin: 0;">2. MULTI-AGENT AI DECISION SUPPORT SYSTEM</p>
+        <!-- Footer Actions -->
+        <div class="dialog-actions" style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 10px;">
+            <button class="button button-quiet" type="button" data-close-dialog style="min-height: 36px; padding: 0 16px; font-weight: 700; border-radius: 4px; border: 1px solid #dce5e6; background: #fff; color: #40575f; cursor: pointer;">Cancel</button>
+            <button class="button button-primary" type="submit" style="min-height: 36px; padding: 0 18px; font-weight: 700; border-radius: 4px; background: #173d3b; border: 1px solid #173d3b; color: #fff; cursor: pointer;">Encode &amp; Log Case</button>
+        </div>
+    </form>
+</dialog>
+
+    <!-- MODAL: DEEP CASE REVIEW & AI JURISDICTION INSPECTION -->
+    <dialog class="admin-dialog" id="caseReviewModal" style="width: min(720px, calc(100vw - 32px)); max-height: 90vh;">
+        <div class="dialog-heading">
+            <div>
+                <span class="eyebrow" id="modalReviewRef">IR-0000</span>
+                <h2 id="modalReviewCategory" style="font-size: 19px; font-weight: 800; font-family: 'Manrope', sans-serif;">Incident Review</h2>
+            </div>
+            <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
+        </div>
+
+        <div style="max-height: calc(90vh - 190px); overflow-y: auto; padding-right: 6px; display: grid; gap: 14px; margin-top: 10px;">
+            <!-- 1. AI Legal Routing & Status Alert Banner -->
+            <div id="modalLegalRoutingBanner" style="padding: 12px 14px; border-radius: 6px; background: rgba(25, 118, 108, 0.1); border: 1px solid var(--teal); display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong style="display: block; font-size: 12.5px; color: var(--teal);" id="modalLegalRoutingTitle">Jurisdiction Assessment</strong>
+                    <span style="font-size: 11.5px; color: var(--muted);" id="modalLegalRoutingDesc">Analyzing legal authority under Local Government Code...</span>
+                </div>
                 <span id="modalPriorityBadge" class="pill pill-rejected" style="font-weight: 800;">Critical</span>
             </div>
 
-            <!-- Agent A: Statutory Jurisdiction & Legal Routing -->
-            <div id="modalLegalRoutingBanner" style="padding: 12px; border-radius: 6px; border: 1px solid var(--teal); background: rgba(25, 118, 108, 0.1);">
-                <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <strong style="font-size: 12.5px; color: var(--teal);" id="modalLegalRoutingTitle">Jurisdiction Assessment</strong>
-                    <span class="pill" id="modalVawcStatusPill" style="font-weight: 700; font-size: 10px;">KP Authority</span>
+            <!-- 2. Complainant & Location Header -->
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px; background: rgba(0,0,0,0.02); border: 1px solid var(--line); border-radius: 6px;">
+                <div>
+                    <span class="meta-label">COMPLAINANT</span>
+                    <strong id="modalComplainantName" style="font-size: 13px;">—</strong>
                 </div>
-                <p style="font-size: 12px; color: var(--ink); margin: 4px 0 0; line-height: 1.4;" id="modalLegalRoutingDesc">
-                    Analyzing legal authority under Local Government Code...
-                </p>
+                <div>
+                    <span class="meta-label">CONTACT</span>
+                    <strong id="modalComplainantPhone" style="font-size: 13px;">—</strong>
+                </div>
+                <div>
+                    <span class="meta-label">LOCATION</span>
+                    <strong id="modalLocationPurok" style="font-size: 13px;">—</strong>
+                </div>
             </div>
 
-            <!-- Agent B: Safety Entities & Threat Breakdown -->
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
-                <div style="padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                    <span class="meta-label">WEAPON IDENTIFICATION</span>
-                    <strong id="modalWeaponFlag" style="display: block; font-size: 12.5px; margin-top: 3px;">NONE</strong>
+            <!-- 3. Raw Scene Narrative -->
+            <div>
+                <span class="meta-label">SUBMITTED INCIDENT NARRATIVE</span>
+                <div id="modalNarrativeText" style="margin-top: 5px; padding: 10px 12px; border-radius: 6px; background: var(--paper); border: 1px solid var(--line); font-size: 13px; line-height: 1.5; color: var(--ink);">
+                    —
                 </div>
-                <div style="padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                    <span class="meta-label">MEDICAL / TRAUMA STATUS</span>
-                    <span id="modalMedicalFlag" style="display: block; font-size: 12px; color: var(--muted); margin-top: 3px;">None reported</span>
+            </div>
+
+            <!-- 4. AI Deep Entity Detection Matrix -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div style="padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px;">
+                    <span class="meta-label">WEAPON ASSESSMENT</span>
+                    <strong id="modalWeaponFlag" style="display: block; font-size: 12.5px; margin-top: 3px;">None Detected</strong>
                 </div>
-                <div style="padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
+                <div style="padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px;">
+                    <span class="meta-label">VAWC / MINOR INVOLVEMENT</span>
+                    <strong id="modalVawcFlag" style="display: block; font-size: 12.5px; margin-top: 3px;">None Reported</strong>
+                </div>
+                <div style="padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px;">
+                    <span class="meta-label">MEDICAL / INJURY STATUS</span>
+                    <span id="modalMedicalFlag" style="display: block; font-size: 12px; color: var(--muted); margin-top: 3px;">No trauma mentioned</span>
+                </div>
+                <div style="padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px;">
                     <span class="meta-label">SUBSTANCE / INTOXICATION</span>
-                    <span id="modalSubstanceFlag" style="display: block; font-size: 12px; color: var(--muted); margin-top: 3px;">None reported</span>
-                </div>
-                <div style="padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                    <span class="meta-label">RECOMMENDED BEAT DISPATCH</span>
-                    <span id="modalBeatRecommendation" style="display: block; font-size: 12px; color: var(--teal); font-weight: 700; margin-top: 3px;">Desk Assessment</span>
+                    <span id="modalSubstanceFlag" style="display: block; font-size: 12px; color: var(--muted); margin-top: 3px;">No intoxication mentioned</span>
                 </div>
             </div>
 
-            <!-- Agent C: Reasoning & Threat Keywords -->
-            <div style="padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
+            <!-- 5. AI Identified Keywords & Reasoning -->
+            <div style="padding: 12px; border: 1px solid var(--line); border-radius: 6px;">
                 <span class="meta-label">AI TRIAGE REASONING &amp; DISPATCH GUIDANCE</span>
-                <p id="modalAiReasoning" style="font-size: 12px; line-height: 1.5; color: var(--ink); margin: 4px 0 8px;">—</p>
+                <p id="modalAiReasoning" style="font-size: 12.5px; line-height: 1.5; color: var(--ink); margin: 6px 0 8px;">—</p>
                 <div id="modalDetectedKeywords" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
             </div>
 
-            <!-- Agent D & E: Duplication Sentinel & Recidivism Pattern Graph -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                <!-- Duplication Box -->
-                <div style="padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                    <span class="meta-label">CROSS-REPORT CLUSTER / DEDUPLICATION</span>
-                    <div id="modalDuplicateBox" style="margin-top: 6px; font-size: 11.5px; display: grid; gap: 4px;">
-                        <span style="color: var(--muted);">No matching cluster in this purok within 2 hours.</span>
-                    </div>
-                </div>
-
-                <!-- Recidivism History Box -->
-                <div style="padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                    <span class="meta-label">COMPLAINANT RECORD HISTORY (12 Months)</span>
-                    <div id="modalHistoryList" style="margin-top: 6px; font-size: 11.5px; display: grid; gap: 4px;">
-                        <span style="color: var(--muted);">No previous blotters on record.</span>
-                    </div>
+            <!-- 6. Purok & Complainant Repeat Incident History -->
+            <div style="padding: 12px; border: 1px solid var(--line); border-radius: 6px;">
+                <span class="meta-label">RECENT BLOTTER HISTORY (Same Person / Purok)</span>
+                <div id="modalHistoryList" style="margin-top: 6px; font-size: 12px; display: grid; gap: 6px;">
+                    <span style="color: var(--muted);">No previous incidents found.</span>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Direct Action Footer Buttons -->
-    <div class="dialog-actions" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: space-between;">
-        <button class="button button-quiet" type="button" data-close-dialog>Close</button>
-        <div class="queue-action-group" id="modalActionButtons">
-            <button class="btn-action-primary" data-action="accept" id="modalBtnAccept">Accept &amp; Blotter</button>
-            <button class="btn-action-quiet" data-action="dispatch" id="modalBtnDispatch">Dispatch</button>
-            <button class="btn-action-quiet" data-action="endorse_lupon" id="modalBtnLupon">Endorse Lupon</button>
-            <button class="btn-action-danger" data-action="reject" id="modalBtnReject">Flag / Reject</button>
+        <!-- Direct Action Footer Buttons -->
+        <div class="dialog-actions" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: space-between;">
+            <button class="button button-quiet" type="button" data-close-dialog>Close</button>
+            <div class="queue-action-group" id="modalActionButtons">
+                <button class="btn-action-primary" data-action="accept" id="modalBtnAccept">Accept &amp; Blotter</button>
+                <button class="btn-action-quiet" data-action="dispatch" id="modalBtnDispatch">Dispatch</button>
+                <button class="btn-action-quiet" data-action="endorse_lupon" id="modalBtnLupon">Endorse Lupon</button>
+                <button class="btn-action-danger" data-action="reject" id="modalBtnReject">Flag / Reject</button>
+            </div>
         </div>
-    </div>
-</dialog>
+    </dialog>
 
     <!-- MODAL: DISPATCH TANOD -->
     <dialog class="admin-dialog" id="dispatchModal" style="width: min(480px, calc(100vw - 32px));">
@@ -989,6 +986,7 @@ if (!$initials) $initials = 'OF';
         </form>
     </dialog>
 
+    <!-- Scripts: officer-ai.js MUST load before officer-dashboard.js -->
     <script src="officer-ai.js?v=<?= time() ?>"></script>
     <script src="officer-dashboard.js?v=<?= time() ?>"></script>
 </body>

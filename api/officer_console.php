@@ -3,6 +3,10 @@ ini_set('display_errors', '0');
 error_reporting(E_ALL);
 date_default_timezone_set('Asia/Manila');
 
+require_once __DIR__ . '/../auth.php';
+require_once __DIR__ . '/../lib/case_intake.php';
+require_once __DIR__ . '/../lib/triage.php';
+
 header('Content-Type: application/json; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
@@ -13,52 +17,9 @@ function officerRespond(array $payload, int $status = 200): void
     exit;
 }
 
-try {
-    require_once __DIR__ . '/../auth.php';
-    if (file_exists(__DIR__ . '/../lib/triage.php')) {
-        require_once __DIR__ . '/../lib/triage.php';
-    }
-} catch (Throwable $e) {
-    officerRespond(['success' => false, 'message' => 'Include error: ' . $e->getMessage()], 500);
-}
-
-// Ensure session is active
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Authentication Check: accept any common role session keys
-$userType = $_SESSION['user_type'] 
-         ?? $_SESSION['role'] 
-         ?? ($_SESSION['user']['user_type'] ?? '') 
-         ?? ($_SESSION['user']['role'] ?? '');
-
-$allowedRoles = ['OFFICER', 'CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN'];
-
-if (!in_array(strtoupper((string) $userType), $allowedRoles, true)) {
-    // If user_id is present, verify directly against the database
-    $userId = (int) ($_SESSION['user_id'] ?? ($_SESSION['user']['id'] ?? 0));
-    if ($userId > 0) {
-        try {
-            $checkDb = getDatabaseConnection();
-            $roleStmt = $checkDb->prepare("SELECT user_type FROM users WHERE id = ? LIMIT 1");
-            $roleStmt->execute([$userId]);
-            $dbRole = strtoupper((string) $roleStmt->fetchColumn());
-            if (in_array($dbRole, $allowedRoles, true)) {
-                $_SESSION['user_type'] = $dbRole; // repair session
-                $userType = $dbRole;
-            }
-        } catch (Throwable $e) {}
-    }
-}
-
-if (!in_array(strtoupper((string) $userType), $allowedRoles, true)) {
-    officerRespond(['success' => false, 'message' => 'Unauthorized access. Please log in again.'], 401);
-}
-
-$actorId   = (int) ($_SESSION['user_id'] ?? ($_SESSION['user']['id'] ?? 0));
-$actorName = (string) ($_SESSION['full_name'] ?? $_SESSION['user_full_name'] ?? ($_SESSION['user']['full_name'] ?? 'Desk Officer'));
-
+/**
+ * One status change = one transaction: case update + milestone + outbox event.
+ */
 function officerTransition(PDO $pdo, string $ref, array $t): void
 {
     $pdo->beginTransaction();
@@ -94,9 +55,19 @@ function officerTransition(PDO $pdo, string $ref, array $t): void
         };
 
         $pdo->prepare('INSERT INTO case_milestones
-                (incident_id, tracking_id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, NOW())')
-            ->execute([$incidentId, $ref, $t['milestone_status'], $t['officer'], $t['milestone_unit'] ?? null, $t['note']]);
+                (incident_id, tracking_id, status_snapshot, milestone_stage, officer_in_charge, deployed_unit, action_note, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())')
+            ->execute([$incidentId, $ref, $t['milestone_status'], $stage, $t['officer'], $t['milestone_unit'] ?? null, $t['note']]);
+        $milestoneId = (int) $pdo->lastInsertId();
+
+        try {
+            $pdo->prepare("INSERT INTO outbox_events (event_type, incident_id, payload) VALUES ('STATUS_CHANGED', ?, ?)")
+                ->execute([$incidentId, json_encode([
+                    'milestone_id' => $milestoneId,
+                    'old_status'   => $oldStatus,
+                    'new_status'   => $t['status'],
+                ])]);
+        } catch (Throwable $ignore) {}
 
         $pdo->commit();
     } catch (Throwable $e) {
@@ -107,66 +78,59 @@ function officerTransition(PDO $pdo, string $ref, array $t): void
     }
 }
 
+$actor     = requireApiRole(['OFFICER', 'CAPTAIN']);
+$actorId   = (int) $actor['id'];
+$actorName = (string) ($actor['full_name'] ?? 'Desk Officer');
+session_write_close();
+
 try {
     $pdo = getDatabaseConnection();
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
     if ($method === 'GET') {
-        $officerProfile = [];
-        try {
-            $officerStmt = $pdo->prepare('SELECT full_name, username, email_or_phone, contact_number, user_type, profile_picture FROM users WHERE id = ? LIMIT 1');
-            $officerStmt->execute([$actorId]);
-            $officerProfile = $officerStmt->fetch(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $e) {}
+        $officerStmt = $pdo->prepare('SELECT full_name, username, email_or_phone, contact_number, user_type, profile_picture FROM users WHERE id = ? LIMIT 1');
+        $officerStmt->execute([$actorId]);
+        $officerProfile = $officerStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-        $pendingTriageCount = (int) ($pdo->query("SELECT COUNT(*) FROM incident_reports WHERE status IN ('PENDING', 'UNDER_REVIEW')")->fetchColumn() ?: 0);
-        $activeDispatchedCount = (int) ($pdo->query("SELECT COUNT(*) FROM incident_reports WHERE status = 'DISPATCHED' OR (deployed_unit IS NOT NULL AND status NOT IN ('RESOLVED', 'CLOSED'))")->fetchColumn() ?: 0);
-        $underInvestigationCount = (int) ($pdo->query("SELECT COUNT(*) FROM incident_reports WHERE status = 'IN_PROGRESS'")->fetchColumn() ?: 0);
-        $resolvedTodayCount = (int) ($pdo->query("SELECT COUNT(*) FROM incident_reports WHERE status = 'RESOLVED' AND DATE(created_at) = CURDATE()")->fetchColumn() ?: 0);
+        $pendingTriageCount = (int) $pdo->query("SELECT COUNT(*) FROM incident_reports WHERE status IN ('PENDING', 'UNDER_REVIEW')")->fetchColumn();
+        $activeDispatchedCount = (int) $pdo->query("SELECT COUNT(*) FROM incident_reports WHERE status = 'DISPATCHED' OR (deployed_unit IS NOT NULL AND status NOT IN ('RESOLVED', 'CLOSED'))")->fetchColumn();
+        $underInvestigationCount = (int) $pdo->query("SELECT COUNT(*) FROM incident_reports WHERE status = 'IN_PROGRESS'")->fetchColumn();
+        $resolvedTodayCount = (int) $pdo->query("SELECT COUNT(*) FROM incident_reports WHERE status = 'RESOLVED' AND DATE(created_at) = CURDATE()")->fetchColumn();
 
-        $criticalCase = null;
-        try {
-            $criticalStmt = $pdo->query("
-                SELECT reference_number, complainant_name, incident_type, purok, narrative_description 
-                FROM incident_reports 
-                WHERE (priority_level = 'Critical' OR status = 'CRITICAL') 
-                  AND status <> 'RESOLVED' 
-                  AND (deployed_unit IS NULL OR deployed_unit = '') 
-                ORDER BY created_at DESC 
-                LIMIT 1
-            ");
-            $criticalCase = $criticalStmt ? $criticalStmt->fetch(PDO::FETCH_ASSOC) : null;
-        } catch (Throwable $e) {}
+        $criticalStmt = $pdo->query("
+            SELECT reference_number, complainant_name, incident_type, purok, narrative_description 
+            FROM incident_reports 
+            WHERE (priority_level = 'Critical' OR status = 'CRITICAL') 
+              AND status <> 'RESOLVED' 
+              AND (deployed_unit IS NULL OR deployed_unit = '') 
+            ORDER BY created_at DESC 
+            LIMIT 1
+        ");
+        $criticalCase = $criticalStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
-        $triageQueue = [];
-        try {
-            $triageStmt = $pdo->query("
-                SELECT * FROM incident_reports 
-                WHERE status IN ('PENDING', 'UNDER_REVIEW') 
-                ORDER BY created_at DESC 
-                LIMIT 30
-            ");
-            $triageQueue = $triageStmt ? $triageStmt->fetchAll(PDO::FETCH_ASSOC) : [];
-        } catch (Throwable $e) {}
+        $triageStmt = $pdo->query("
+            SELECT id, reference_number, complainant_name, complainant_phone, incident_type, narrative_description, purok, priority_level, status, ai_urgency_score, ai_recommendation, created_at 
+            FROM incident_reports 
+            WHERE status IN ('PENDING', 'UNDER_REVIEW') 
+            ORDER BY created_at DESC 
+            LIMIT 30
+        ");
+        $triageQueue = $triageStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        $urgentCases = [];
-        try {
-            $urgentStmt = $pdo->query("
-                SELECT * FROM incident_reports 
-                WHERE priority_level IN ('Critical', 'High') AND status NOT IN ('RESOLVED', 'CLOSED') 
-                ORDER BY (priority_level = 'Critical') DESC, created_at DESC
-            ");
-            $urgentCases = $urgentStmt ? $urgentStmt->fetchAll(PDO::FETCH_ASSOC) : [];
-        } catch (Throwable $e) {}
+        $urgentStmt = $pdo->query("
+            SELECT id, reference_number, complainant_name, complainant_phone, incident_type, narrative_description, purok, priority_level, status, deployed_unit, created_at 
+            FROM incident_reports 
+            WHERE priority_level IN ('Critical', 'High') AND status NOT IN ('RESOLVED', 'CLOSED') 
+            ORDER BY (priority_level = 'Critical') DESC, created_at DESC
+        ");
+        $urgentCases = $urgentStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        $luponCases = [];
-        try {
-            $luponCases = $pdo->query("
-                SELECT * FROM incident_reports 
-                WHERE status = 'FOR_RESOLUTION' OR incident_type LIKE '%Dispute%' OR incident_type LIKE '%Altercation%'
-                ORDER BY created_at DESC
-            ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $e) {}
+        $luponCases = $pdo->query("
+            SELECT id, reference_number, complainant_name, incident_type, narrative_description, purok, status, deployed_unit AS assigned_officer, created_at 
+            FROM incident_reports 
+            WHERE status = 'FOR_RESOLUTION' OR incident_type LIKE '%Dispute%' OR incident_type LIKE '%Altercation%'
+            ORDER BY created_at DESC
+        ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
         $tanods = [
             ['id' => 1, 'name' => 'Ramon Diaz', 'station' => 'Barangay Base', 'status' => 'AVAILABLE'],
@@ -176,30 +140,25 @@ try {
             ['id' => 5, 'name' => 'Mario Aquino', 'station' => 'Base Station', 'status' => 'OFF_DUTY']
         ];
 
-        $allCases = [];
-        try {
-            $allCases = $pdo->query("
-                SELECT * FROM incident_reports 
-                ORDER BY created_at DESC 
-                LIMIT 100
-            ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $e) {}
+        $allCases = $pdo->query("
+            SELECT id, reference_number, complainant_name, complainant_phone, incident_type, purok, priority_level, status, ai_recommendation, deployed_unit, created_at 
+            FROM incident_reports 
+            ORDER BY created_at DESC 
+            LIMIT 100
+        ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        $notifications = [];
-        try {
-            $notifications = $pdo->query("
-                SELECT reference_number, incident_type, complainant_name, purok, priority_level, status, created_at 
-                FROM incident_reports 
-                WHERE status IN ('PENDING', 'UNDER_REVIEW', 'CRITICAL') 
-                ORDER BY (priority_level = 'Critical' OR status = 'CRITICAL') DESC, created_at DESC 
-                LIMIT 15
-            ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $e) {}
+        $notifications = $pdo->query("
+            SELECT reference_number, incident_type, complainant_name, purok, priority_level, status, created_at 
+            FROM incident_reports 
+            WHERE status IN ('PENDING', 'UNDER_REVIEW', 'CRITICAL') 
+            ORDER BY (priority_level = 'Critical' OR status = 'CRITICAL') DESC, created_at DESC 
+            LIMIT 15
+        ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
         officerRespond([
             'success' => true,
             'officer' => [
-                'full_name' => $officerProfile['full_name'] ?? $actorName,
+                'full_name' => $officerProfile['full_name'] ?? 'Barangay Officer',
                 'contact_number' => $officerProfile['contact_number'] ?? '',
                 'profile_picture' => $officerProfile['profile_picture'] ?? null
             ],
@@ -281,7 +240,44 @@ try {
                 'note'             => $notes,
             ]);
 
+            try {
+                $caseId = (int) $pdo->query("SELECT id FROM incident_reports WHERE reference_number = " . $pdo->quote($refNumber))->fetchColumn();
+                if ($caseId > 0) {
+                    $pdo->prepare('INSERT INTO tanod_dispatch_logs (incident_id, unit, dispatched_by, status, dispatched_at) VALUES (?, ?, ?, "DISPATCHED", NOW())')
+                        ->execute([$caseId, $unit, $actorId]);
+                }
+            } catch (Throwable $e) {}
+
             officerRespond(['success' => true, 'message' => "Tanod unit successfully dispatched for #{$refNumber}."]);
+
+        case 'endorse_pnp':
+            $needRef();
+            $policeStation = trim((string) ($input['police_station'] ?? 'PNP Municipal Police Station'));
+            $blotterNumber = trim((string) ($input['blotter_number'] ?? ''));
+            $reason        = trim((string) ($input['reason'] ?? 'Active threat / firearm involved exceeding barangay tanod scope.'));
+            $tooLong($policeStation, 120, 'Police station name');
+            $tooLong($reason, 500, 'Escalation remarks');
+
+            officerTransition($pdo, $refNumber, [
+                'status'           => 'CRITICAL',
+                'milestone_status' => 'ESCALATED_PNP',
+                'milestone_stage'  => 'DESK_REVIEW',
+                'officer'          => $actorName,
+                'unit'             => $policeStation,
+                'recommendation'   => "Case formally endorsed to {$policeStation}. Legal transmittal active.",
+                'note'             => "Case escalated to {$policeStation}. Reason: {$reason}" . ($blotterNumber ? " | Police Blotter/PIRF: {$blotterNumber}" : ''),
+            ]);
+
+            try {
+                $caseId = (int) $pdo->query("SELECT id FROM incident_reports WHERE reference_number = " . $pdo->quote($refNumber))->fetchColumn();
+                if ($caseId > 0) {
+                    $endStmt = $pdo->prepare('INSERT INTO endorsements (case_id, type, status, referred_by_user_id, referred_at, remarks)
+                                             VALUES (?, "PNP_TRANSMITTAL", "ENDORSED", ?, NOW(), ?)');
+                    $endStmt->execute([$caseId, $actorId, "{$policeStation} - {$reason}" . ($blotterNumber ? " [Ref: {$blotterNumber}]" : '')]);
+                }
+            } catch (Throwable $e) {}
+
+            officerRespond(['success' => true, 'message' => "Case #{$refNumber} officially escalated to {$policeStation}."]);
 
         case 'endorse_lupon':
             $needRef();
@@ -332,10 +328,19 @@ try {
             ]);
             officerRespond(['success' => true, 'message' => "Case #{$refNumber} flagged and closed."]);
 
-       case 'get_case_review_details':
+        // -------------------------------------------------------------
+        // GET CASE REVIEW DETAILS (Deep AI Inspection for Modal)
+        // -------------------------------------------------------------
+        case 'get_case_review_details':
             $needRef();
 
-            $stmt = $pdo->prepare("SELECT * FROM incident_reports WHERE reference_number = :ref LIMIT 1");
+            $stmt = $pdo->prepare("
+                SELECT ir.*, u.full_name AS encoder_name
+                FROM incident_reports ir
+                LEFT JOIN users u ON ir.assigned_officer_id = u.id
+                WHERE ir.reference_number = :ref
+                LIMIT 1
+            ");
             $stmt->execute([':ref' => $refNumber]);
             $case = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -343,10 +348,11 @@ try {
                 officerRespond(['success' => false, 'message' => 'Case not found.'], 404);
             }
 
-            // Generate or fetch cached AI Decision Support Analysis
+            // Check if AI analysis JSON exists; if not, generate and store it
             $aiData = !empty($case['ai_analysis_json']) ? json_decode($case['ai_analysis_json'], true) : null;
             if (!$aiData && class_exists('TriageEngine')) {
                 $aiData = TriageEngine::evaluateIncident($case['narrative_description']);
+                
                 try {
                     $upd = $pdo->prepare("
                         UPDATE incident_reports 
@@ -363,51 +369,39 @@ try {
                 } catch (Throwable $ignore) {}
             }
 
-            // 1. Pillar: Duplicate & Cluster Matching (Same purok within past 2 hours)
-            $dupStmt = $pdo->prepare("
-                SELECT reference_number, incident_type, complainant_name, created_at
-                FROM incident_reports
-                WHERE purok = :purok
-                  AND id <> :current_id
-                  AND created_at >= (NOW() - INTERVAL 2 HOUR)
-                ORDER BY created_at DESC
-                LIMIT 3
-            ");
-            $dupStmt->execute([
-                ':purok'      => $case['purok'],
-                ':current_id' => $case['id']
-            ]);
-            $recentPurokDuplicates = $dupStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            // 2. Pillar: Recidivism & Neighborhood Dispute History (Same complainant or address in past 12 months)
+            // Cross-check: Find prior cases in same Purok or Complainant name within last 12 months
             $histStmt = $pdo->prepare("
-                SELECT reference_number, incident_type, status, priority_level, created_at 
+                SELECT reference_number, incident_type, status, created_at 
                 FROM incident_reports 
-                WHERE complainant_name = :cname
+                WHERE (complainant_name = :cname OR purok = :purok)
                   AND id <> :current_id
                 ORDER BY created_at DESC 
-                LIMIT 4
+                LIMIT 5
             ");
             $histStmt->execute([
                 ':cname'      => $case['complainant_name'],
+                ':purok'      => $case['purok'],
                 ':current_id' => $case['id']
             ]);
-            $complainantHistory = $histStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $historyMatches = $histStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             officerRespond([
-                'success'           => true,
-                'case'              => $case,
-                'ai_analysis'       => $aiData,
-                'duplicates'        => $recentPurokDuplicates,
-                'history_matches'   => $complainantHistory
+                'success'         => true,
+                'case'            => $case,
+                'ai_analysis'     => $aiData,
+                'history_matches' => $historyMatches
             ]);
 
+        // -------------------------------------------------------------
+        // ENCODE CASE: Automated AI Categorization & Severity
+        // -------------------------------------------------------------
         case 'encode_case':
             $narrative = trim((string) ($input['narrative_description'] ?? $input['narrative'] ?? ''));
             if ($narrative === '') {
                 officerRespond(['success' => false, 'message' => 'Narrative description is required.'], 400);
             }
 
+            // Execute TriageEngine evaluation
             $analysis = [
                 'incident_type'     => 'General Incident',
                 'priority_level'    => 'Low',
@@ -430,17 +424,19 @@ try {
                         $analysis = array_merge($analysis, $aiResult);
                     }
                 } catch (Throwable $t) {
-                    error_log('TriageEngine note: ' . $t->getMessage());
+                    error_log('TriageEngine execution note: ' . $t->getMessage());
                 }
             }
 
+            // AI determines both Category and Priority Level
             $finalCategory = !empty($input['incident_type']) && $input['incident_type'] !== 'General Incident' 
-                ? trim((string) $input['incident_type']) 
+                ? trim((string)$input['incident_type']) 
                 : ($analysis['incident_type'] ?? 'General Incident');
 
             $aiPriority = $analysis['priority_level'] ?? 'Low';
-            $officerPriority = !empty($input['priority_level']) ? trim((string) $input['priority_level']) : $aiPriority;
+            $officerPriority = !empty($input['priority_level']) ? trim((string)$input['priority_level']) : $aiPriority;
 
+            // Downgrade check
             $weights = ['Low' => 1, 'Moderate' => 2, 'Medium' => 2, 'High' => 3, 'Critical' => 4];
             $aiWeight = $weights[$aiPriority] ?? 1;
             $requestedWeight = $weights[$officerPriority] ?? $aiWeight;
@@ -466,7 +462,7 @@ try {
                     officerRespond([
                         'success'           => false,
                         'override_rejected' => true,
-                        'message'           => 'Justification rejected: please state verifiable details[cite: 12].',
+                        'message'           => 'Justification rejected: please state verifiable details (e.g., responder name or cleared threat)[cite: 12].',
                         'ai'                => [
                             'priority'  => $aiPriority,
                             'triggers'  => $analysis['detected_keywords'] ?? [],
@@ -485,11 +481,13 @@ try {
                     INSERT INTO incident_reports (
                         reference_number, complainant_name, complainant_phone, incident_type,
                         narrative_description, incident_datetime, purok, priority_level,
-                        ai_urgency_score, ai_recommendation, status, assigned_officer_id, assigned_officer_name
+                        ai_urgency_score, ai_recommendation, ai_analysis_json, legal_routing,
+                        weapon_detected, vawc_minor_flag, status, assigned_officer_id, assigned_officer_name
                     ) VALUES (
                         :ref, :name, :phone, :type,
                         :narrative, NOW(), :purok, :priority,
-                        :ai_score, :recommendation, 'PENDING', :officer_id, :officer_name
+                        :ai_score, :recommendation, :analysis_json, :legal_routing,
+                        :weapon_flag, :vawc_flag, 'PENDING', :officer_id, :officer_name
                     )
                 ");
 
@@ -503,6 +501,10 @@ try {
                     ':priority'       => $finalPriority,
                     ':ai_score'       => (float) ($analysis['ai_urgency_score'] ?? 0.00),
                     ':recommendation' => $analysis['ai_recommendation'] ?? 'Standard intake',
+                    ':analysis_json'  => json_encode($analysis, JSON_UNESCAPED_UNICODE),
+                    ':legal_routing'  => $analysis['legal_routing'] ?? null,
+                    ':weapon_flag'    => $analysis['weapon_flag'] ?? 'NONE',
+                    ':vawc_flag'      => !empty($analysis['vawc_minor_flag']) ? 1 : 0,
                     ':officer_id'     => $actorId,
                     ':officer_name'   => $actorName
                 ]);
@@ -520,7 +522,7 @@ try {
                     ':inc_id'   => $incidentId,
                     ':track_id' => $refNumber,
                     ':officer'  => $actorName,
-                    ':note'     => "Incident encoded. Assessed priority: {$finalPriority}."
+                    ':note'     => "Incident encoded. AI Category: {$finalCategory} | Assessed Priority: {$finalPriority}."
                 ]);
 
                 if ($actorId > 0) {
@@ -530,7 +532,7 @@ try {
                     ");
                     $auditStmt->execute([
                         ':actor'   => $actorId,
-                        ':details' => "Encoded incident record #{$refNumber}."
+                        ':details' => "Encoded incident record #{$refNumber} ({$finalCategory} - {$finalPriority})."
                     ]);
                 }
 
@@ -561,6 +563,73 @@ try {
                 }
                 throw $e;
             }
+
+        case 'profile_update':
+            $name = trim((string) ($input['full_name'] ?? ''));
+            $contact = trim((string) ($input['contact_number'] ?? ''));
+
+            if ($name === '') {
+                officerRespond(['success' => false, 'message' => 'Full name cannot be blank.'], 422);
+            }
+
+            $picturePath = null;
+            if (!empty($_FILES['profile_picture']['tmp_name'])) {
+                $picture = $_FILES['profile_picture'];
+                if ($picture['error'] !== UPLOAD_ERR_OK || $picture['size'] > 2 * 1024 * 1024) {
+                    officerRespond(['success' => false, 'message' => 'Profile picture must be smaller than 2 MB.'], 422);
+                }
+
+                $finfo = new finfo(FILEINFO_MIME_TYPE);
+                $mime = $finfo->file($picture['tmp_name']);
+                $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+                if (!isset($extensions[$mime])) {
+                    officerRespond(['success' => false, 'message' => 'Use a JPG, PNG, or WebP profile picture.'], 422);
+                }
+
+                $directory = __DIR__ . '/../uploads/profiles';
+                if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+                    officerRespond(['success' => false, 'message' => 'Could not create profile images directory.'], 500);
+                }
+
+                $filename = 'officer_' . $actorId . '_' . bin2hex(random_bytes(6)) . '.' . $extensions[$mime];
+                if (!move_uploaded_file($picture['tmp_name'], $directory . '/' . $filename)) {
+                    officerRespond(['success' => false, 'message' => 'Could not save the profile picture.'], 500);
+                }
+                $picturePath = 'uploads/profiles/' . $filename;
+            }
+
+            if ($picturePath !== null) {
+                $stmt = $pdo->prepare('UPDATE users SET full_name = ?, contact_number = ?, profile_picture = ? WHERE id = ?');
+                $stmt->execute([$name, $contact, $picturePath, $actorId]);
+            } else {
+                $stmt = $pdo->prepare('UPDATE users SET full_name = ?, contact_number = ? WHERE id = ?');
+                $stmt->execute([$name, $contact, $actorId]);
+            }
+
+            $_SESSION['full_name'] = $name;
+            officerRespond(['success' => true, 'message' => 'Profile information updated successfully.']);
+
+        case 'password_update':
+            $currentPassword = (string) ($input['current_password'] ?? '');
+            $newPassword = (string) ($input['new_password'] ?? '');
+            $confirmPassword = (string) ($input['confirm_password'] ?? '');
+
+            if (strlen($newPassword) < 8 || $newPassword !== $confirmPassword) {
+                officerRespond(['success' => false, 'message' => 'New passwords must match and be at least 8 characters.'], 422);
+            }
+
+            $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = ?');
+            $stmt->execute([$actorId]);
+            $hash = (string) $stmt->fetchColumn();
+
+            if (!password_verify($currentPassword, $hash)) {
+                officerRespond(['success' => false, 'message' => 'Current password is incorrect.'], 422);
+            }
+
+            $stmt = $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+            $stmt->execute([password_hash($newPassword, PASSWORD_DEFAULT), $actorId]);
+
+            officerRespond(['success' => true, 'message' => 'Password changed successfully.']);
 
         default:
             officerRespond(['success' => false, 'message' => 'Unknown officer action.'], 422);

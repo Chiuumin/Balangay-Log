@@ -1,40 +1,70 @@
 <?php
-// test_triage.php
-require_once __DIR__ . '/lib/triage.php';
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+header('Content-Type: application/json; charset=UTF-8');
 
-$narrative = "Nirereklamo ko po ang kapitbahay ko dahil nag-inuman sila magdamag, sobrang lakas ng videoke, at nung sinita ko ay pinagbantaan akong papaluin ng tubo kapag nagreklamo ulit.";
+require_once __DIR__ . '/../auth.php';
+require_once __DIR__ . '/../lib/case_intake.php';
 
-$result = TriageEngine::evaluateIncident($narrative);
+requireJsonPost();
+$actor = requireApiRole(['OFFICER', 'CAPTAIN']);
 
-// Pretty print the result to terminal or browser
-header('Content-Type: application/json');
-echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+$sent = (string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+$tok  = (string) ($_SESSION['csrf_token'] ?? '');
+if ($tok === '' || !hash_equals($tok, $sent)) {
+    jsonError(403, 'Security token expired. Reload the page and try again.');
+}
+session_write_close();
+
+$input = json_decode(file_get_contents('php://input'), true);
+if (!is_array($input)) jsonError(400, 'Invalid or missing JSON payload.');
+$action = (string) ($input['action'] ?? 'encode_case');
 
 try {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $narrative = trim($input['narrative_description'] ?? '');
-
-    if (empty($narrative)) {
-        echo json_encode(['success' => false, 'error' => 'Narrative description is required.']);
+    if ($action === 'inspect_triage') {
+        $narrative = intake_pick($input, ['narrative_description', 'incidentNarrative', 'narrative']);
+        if ($narrative === '') {
+            echo json_encode(['success' => false, 'error' => 'Narrative is empty.']);
+            exit;
+        }
+        echo json_encode(['success' => true] + analyze_narrative($narrative, intake_pick($input, ['incident_type', 'category'])), JSON_UNESCAPED_UNICODE);
         exit;
     }
+    if ($action === 'inspect_triage_ai') {
+        $narrative = intake_pick($input, ['narrative_description', 'incidentNarrative', 'narrative']);
+        if ($narrative === '') {
+            echo json_encode(['success' => false, 'error' => 'Narrative is empty.']);
+            exit;
+        }
+        $narrative = mb_substr($narrative, 0, 5000);
+        $a      = analyze_narrative($narrative, intake_pick($input, ['incident_type', 'category']));
+        $aiUsed = false;
+        $aiNote = null;
 
-    // Run triage engine
-    $triageResult = TriageEngine::evaluateIncident($narrative);
-
-    // Format output matching your incident_reports table schema
-    echo json_encode([
-        'success'           => true,
-        'priority_level'    => $triageResult['priority_level'],
-        'ai_urgency_score'  => $triageResult['ai_urgency_score'],
-        'ai_recommendation' => $triageResult['ai_recommendation'],
-        'detected_triggers' => $triageResult['detected_triggers']
-    ]);
-
+        if (!ai_enabled()) {
+            $aiNote = 'AI is turned off in config/secrets.php.';
+        } elseif (mb_strlen($narrative) < 4) {
+            $aiNote = 'Narrative too short for an AI check.';
+        } else {
+            try {
+                [$a] = ai_refine_analysis($a, $narrative, 25);
+                $aiUsed = true;
+            } catch (Throwable $e) {
+                error_log('[inspect_triage_ai] ' . $e->getMessage());
+                $aiNote = 'AI unavailable; showing the rules result.';
+            }
+        }
+        echo json_encode(['success' => true, 'ai_used' => $aiUsed, 'ai_note' => $aiNote] + $a, JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    if ($action === 'encode_case') {
+        $r = encode_case_run($input, $actor);
+        http_response_code($r['status']);
+        echo json_encode($r['body'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    jsonError(400, 'Unknown action.');
 } catch (Throwable $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error'   => $e->getMessage()
-    ]);
+    error_log('[encode_case] ' . $e->getMessage());
+    jsonError(500, 'The request could not be completed.');
 }

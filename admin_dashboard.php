@@ -21,10 +21,8 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 </head>
 <body>
 <div class="admin-shell">
-        <!-- Backdrop Dimmer Overlay -->
         <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
-        <!-- Sticky Mobile Header Bar -->
         <header class="mobile-top-header">
             <button class="mobile-hamburger-btn" id="mobileMenuBtn" type="button" aria-label="Open Navigation">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
@@ -39,7 +37,6 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
             </a>
         </header>
 
-        <!-- Sliding Sidebar Drawer -->
         <aside class="admin-sidebar" id="adminSidebar">
             <div class="sidebar-header-row">
                 <a class="admin-brand" href="admin_dashboard.php" aria-label="BalangayLog System Administration">
@@ -188,7 +185,6 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 			</form>
 		</div>
 
-		<!-- Bottom Card: Change Password -->
 		<div class="content-panel password-card">
 			<div class="panel-heading">
 				<div>
@@ -223,9 +219,36 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 		</main>
 	</div>
 
-	<dialog class="admin-dialog" id="accountDialog"><form id="officialForm" method="dialog"><div class="dialog-heading"><div><p class="eyebrow">OFFICIAL ACCOUNT</p><h2 id="officialDialogTitle">Add Officer / Captain</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div><input type="hidden" name="id"><label>Full name<input name="full_name" required></label><div class="form-row"><label>Position<select name="role" required><option value="OFFICER">Barangay Officer</option><option value="CAPTAIN">Barangay Captain</option></select></label><label>Contact number<input name="contact_number"></label></div><label>Username<input name="username" required autocomplete="off"></label><label id="temporaryPasswordLabel">Temporary password<input name="password" type="password" minlength="8" autocomplete="new-password"></label><p class="dialog-help" id="accountDialogHelp">The official will sign in with this temporary password.</p><div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog>Cancel</button><button class="button button-primary" type="submit">Save account</button></div></form></dialog>
-	
-	<option value="OFFICER">Barangay Officer</option><option value="CAPTAIN">Barangay Captain</option><option value="SYSTEM_ADMIN">System Administrator</option>
+	<dialog class="admin-dialog" id="accountDialog">
+        <form id="officialForm" method="dialog">
+            <div class="dialog-heading">
+                <div>
+                    <p class="eyebrow">OFFICIAL ACCOUNT</p>
+                    <h2 id="officialDialogTitle">Add Officer / Captain</h2>
+                </div>
+                <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
+            </div>
+            <input type="hidden" name="id">
+            <label>Full name<input name="full_name" required></label>
+            <div class="form-row">
+                <label>Position
+                    <select name="role" required>
+                        <option value="OFFICER">Barangay Officer</option>
+                        <option value="CAPTAIN">Barangay Captain</option>
+                        <option value="SYSTEM_ADMIN">System Administrator</option>
+                    </select>
+                </label>
+                <label>Contact number<input name="contact_number"></label>
+            </div>
+            <label>Username<input name="username" required autocomplete="off"></label>
+            <label id="temporaryPasswordLabel">Temporary password<input name="password" type="password" minlength="8" autocomplete="new-password"></label>
+            <p class="dialog-help" id="accountDialogHelp">The official will sign in with this temporary password.</p>
+            <div class="dialog-actions">
+                <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
+                <button class="button button-primary" type="submit">Save account</button>
+            </div>
+        </form>
+    </dialog>
 
 	<dialog class="admin-dialog" id="detailDialog"><div class="dialog-heading"><div><p class="eyebrow">ACCOUNT REVIEW</p><h2>Resident details</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div><div id="residentDetailContent" class="detail-content"></div><div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog>Close</button><button class="button button-danger" type="button" id="rejectResidentBtn">Reject</button><button class="button button-primary" type="button" id="approveResidentBtn">Approve</button></div></dialog>
 
