@@ -130,31 +130,38 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 			<section class="admin-view" id="view-analytics" hidden>
 				<div class="section-heading"><div><h2>Analytics &amp; Official Reports</h2><p>Explore incident patterns and prepare clear, system-generated reports from available case records.</p></div><button type="button" class="button button-primary" data-generate-report>Generate Report</button></div>
 				<form class="content-panel analytics-filters" id="analyticsFilters">
-					<div class="panel-heading"><div><h2>Filter incident data</h2><p>Filters apply to charts and tabular reports.</p></div></div>
-					<div class="filter-grid">
-						<label>Year<select id="analyticsYear" name="year"><option value="">All years</option></select></label>
-						<label>Month<select id="analyticsMonth" name="month"><option value="">All months</option><option value="1">January</option><option value="2">February</option><option value="3">March</option><option value="4">April</option><option value="5">May</option><option value="6">June</option><option value="7">July</option><option value="8">August</option><option value="9">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option></select></label>
-						<label>From date<input id="analyticsFrom" name="from" type="date"></label>
-						<label>To date<input id="analyticsTo" name="to" type="date"></label>
-						<label>Category<select id="analyticsCategory" name="category"><option value="">All categories</option></select></label>
-						<label>Purok<select id="analyticsPurok" name="purok"><option value="">All puroks</option></select></label>
-						<label>Case status<select id="analyticsStatus" name="status"><option value="">All statuses</option></select></label>
+					<div class="panel-heading"><div><h2>Filter incident data</h2><p>Filters apply to analytics, incident records, and generated reports.</p></div></div>
+					<div class="filter-toolbar">
+						<div class="filter-toolbar-row">
+							<label>Year<select id="analyticsYear" name="year"><option value="">All years</option></select></label>
+							<label>Reporting period<select id="analyticsMonth" name="month"><option value="">All months</option><option value="1">January</option><option value="2">February</option><option value="3">March</option><option value="4">April</option><option value="5">May</option><option value="6">June</option><option value="7">July</option><option value="8">August</option><option value="9">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option></select></label>
+							<label>From<input id="analyticsFrom" name="from" type="date"></label>
+							<label>To<input id="analyticsTo" name="to" type="date"></label>
+						</div>
+						<details class="advanced-filters">
+							<summary>Advanced Filters</summary>
+							<div class="advanced-filter-grid">
+								<label>Category<select id="analyticsCategory" name="category"><option value="">All categories</option></select></label>
+								<label>Purok<select id="analyticsPurok" name="purok"><option value="">All puroks</option></select></label>
+								<label>Case status<select id="analyticsStatus" name="status"><option value="">All statuses</option></select></label>
+							</div>
+						</details>
 					</div>
-					<div class="filter-actions"><button class="button button-primary" type="submit">Apply Filters</button><button class="button button-quiet" id="resetAnalyticsFilters" type="button">Reset Filters</button><span id="analyticsLoading" class="filter-feedback" role="status" hidden>Loading incident records…</span></div>
+					<div class="filter-actions"><button class="button button-primary" type="submit">Apply Filters</button><button class="button button-quiet" id="resetAnalyticsFilters" type="button">Reset</button><span id="analyticsLoading" class="filter-feedback" role="status" hidden>Loading incident records…</span></div>
 					<p class="coverage-note" id="coverageNote"></p>
 				</form>
 				<div class="analytics-tabs" role="tablist" aria-label="Analytics and reporting sections">
 					<button type="button" role="tab" id="analyticsTab" aria-controls="analyticsPanel" aria-selected="true" tabindex="0" data-report-tab="analytics">Analytics</button>
-					<button type="button" role="tab" id="tabularTab" aria-controls="tabularPanel" aria-selected="false" tabindex="-1" data-report-tab="tabular">Tabular Reports</button>
-					<button type="button" role="tab" id="generateTab" aria-controls="generatePanel" aria-selected="false" tabindex="-1" data-report-tab="generate">Generate Reports</button>
+					<button type="button" role="tab" id="recordsTab" aria-controls="recordsPanel" aria-selected="false" tabindex="-1" data-report-tab="records">Incident Records</button>
+					<button type="button" role="tab" id="reportsTab" aria-controls="reportsPanel" aria-selected="false" tabindex="-1" data-report-tab="reports">Reports</button>
 				</div>
 				<div role="tabpanel" id="analyticsPanel" aria-labelledby="analyticsTab" class="analytics-tab-panel">
 					<div class="summary-cards" aria-label="Filtered incident totals">
-						<button class="summary-card" type="button" data-summary-filter=""><span class="summary-card-heading">Total Reported Incidents <i aria-hidden="true">▦</i></span><strong id="analyticsTotal">—</strong><small>In the selected period</small></button>
-						<button class="summary-card" type="button" data-summary-filter="pending"><span class="summary-card-heading">Pending Captain Endorsement <i aria-hidden="true">✎</i></span><strong id="analyticsPending">—</strong><small>Awaiting captain action</small></button>
+						<button class="summary-card" type="button" data-summary-filter=""><span class="summary-card-heading">Total Incidents <i aria-hidden="true">▦</i></span><strong id="analyticsTotal">—</strong><small>In the selected period</small></button>
+						<button class="summary-card" type="button" data-summary-filter="pending"><span class="summary-card-heading">Pending / Open Cases <i aria-hidden="true">✎</i></span><strong id="analyticsPending">—</strong><small>Awaiting action</small></button>
 						<button class="summary-card" type="button" data-summary-filter="ongoing"><span class="summary-card-heading">Ongoing Cases <i aria-hidden="true">↻</i></span><strong id="analyticsOngoing">—</strong><small>In progress or mediation</small></button>
-						<button class="summary-card" type="button" data-summary-filter="resolved"><span class="summary-card-heading">Resolved Cases <i aria-hidden="true">✓</i></span><strong id="analyticsResolved">—</strong><small>Marked resolved in the system</small></button>
-						<button class="summary-card" type="button" data-summary-filter="priority"><span class="summary-card-heading">Critical / High Priority <i aria-hidden="true">!</i></span><strong id="analyticsCritical">—</strong><small>Open high-priority cases</small></button>
+						<button class="summary-card" type="button" data-summary-filter="resolved"><span class="summary-card-heading">Resolved Cases <i aria-hidden="true">✓</i></span><strong id="analyticsResolved">—</strong><small>Marked resolved</small></button>
+						<button class="summary-card" type="button" data-summary-filter="priority"><span class="summary-card-heading">High-Priority Cases <i aria-hidden="true">!</i></span><strong id="analyticsCritical">—</strong><small>Open high-priority cases</small></button>
 					</div>
 					<div class="analytics-grid analytics-grid-2">
 						<section class="content-panel"><div class="panel-heading"><div><h2>Incident trends over time</h2><p>Monthly counts for the selected year and filters.</p></div></div><div id="trendChart2" class="chart-box"></div><p class="empty-message chart-empty" id="trendEmpty" hidden>No incident records found for this period.</p></section>
@@ -164,16 +171,16 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 						<section class="content-panel year-comparison-panel"><div class="panel-heading"><div><h2>Year-over-year comparison</h2><p>Compare similar calendar periods across available years; completeness is not tracked.</p></div></div><div id="yearComparison" class="bar-list"></div><p class="empty-message chart-empty" id="yearComparisonEmpty" hidden>No historical incident records found.</p></section>
 					</div>
 				</div>
-				<div role="tabpanel" id="tabularPanel" aria-labelledby="tabularTab" class="analytics-tab-panel" hidden>
+				<div role="tabpanel" id="recordsPanel" aria-labelledby="recordsTab" class="analytics-tab-panel" hidden>
 					<div class="content-panel">
 						<div class="panel-heading"><div><h2 id="tableReportTitle">Monthly Incident Summary</h2><p>Search, sort, and page through records matching the applied filters.</p></div><label class="select-field">Report type<select id="tableReportType"><option value="monthly">Monthly Incident Summary</option><option value="yearly">Yearly Incident Summary</option><option value="purok">Purok Incident Summary</option><option value="register">Incident Case Register</option><option value="resolution">Case Resolution &amp; Endorsement Report</option></select></label></div>
-						<div class="toolbar"><label class="search-field"><span class="sr-only">Search tabular reports</span><input type="search" id="reportTableSearch" placeholder="Search this report"></label><span class="filter-feedback" id="reportResultCount" aria-live="polite"></span></div>
+						<div class="toolbar"><label class="search-field"><span class="sr-only">Search incident records</span><input type="search" id="reportTableSearch" placeholder="Search this report"></label><span class="filter-feedback" id="reportResultCount" aria-live="polite"></span></div>
 						<div class="table-scroll"><table id="reportTable"><thead></thead><tbody></tbody></table></div>
 						<p class="empty-message" id="reportTableEmpty" hidden>No incident records found for this period.</p>
 						<div class="report-pagination"><button type="button" class="button button-quiet" id="reportPrev" aria-label="Previous report page">Previous</button><span id="reportPageLabel" aria-live="polite">Page 1 of 1</span><button type="button" class="button button-quiet" id="reportNext" aria-label="Next report page">Next</button></div>
 					</div>
 				</div>
-				<div role="tabpanel" id="generatePanel" aria-labelledby="generateTab" class="analytics-tab-panel" hidden>
+				<div role="tabpanel" id="reportsPanel" aria-labelledby="reportsTab" class="analytics-tab-panel" hidden>
 					<div class="content-panel report-builder">
 						<div class="panel-heading"><div><h2>Generate a system report</h2><p>Select the report and reporting period. Preview and print use the same report content.</p></div></div>
 						<form id="reportForm">

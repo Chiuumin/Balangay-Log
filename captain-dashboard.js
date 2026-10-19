@@ -321,13 +321,14 @@ function renderReportTable() {
     const type = document.getElementById('tableReportType')?.value || 'monthly';
     const definition = reportTableDefinition(type);
     const title = document.getElementById('tableReportTitle');
-    const filterTitles = { ongoing: 'Ongoing Cases', resolved: 'Resolved Cases', priority: 'Critical / High Priority' };
+    const filterTitles = { pending: 'Pending / Open Cases', ongoing: 'Ongoing Cases', resolved: 'Resolved Cases', priority: 'High-Priority Cases' };
     if (title) title.textContent = `${definition.title}${filterTitles[state.reportSummaryFilter] ? ` · ${filterTitles[state.reportSummaryFilter]}` : ''}`;
     const query = document.getElementById('reportTableSearch')?.value.trim().toLowerCase() || '';
     let rows = definition.rows.filter((row) => !query || row.cells.join(' ').toLowerCase().includes(query));
-    if (state.reportSummaryFilter === 'ongoing') rows = rows.filter((row) => ['IN_PROGRESS', 'FOR_RESOLUTION'].includes(row.values[5]));
-    if (state.reportSummaryFilter === 'resolved') rows = rows.filter((row) => row.values[5] === 'RESOLVED');
-    if (state.reportSummaryFilter === 'priority') rows = rows.filter((row) => row.values[5] !== 'RESOLVED' && ['CRITICAL', 'HIGH'].includes(String(row.values[4] || '').toUpperCase()));
+    if (state.reportSummaryFilter === 'pending') rows = rows.filter((row) => ['PENDING', 'OPEN', 'IN_PROGRESS', 'FOR_RESOLUTION'].includes(String(row.values[5] || '').toUpperCase()));
+    if (state.reportSummaryFilter === 'ongoing') rows = rows.filter((row) => ['IN_PROGRESS', 'FOR_RESOLUTION'].includes(String(row.values[5] || '').toUpperCase()));
+    if (state.reportSummaryFilter === 'resolved') rows = rows.filter((row) => String(row.values[5] || '').toUpperCase() === 'RESOLVED');
+    if (state.reportSummaryFilter === 'priority') rows = rows.filter((row) => String(row.values[5] || '').toUpperCase() !== 'RESOLVED' && ['CRITICAL', 'HIGH'].includes(String(row.values[4] || '').toUpperCase()));
     if (state.reportSortIndex >= 0) {
         const index = state.reportSortIndex;
         rows = rows.sort((a, b) => String(a.values[index] ?? '').localeCompare(String(b.values[index] ?? ''), undefined, { numeric: true }) * state.reportSortDirection);
@@ -696,9 +697,8 @@ document.getElementById('reportTable')?.addEventListener('click', (event) => {
 });
 document.querySelectorAll('[data-summary-filter]').forEach((card) => card.addEventListener('click', () => {
     const filter = card.dataset.summaryFilter;
-    if (filter === 'pending') { setView('endorsements'); return; }
     setView('analytics');
-    setReportTab('tabular');
+    setReportTab('records');
     const tableType = document.getElementById('tableReportType');
     const search = document.getElementById('reportTableSearch');
     if (tableType) tableType.value = 'register';
@@ -733,7 +733,7 @@ document.querySelectorAll('[data-generate-report]').forEach((button) => button.a
     if (preview) { preview.hidden = true; preview.innerHTML = ''; }
     document.getElementById('printReport').disabled = true;
     setView('analytics');
-    setReportTab('generate');
+    setReportTab('reports');
 }));
 document.getElementById('reportType')?.addEventListener('change', (event) => {
     if (event.currentTarget.value === 'custom') {
