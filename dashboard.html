@@ -489,15 +489,21 @@
             <div style="margin-bottom: 16px;">
                 <label style="font-size: 0.82rem; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">Target Progression State</label>
                 <select id="targetStatusSelect" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.88rem; background: #ffffff; color: #0f172a; outline: none;">
-                    <option value="IN_PROGRESS">In Progress (Active Dispatch / Investigation)</option>
-                    <option value="FOR_RESOLUTION">For Resolution (Lupon / Conciliation Hearing)</option>
-                    <option value="RESOLVED">Resolved (Amicable Settlement / Concluded)</option>
-                    <option value="DISMISSED">Dismissed (Withdrawn / False Report)</option>
                 </select>
             </div>
+            <div id="statusDispatchFields" hidden style="margin-bottom: 16px;">
+                <label for="statusDispatchUnit" style="font-size: 0.82rem; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">Assigned responder / unit</label>
+                <input id="statusDispatchUnit" maxlength="100" placeholder="Tanod or response unit" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.88rem; box-sizing: border-box;">
+            </div>
+            <div id="statusReferralFields" hidden style="margin-bottom: 16px;">
+                <label for="statusMediator" style="font-size: 0.82rem; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">Lupon mediator</label>
+                <input id="statusMediator" maxlength="120" placeholder="Assigned mediator" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.88rem; box-sizing: border-box; margin-bottom: 10px;">
+                <label for="statusHearing" style="font-size: 0.82rem; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">Hearing schedule</label>
+                <input id="statusHearing" type="datetime-local" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.88rem; box-sizing: border-box;">
+            </div>
             <div style="margin-bottom: 20px;">
-                <label style="font-size: 0.82rem; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">Officer Log / Progress Notes</label>
-                <textarea id="statusActionNote" rows="3" placeholder="Briefly describe tanod action taken or hearing progress..." style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.88rem; font-family: inherit; color: #0f172a; outline: none; resize: vertical; box-sizing: border-box;"></textarea>
+                <label id="statusActionNoteLabel" for="statusActionNote" style="font-size: 0.82rem; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: block;">Officer Log / Progress Notes</label>
+                <textarea id="statusActionNote" rows="3" maxlength="1000" placeholder="Describe the action taken..." style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.88rem; font-family: inherit; color: #0f172a; outline: none; resize: vertical; box-sizing: border-box;"></textarea>
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 10px;">
                 <button type="button" id="btnCancelStatus" style="padding: 9px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; font-weight: 600; cursor: pointer; font-size: 0.85rem;">Cancel</button>

@@ -21,7 +21,11 @@ const parseDate = (v) => new Date(String(v).replace(' ', 'T'));
 const formatDate = (v) => (v && !isNaN(parseDate(v))) ? parseDate(v).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
 const statusLabel = (v) => String(v || 'UNKNOWN').replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase());
 const statusPill = (v) => `<span class="pill pill-${escapeHtml(String(v || '').toLowerCase())}">${escapeHtml(statusLabel(v))}</span>`;
-const endorseTypeLabel = (v) => ({ LUPON_CERTIFICATION: 'Lupon certification', PNP_TRANSMITTAL: 'PNP transmittal' }[v] || statusLabel(v));
+const endorseTypeLabel = (v) => ({
+    CAPTAIN_ENDORSEMENT: 'Captain endorsement',
+    LUPON_CERTIFICATION: 'Lupon certification',
+    PNP_TRANSMITTAL: 'PNP transmittal'
+}[v] || statusLabel(v));
 
 function showNotice(message, isError = false) {
     if (!pageNotice) return;

@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const drawerTimeline = document.getElementById('drawerTimeline');
     let activeDispatchReference = '';
     let activeDrawerCase = null;
+    let currentRole = 'OFFICER';
 
     function updateClock() {
         if (!liveClockDisplay) return;
@@ -57,6 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
         const name = currentUser?.full_name || currentUser?.username || 'User';
         const role = (currentUser?.role || 'OFFICER').toUpperCase();
+        currentRole = role;
 
         if (userNameDisplay) userNameDisplay.innerText = name;
         if (userRoleDisplay) {
@@ -224,8 +226,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         setText('drawerUnit', caseRecord.deployed_unit, 'Unassigned');
         setText('drawerNarrative', caseRecord.narrative_description);
         setText('drawerMapLocation', `${caseRecord.purok || 'Location not recorded'}${caseRecord.latitude && caseRecord.longitude ? ` · ${caseRecord.latitude}, ${caseRecord.longitude}` : ''}`);
-        const statusSelect = document.getElementById('drawerStatusSelect');
-        if (statusSelect) statusSelect.value = caseRecord.status;
+        const closeButton = document.getElementById('closeDrawerCase');
+        if (closeButton) closeButton.hidden = !['CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN'].includes(currentRole);
         renderTimeline(caseRecord, milestones);
     }
 
@@ -326,7 +328,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     reference_number: activeDispatchReference,
-                    new_status: 'IN_PROGRESS',
+                    new_status: 'DISPATCHED',
                     assigned_officer_name: responderType === 'officer' ? responderName : null,
                     deployed_unit: responderType === 'unit' ? responderName : null,
                     action_note: `Quick dispatch confirmed. ${responderName} assigned to respond.`
@@ -367,16 +369,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         const feedback = document.getElementById('drawerFeedback');
         if (feedback) feedback.textContent = '';
         try {
+            const payload = {
+                reference_number: referenceNumber,
+                new_status: nextStatus,
+                action_note: actionNote
+            };
+            if (nextStatus === 'DISPATCHED') {
+                payload.assigned_officer_name = activeDrawerCase.assigned_officer_name;
+                payload.deployed_unit = activeDrawerCase.deployed_unit;
+            }
             const response = await fetch('api/update_case_status.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    reference_number: referenceNumber,
-                    new_status: nextStatus,
-                    assigned_officer_name: activeDrawerCase.assigned_officer_name,
-                    deployed_unit: activeDrawerCase.deployed_unit,
-                    action_note: actionNote
-                })
+                body: JSON.stringify(payload)
             });
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.message || 'Unable to update case status.');
@@ -388,14 +393,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    document.getElementById('updateDrawerStatus')?.addEventListener('click', () => {
-        const nextStatus = document.getElementById('drawerStatusSelect')?.value;
-        if (nextStatus) updateDrawerStatus(nextStatus, `Status updated to ${nextStatus.replaceAll('_', ' ')} from the case details drawer.`);
-    });
-
     document.getElementById('closeDrawerCase')?.addEventListener('click', () => {
-        if (!activeDrawerCase || !window.confirm(`Close case ${activeDrawerCase.reference_number} as Resolved?`)) return;
-        updateDrawerStatus('RESOLVED', 'Case closed as resolved from the case details drawer.');
+        if (!activeDrawerCase) return;
+        const reason = window.prompt(`Enter the reason for closing case ${activeDrawerCase.reference_number}:`);
+        if (reason === null) return;
+        updateDrawerStatus('CLOSED', reason);
     });
 
     document.getElementById('addDrawerNote')?.addEventListener('click', async () => {

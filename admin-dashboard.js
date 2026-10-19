@@ -21,35 +21,6 @@ const state = {
     selectedResident: null
 };
 
-// -------------------------------------------------------------
-// MOBILE DRAWER CONTROLLER (Event Delegation - Guaranteed to Run)
-// -------------------------------------------------------------
-(function initMobileDrawer() {
-    function toggleDrawer(open) {
-        const sidebar = document.getElementById('adminSidebar');
-        const backdrop = document.getElementById('sidebarBackdrop');
-        if (sidebar) sidebar.classList.toggle('is-open', open);
-        if (backdrop) backdrop.classList.toggle('is-open', open);
-        document.body.style.overflow = open ? 'hidden' : '';
-    }
-
-    document.addEventListener('click', function(e) {
-        if (e.target.closest('#mobileMenuBtn')) {
-            e.preventDefault();
-            toggleDrawer(true);
-            return;
-        }
-        if (e.target.closest('#sidebarCloseBtn') || e.target.closest('#sidebarBackdrop')) {
-            e.preventDefault();
-            toggleDrawer(false);
-            return;
-        }
-        if (e.target.closest('.admin-nav-link') && window.innerWidth <= 768) {
-            toggleDrawer(false);
-        }
-    });
-})();
-
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[character]));
