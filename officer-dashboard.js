@@ -34,6 +34,40 @@ const state = {
     currentCaseResolution: null
 };
 
+let inspectSeq = 0;
+let aiSeq = 0;
+let aiTimer = null;
+
+function resetInspectPanel() {
+    const badgeContainer = document.getElementById('detectedKeywordsContainer');
+    if (badgeContainer) badgeContainer.innerHTML = '<span style="font-size: 11.5px; color: var(--muted);">Type narrative details above to start AI classification...</span>';
+    const reasoningBox = document.getElementById('aiReasoningBox');
+    if (reasoningBox) reasoningBox.textContent = 'Waiting for narrative facts to evaluate jurisdiction and emergency level...';
+    const scoreBadge = document.getElementById('aiUrgencyScoreBadge');
+    if (scoreBadge) {
+        scoreBadge.textContent = 'Priority: Low (0%)';
+        scoreBadge.style.background = '';
+        scoreBadge.style.color = '';
+    }
+    const categoryBadge = document.getElementById('aiAssessedCategoryBadge');
+    if (categoryBadge) categoryBadge.textContent = 'Category: Pending';
+}
+
+function refLink(ref) {
+    return `<span class="queue-id" data-trigger-review="true" data-ref="${escapeHtml(ref)}" style="cursor: pointer; text-decoration: underline; color: var(--teal); font-weight: 800;">${escapeHtml(ref)}</span>`;
+}
+
+function validatePhoneField(showAlert = false) {
+    const phoneInput = document.getElementById('complainantPhoneInput');
+    if (!phoneInput) return true;
+    const val = phoneInput.value.trim();
+    const isValid = /^09\d{9}$/.test(val);
+    if (!isValid && showAlert && val !== '') {
+        showNotice('Please enter a valid 11-digit Philippine mobile number starting with 09 (e.g. 09171234567).', true);
+    }
+    return isValid;
+}
+
 const escapeHtml = (val) => String(val ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[c]));
@@ -734,6 +768,11 @@ document.addEventListener('click', (e) => {
     if (!e.target.closest('.notif-container')) notifDropdown?.classList.remove('is-active');
 });
 
+function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+}
+
 async function refreshOperationsData() {
     try {
         const data = await requestOfficer();
@@ -921,17 +960,22 @@ async function inspectNarrativeWithAI(narrativeText) {
                 </div>
             `;
         }
-    } catch (err) {
-        if (seq !== aiSeq) return;
-        if (statusEl) { statusEl.textContent = 'Rules analysis updated (AI check failed)'; statusEl.classList.remove('pulse'); }
+} catch (err) {
+    if (statusContainer) { 
+        statusContainer.textContent = 'AI inspection failed.'; 
+        statusContainer.classList.remove('pulse'); 
     }
+    if (reasoningBox) {
+        reasoningBox.textContent = err.message || 'Failed to evaluate narrative.';
+    }
+}
 }
 
 document.addEventListener('click', async (e) => {
     const idTrigger = e.target.closest('[data-trigger-review="true"]');
     if (idTrigger) {
         e.preventDefault();
-        const ref = idTrigger.dataset.ref;
+        const ref = btn.dataset.ref || btn.getAttribute('data-ref') || '';
         if (!ref) return;
 
         await openCaseDetails(ref);
@@ -1378,6 +1422,8 @@ document.addEventListener('input', (e) => {
     }
 });
 
+
+
 document.getElementById('profileForm')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -1464,6 +1510,8 @@ document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     localStorage.removeItem('authToken');
     window.location.replace('index.html');
 });
+
+
 
 const initialView = location.hash.slice(1);
 if (initialView && document.getElementById(`view-${initialView}`)) setView(initialView);
