@@ -64,6 +64,21 @@ function officerTableExists(PDO $pdo, string $table): bool
     return (bool) $stmt->fetchColumn();
 }
 
+function officerIncidentStatusSupports(PDO $pdo, string $status): bool
+{
+    $stmt = $pdo->query("
+        SELECT COLUMN_TYPE
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'incident_reports'
+          AND COLUMN_NAME = 'status'
+        LIMIT 1
+    ");
+    $columnType = $stmt->fetchColumn();
+    return is_string($columnType) && str_contains($columnType, "'" . $status . "'");
+}
+
+
 function officerReleaseDispatchResponders(PDO $pdo, int $incidentId, int $actorId, string $actorName): void
 {
     if (!officerTableExists($pdo, 'tanod_dispatch_records')
