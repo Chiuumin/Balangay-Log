@@ -5,6 +5,7 @@ const navLinks = [...document.querySelectorAll('.admin-nav-link[data-view]')];
 const viewTitles = {
     dashboard: 'Desk Operations',
     blotter: 'Official Blotter Records',
+    'case-detail': 'Case Details',
     triage: 'Incoming Triage Queue',
     emergency: 'Urgent & Emergency Incidents',
     lupon: 'Lupon / Mediation Registry',
@@ -13,8 +14,24 @@ const viewTitles = {
 };
 
 const state = {
-    cases: [], triageQueue: [], urgentCases: [], luponCases: [], tanods: [],
-    notifications: [], criticalCase: null, filter: 'ALL', lastNotifCount: 0
+    cases: [],
+    triageQueue: [],
+    urgentCases: [],
+    luponCases: [],
+    tanods: [],
+    dispatchQueue: [],
+    dispatchMetrics: { on_duty: 0, available: 0, assigned: 0, off_duty: 0 },
+    dispatchTrackingReady: false,
+    notifications: [],
+    criticalCase: null,
+    filter: 'ALL',
+    lastNotifCount: 0,
+    currentCaseReference: null,
+    pendingResolutionPayload: null,
+    currentUserRole: '',
+    currentUserName: '',
+    currentCaseFindings: [],
+    currentCaseResolution: null
 };
 
 const escapeHtml = (val) => String(val ?? '').replace(/[&<>"']/g, (c) => ({
@@ -22,6 +39,7 @@ const escapeHtml = (val) => String(val ?? '').replace(/[&<>"']/g, (c) => ({
 }[c]));
 
 const formatDate = (val) => val ? new Date(String(val).replace(' ', 'T')).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+const formatDateTime = (val) => val ? new Date(String(val).replace(' ', 'T')).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Not scheduled';
 
 function timeAgo(dateString) {
     if (!dateString) return 'just now';
@@ -43,13 +61,52 @@ function priorityPill(priority) {
 }
 
 function statusPill(status) {
-    const s = String(status || '').toUpperCase();
-    if (s === 'RESOLVED') return `<span class="pill pill-active">Resolved</span>`;
-    if (s === 'DISPATCHED') return `<span class="pill pill-blue">Dispatched</span>`;
-    if (s === 'IN_PROGRESS') return `<span class="pill pill-blue">In Progress</span>`;
-    if (s === 'CRITICAL') return `<span class="pill pill-rejected">Critical</span>`;
-    if (s === 'FOR_RESOLUTION') return `<span class="pill pill-pending">Lupon</span>`;
-    return `<span class="pill pill-pending">Pending Triage</span>`;
+    const s = String(status || '').toUpperCase().replace(/\s+/g, '_');
+    const statuses = {
+        PENDING: ['pending', 'Pending Triage'],
+        UNDER_REVIEW: ['pending', 'Pending Triage'],
+        CRITICAL: ['pending', 'Pending Triage'],
+        IN_PROGRESS: ['in-progress', 'In Progress'],
+        DISPATCHED: ['dispatched', 'Dispatched'],
+        FOR_RESOLUTION: ['resolution', 'Awaiting Resolution'],
+        LUPON: ['resolution', 'Awaiting Resolution'],
+        RESOLVED: ['resolved', 'Resolved'],
+        CLOSED: ['resolved', 'Resolved']
+    };
+    const [className, label] = statuses[s] || ['unknown', s.replace(/_/g, ' ') || 'Unknown'];
+    return `<span class="status-badge status-badge--${className}">${escapeHtml(label)}</span>`;
+}
+
+function caseStatusLabel(status) {
+    const normalized = String(status || '').toUpperCase().replace(/\s+/g, '_');
+    const labels = {
+        PENDING: 'Pending Triage',
+        UNDER_REVIEW: 'Pending Triage',
+        CRITICAL: 'Pending Triage',
+        IN_PROGRESS: 'In Progress',
+        DISPATCHED: 'Dispatched',
+        FOR_RESOLUTION: 'Awaiting Resolution',
+        LUPON: 'Awaiting Resolution',
+        RESOLVED: 'Resolved',
+        CLOSED: 'Resolved',
+        TRIAGE: 'Triage Assessment',
+        PRIORITY_UPDATED: 'Priority Updated',
+        REFERRAL: 'Referral',
+        ENDORSED: 'Endorsement Completed',
+        CAPTAIN_ENDORSED: 'Captain Endorsed'
+    };
+    return labels[normalized] || normalized.replace(/_/g, ' ') || 'Case Activity';
+}
+
+function caseResolutionOutcomeLabel(outcome) {
+    const labels = {
+        RESOLVED_THROUGH_INTERVENTION: 'Resolved Through Intervention',
+        SETTLED_THROUGH_MEDIATION: 'Settled Through Mediation',
+        REFERRED_TO_ANOTHER_AUTHORITY: 'Referred to Another Authority',
+        WITHDRAWN: 'Withdrawn',
+        OTHER: 'Other'
+    };
+    return labels[String(outcome || '').toUpperCase()] || String(outcome || 'Outcome not recorded');
 }
 
 function showNotice(msg, isError = false) {
@@ -86,14 +143,6 @@ function setView(view) {
     history.replaceState(null, '', `#${view}`);
 }
 
-const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
-const setHtml = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
-
-function refLink(ref, extraStyle = '') {
-    return `<span class="queue-id" data-trigger-review="true" data-ref="${escapeHtml(ref)}" title="Click to open the full case review"
-                  style="cursor: pointer; text-decoration: underline; color: var(--teal); font-weight: 800; white-space: nowrap !important; word-break: keep-all !important; ${extraStyle}">${escapeHtml(ref)}</span>`;
-}
-
 function renderTriageQueue() {
     const container = document.getElementById('triageQueueContainer');
     const dedicated = document.getElementById('dedicatedTriageContainer');
@@ -115,7 +164,9 @@ function renderTriageQueue() {
         <div class="queue-item-card" data-ref="${escapeHtml(item.reference_number)}">
             <div class="queue-meta-block">
                 <div class="queue-header-tag">
-                    ${refLink(item.reference_number)}
+                    <span class="queue-id" data-trigger-review="true" data-ref="${escapeHtml(item.reference_number)}" style="cursor: pointer; text-decoration: underline; color: var(--teal); font-weight: 800;">
+                        ${escapeHtml(item.reference_number)}
+                    </span>
                     ${priorityPill(item.priority_level)}
                     <span class="pill pill-pending">Review Pending</span>
                 </div>
@@ -131,8 +182,6 @@ function renderTriageQueue() {
             <div class="queue-action-group">
                 <button class="btn-action-primary" data-action="accept" data-ref="${escapeHtml(item.reference_number)}">Accept &amp; Blotter</button>
                 <button class="btn-action-quiet" data-action="dispatch" data-ref="${escapeHtml(item.reference_number)}">Dispatch</button>
-                <button class="btn-action-quiet" data-action="endorse_lupon" data-ref="${escapeHtml(item.reference_number)}">Endorse Lupon</button>
-                <button class="btn-action-danger" data-action="reject" data-ref="${escapeHtml(item.reference_number)}">Flag / Reject</button>
             </div>
         </div>
     `).join('');
@@ -189,7 +238,7 @@ function renderLuponCases() {
         return;
     }
     container.innerHTML = cases.map(c => `
-        <div class="queue-item-card" data-ref="${escapeHtml(c.reference_number)}">
+        <div class="queue-item-card lupon-case-card" data-ref="${escapeHtml(c.reference_number)}">
             <div class="queue-meta-block">
                 <div class="queue-header-tag">
                     ${refLink(c.reference_number)}
@@ -197,80 +246,427 @@ function renderLuponCases() {
                 </div>
                 <h3 class="queue-title" style="cursor: default;">${escapeHtml(c.incident_type)}</h3>
                 <p class="queue-details">
-                    Complainant: <strong>${escapeHtml(c.complainant_name)}</strong> •
-                    Location: ${escapeHtml(c.purok)} •
-                    Mediator: <strong>${escapeHtml(c.assigned_officer || 'Barangay Captain / Secretary')}</strong>
+                    Complainant: <strong>${escapeHtml(c.complainant_name)}</strong> • 
+                    Location: ${escapeHtml(c.purok)} • 
+                    Mediator: <strong>${escapeHtml(c.assigned_officer || 'Barangay Captain / Secretary')}</strong> •
+                    Hearing: <strong>${escapeHtml(formatDateTime(c.next_hearing))}</strong>
                 </p>
                 <p style="margin: 4px 0 0; font-size: 11.5px; color: var(--muted);">${escapeHtml(c.narrative_description)}</p>
             </div>
-            <div class="queue-action-group">
-                <button class="btn-action-primary" data-action="settle_lupon" data-ref="${escapeHtml(c.reference_number)}">Mark as Settled</button>
+            <div class="queue-action-group lupon-case-actions">
+                <button class="btn-action-primary" data-action="complete_mediation" data-ref="${escapeHtml(c.reference_number)}">Complete Mediation</button>
                 <button class="btn-action-quiet" data-action="reschedule_lupon" data-ref="${escapeHtml(c.reference_number)}">Hearing Schedule</button>
             </div>
         </div>
     `).join('');
 }
 
+function populateDispatchDropdown(selectedTanodIds = []) {
+    const unitSelect = document.getElementById('dispatchUnitSelect');
+    if (!unitSelect) return;
+
+    unitSelect.innerHTML = state.tanods
+        .filter(t => String(t.status || '').trim().toUpperCase() === 'AVAILABLE')
+        .map(t => `<option value="${escapeHtml(t.id)}" ${selectedTanodIds.includes(String(t.id)) ? 'selected' : ''}>${escapeHtml(t.name)} · ${escapeHtml(t.station || 'Patrol Beat')}</option>`)
+        .join('');
+}
+
 function renderTanodBoard() {
     const container = document.getElementById('tanodRosterContainer');
     const tanods = state.tanods;
-    const available = tanods.filter(t => t.status === 'AVAILABLE').length;
     const countEl = document.getElementById('activeTanodCount');
-    if (countEl) countEl.textContent = `${available} Available`;
-    if (!container) return;
-    container.innerHTML = tanods.map(t => {
-        const isAvail = t.status === 'AVAILABLE';
-        const where = t.status === 'DEPLOYED' && t.case_ref ? `${escapeHtml(t.case_ref)} • ${escapeHtml(t.purok || '')}` : escapeHtml(t.station || '');
+    if (countEl) countEl.textContent = `${state.dispatchMetrics.available} Available`;
+    document.getElementById('dispatchCountOnDuty').textContent = state.dispatchMetrics.on_duty;
+    document.getElementById('dispatchCountAvailable').textContent = state.dispatchMetrics.available;
+    document.getElementById('dispatchCountAssigned').textContent = state.dispatchMetrics.assigned;
+    document.getElementById('dispatchCountOffDuty').textContent = state.dispatchMetrics.off_duty;
+    document.getElementById('dispatchMigrationNotice').hidden = state.dispatchTrackingReady;
+
+    populateDispatchDropdown();
+    if (container && tanods.length === 0) {
+        container.innerHTML = '<p class="empty-message">No responders found in roster.</p>';
+    }
+    if (container && tanods.length > 0) container.innerHTML = tanods.map(t => {
+        const rawStatus = String(t.status || 'AVAILABLE').trim().toUpperCase();
+        const currentStatus = rawStatus === 'IN_USE' ? 'DEPLOYED' : rawStatus;
+        const indicatorClass = currentStatus === 'DEPLOYED' ? 'deployed' : currentStatus === 'OFF_DUTY' ? 'off_duty' : 'available';
+        const statusLabel = currentStatus === 'DEPLOYED' ? 'Assigned' : currentStatus.replace('_', ' ');
+        const assignment = t.assigned_reference
+            ? `${t.assigned_reference}${t.current_assignment ? ` · ${t.current_assignment}` : ''}`
+            : (t.current_assignment || 'None');
         return `
             <div class="tanod-card">
                 <div class="tanod-card-header">
-                    <span class="tanod-indicator ${String(t.status).toLowerCase()}"></span>
+                    <span class="tanod-indicator ${indicatorClass}"></span>
                     <div>
                         <strong style="display: block; font-size: 13.5px; color: var(--ink);">${escapeHtml(t.name)}</strong>
-                        <small style="color: var(--muted);">${where}</small>
+                        <small style="color: var(--muted);">${escapeHtml(t.station || 'Patrol Beat')} · ${escapeHtml(statusLabel)}</small>
                     </div>
                 </div>
-                <div>
-                    ${isAvail
-                        ? `<button class="button button-primary" style="width: 100%; justify-content: center;" data-action="assign_tanod" data-tanod="${escapeHtml(t.name)}">Assign to Incident</button>`
-                        : `<button class="button button-quiet" style="width: 100%; justify-content: center;" disabled>${t.status === 'DEPLOYED' ? 'Currently Deployed' : 'Off Duty'}</button>`}
+                <div class="tanod-card__details">
+                    <span>Contact: ${escapeHtml(t.contact_number || 'Not recorded')}</span>
+                    <span>Current assignment: ${escapeHtml(assignment)}</span>
                 </div>
-            </div>`;
+                <div class="tanod-card__actions">
+                    <select class="tanod-availability-select" data-tanod-availability="${escapeHtml(t.id)}" aria-label="Availability for ${escapeHtml(t.name)}" ${currentStatus === 'DEPLOYED' ? 'disabled' : ''}>
+                        <option value="AVAILABLE" ${currentStatus === 'AVAILABLE' ? 'selected' : ''}>Available</option>
+                        <option value="OFF_DUTY" ${currentStatus === 'OFF_DUTY' ? 'selected' : ''}>Off Duty</option>
+                    </select>
+                    <button class="button button-quiet" type="button" data-edit-responder="${escapeHtml(t.id)}">Edit profile</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    renderDispatchQueue();
+}
+
+function renderDispatchQueue() {
+    const container = document.getElementById('dispatchQueueContainer');
+    const queue = state.dispatchQueue;
+    const count = document.getElementById('dispatchQueueCount');
+    if (count) count.textContent = `${queue.length} ${queue.length === 1 ? 'case' : 'cases'}`;
+    if (!container) return;
+    if (!queue.length) {
+        container.innerHTML = '<p class="empty-message">No cases are awaiting responder assignment or field response.</p>';
+        return;
+    }
+    const labels = {
+        DISPATCHED: 'Dispatched · awaiting acknowledgement',
+        ACKNOWLEDGED: 'Assignment acknowledged',
+        ON_SCENE: 'Responder on scene',
+        RESPONSE_SUBMITTED: 'Field response submitted'
+    };
+    container.innerHTML = queue.map(item => {
+        const tracked = Boolean(item.dispatch_id);
+        const progress = String(item.dispatch_status || '').toUpperCase();
+        const assigned = tracked ? (item.responders || item.dispatch_unit || 'Assigned responder') : (item.deployed_unit || 'Not assigned');
+        const canAssign = !tracked || progress === 'RESPONSE_SUBMITTED';
+        let progressActions = '';
+        if (!canAssign && progress === 'DISPATCHED') {
+            progressActions = `<button class="button button-quiet" type="button" data-response-step="ACKNOWLEDGE" data-ref="${escapeHtml(item.reference_number)}">Record Acknowledgement</button>`;
+        } else if (!canAssign && progress === 'ACKNOWLEDGED') {
+            progressActions = `<button class="button button-quiet" type="button" data-response-step="ARRIVE" data-ref="${escapeHtml(item.reference_number)}">Record Arrival</button>`;
+        } else if (!canAssign && progress === 'ON_SCENE') {
+            progressActions = `<form class="dispatch-response-form" data-response-form="${escapeHtml(item.reference_number)}">
+                <label>Field findings<textarea name="findings" rows="2" maxlength="5000" required></textarea></label>
+                <label>Action taken<textarea name="action_taken" rows="2" maxlength="5000" required></textarea></label>
+                <button class="button button-primary" type="submit">Submit Field Response</button>
+            </form>`;
+        }
+        const progressHtml = tracked
+            ? `<div class="dispatch-case-card__progress">
+                <strong>${escapeHtml(labels[progress] || progress)}</strong>
+                <span>Responders: ${escapeHtml(assigned)}</span>
+                <span>Dispatched: ${escapeHtml(formatDateTime(item.dispatched_at))}${item.dispatched_by_name ? ` · by ${escapeHtml(item.dispatched_by_name)}` : ''}</span>
+                ${item.directive_notes ? `<span>Directive: ${escapeHtml(item.directive_notes)}</span>` : ''}
+                ${item.acknowledged_at ? `<span>Acknowledged: ${escapeHtml(formatDateTime(item.acknowledged_at))}${item.acknowledged_by_name ? ` · by ${escapeHtml(item.acknowledged_by_name)}` : ''}</span>` : ''}
+                ${item.arrived_at ? `<span>Arrived: ${escapeHtml(formatDateTime(item.arrived_at))}${item.arrived_by_name ? ` · by ${escapeHtml(item.arrived_by_name)}` : ''}</span>` : ''}
+                ${item.findings ? `<span>Findings: ${escapeHtml(item.findings)}</span>` : ''}
+                ${item.action_taken ? `<span>Action taken: ${escapeHtml(item.action_taken)}</span>` : ''}
+                ${item.updated_by_name ? `<small>Recorded by ${escapeHtml(item.updated_by_name)}${item.updated_at ? ` · ${escapeHtml(formatDateTime(item.updated_at))}` : ''}</small>` : ''}
+            </div>`
+            : `<div class="dispatch-case-card__progress"><strong>${escapeHtml(item.status === 'DISPATCHED' ? 'Previously dispatched · tracking not available' : 'Awaiting responder assignment')}</strong><span>${escapeHtml(assigned)}</span></div>`;
+        return `<article class="dispatch-case-card">
+            <div class="dispatch-case-card__top">
+                <div class="dispatch-case-card__meta">
+                    <strong>${escapeHtml(item.reference_number)} · ${escapeHtml(item.incident_type || 'Incident')}</strong>
+                    <span>${escapeHtml(item.complainant_name || 'Unknown complainant')} · ${escapeHtml(item.purok || 'Location not recorded')}</span>
+                    <span>${escapeHtml(caseStatusLabel(item.status))} · ${escapeHtml(item.priority_level || 'Priority not recorded')}</span>
+                </div>
+                <small>Reported ${escapeHtml(formatDateTime(item.created_at))}</small>
+            </div>
+            ${progressHtml}
+            <div class="dispatch-case-card__actions">
+                ${canAssign ? `<button class="button button-primary" type="button" data-assign-case="${escapeHtml(item.reference_number)}" ${state.dispatchTrackingReady ? '' : 'disabled'}>${tracked ? 'Assign Responders Again' : 'Assign / Dispatch'}</button>` : progressActions}
+                <button class="button button-quiet" type="button" data-view-case="${escapeHtml(item.reference_number)}">View Case Details</button>
+            </div>
+        </article>`;
     }).join('');
 }
 
 function renderBlotterTable() {
     const search = document.getElementById('blotterSearchInput')?.value.trim().toLowerCase() || '';
+    const caseStatus = c => String(c.status || '').toUpperCase().replace(/\s+/g, '_');
+    const countAll = document.getElementById('blotterCountAll');
+    const countNeedsAction = document.getElementById('blotterCountNeedsAction');
+    const countInProgress = document.getElementById('blotterCountInProgress');
+    const countResolved = document.getElementById('blotterCountResolved');
+    const isNeedsAction = c => ['PENDING', 'UNDER_REVIEW', 'CRITICAL'].includes(caseStatus(c));
+    const isResolved = c => ['RESOLVED', 'CLOSED'].includes(caseStatus(c));
+    if (countAll) countAll.textContent = state.cases.length;
+    if (countNeedsAction) countNeedsAction.textContent = state.cases.filter(isNeedsAction).length;
+    if (countInProgress) countInProgress.textContent = state.cases.filter(c => caseStatus(c) === 'IN_PROGRESS').length;
+    if (countResolved) countResolved.textContent = state.cases.filter(isResolved).length;
+
     let cases = state.cases.filter(c => {
         if (!search) return true;
-        return [c.reference_number, c.complainant_name, c.incident_type, c.purok, c.status]
+        return [c.reference_number, c.complainant_name, c.incident_type, c.purok]
             .some(v => String(v || '').toLowerCase().includes(search));
     });
-    if (state.filter !== 'ALL') cases = cases.filter(c => String(c.status).toUpperCase() === state.filter);
+
+    const matchesFilter = {
+        ALL: () => true,
+        NEEDS_ACTION: isNeedsAction,
+        PENDING: c => ['PENDING', 'UNDER_REVIEW'].includes(caseStatus(c)),
+        IN_PROGRESS: c => caseStatus(c) === 'IN_PROGRESS',
+        DISPATCHED: c => caseStatus(c) === 'DISPATCHED',
+        FOR_RESOLUTION: c => ['FOR_RESOLUTION', 'LUPON'].includes(caseStatus(c)),
+        RESOLVED: isResolved
+    }[state.filter] || (() => true);
+    cases = cases.filter(matchesFilter);
 
     const tbody = document.getElementById('blotterTableRows');
     if (!tbody) return;
-    tbody.innerHTML = cases.map(c => `
+
+    tbody.innerHTML = cases.map(c => {
+        const reference = escapeHtml(c.reference_number);
+        return `
         <tr>
-            <td>${refLink(c.reference_number, 'font-family: monospace;')}</td>
-            <td><strong>${escapeHtml(c.complainant_name)}</strong></td>
-            <td>${escapeHtml(c.incident_type)}</td>
-            <td>${escapeHtml(c.purok)}</td>
-            <td>${priorityPill(c.priority_level)}${c.severity_review_status === 'PENDING_CAPTAIN' ? ' <span class="pill pill-pending" title="Downgrade or review pending Captain approval">Review</span>' : ''}</td>
+            <td><button type="button" class="blotter-reference-link" data-trigger-review="true" data-ref="${reference}">${reference}</button></td>
+            <td class="blotter-cell--truncate" title="${escapeHtml(c.complainant_name)}">${escapeHtml(c.complainant_name)}</td>
+            <td class="blotter-cell--truncate" title="${escapeHtml(c.incident_type)}">${escapeHtml(c.incident_type)}</td>
+            <td class="blotter-cell--truncate" title="${escapeHtml(c.purok)}">${escapeHtml(c.purok)}</td>
+            <td>${priorityPill(c.priority_level)}</td>
             <td>${statusPill(c.status)}</td>
-            <td>${escapeHtml(c.deployed_unit || 'Desk')}</td>
+            <td class="blotter-cell--truncate" title="${escapeHtml(c.deployed_unit || 'Desk')}">${escapeHtml(c.deployed_unit || 'Desk')}</td>
             <td>${formatDate(c.created_at)}</td>
-            <td>
-                <div class="row-actions">
-                    <button class="small-button" data-action="change_severity" data-ref="${escapeHtml(c.reference_number)}" data-priority="${escapeHtml(c.priority_level)}">Severity</button>
-                    <button class="small-button" data-action="dispatch" data-ref="${escapeHtml(c.reference_number)}">Dispatch</button>
-                    <button class="small-button" data-action="endorse_lupon" data-ref="${escapeHtml(c.reference_number)}">Lupon</button>
-                </div>
-            </td>
+            <td><button type="button" class="small-button" data-trigger-review="true" data-ref="${reference}">View Case</button></td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
     const emptyMsg = document.getElementById('blotterEmptyMsg');
     if (emptyMsg) emptyMsg.hidden = cases.length > 0;
+    document.querySelectorAll('[data-blotter-filter]').forEach(button => {
+        button.classList.toggle('is-selected', button.dataset.blotterFilter === state.filter);
+    });
+    document.querySelectorAll('[data-blotter-summary-filter]').forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.blotterSummaryFilter === state.filter));
+    });
+}
+
+function detailField(label, value) {
+    return `<div class="case-detail-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || 'Not recorded')}</strong></div>`;
+}
+
+function renderCaseDetail(data) {
+    const c = data.case;
+    const timeline = Array.isArray(data.timeline) ? [...data.timeline] : [];
+    const status = String(c.status || '').toUpperCase().replace(/\s+/g, '_');
+    const isResolved = status === 'RESOLVED';
+    const isAdministrativelyClosed = status === 'CLOSED';
+    const isDispatched = status === 'DISPATCHED';
+    const role = String(state.currentUserRole).toUpperCase();
+    const canAct = ['OFFICER', 'CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN'].includes(role);
+    const canClose = ['CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN'].includes(role);
+    const canReopen = canClose;
+    const workflowReady = data.workflow_ready === true;
+    const assignedOfficer = c.assigned_officer_name || '';
+    const assignedUnit = c.deployed_unit || '';
+    const endorsements = Array.isArray(data.endorsements) ? data.endorsements : [];
+    const captainEndorsement = [...endorsements].reverse().find(item => item.type === 'CAPTAIN_ENDORSEMENT');
+    const captainEndorsementStatus = !captainEndorsement
+        ? 'Not referred'
+        : String(captainEndorsement.status || '').toUpperCase() === 'ENDORSED'
+        ? `Captain Endorsed${captainEndorsement.endorsed_by ? ` by ${captainEndorsement.endorsed_by}` : ''}${captainEndorsement.endorsed_at ? ` on ${formatDateTime(captainEndorsement.endorsed_at)}` : ''}`
+        : `Awaiting Captain Endorsement${captainEndorsement.referred_at ? ` · Referred ${formatDateTime(captainEndorsement.referred_at)}` : ''}`;
+    const captainDestination = document.querySelector('#luponDestinationSelect option[value="CAPTAIN"]');
+    if (captainDestination) {
+        captainDestination.disabled = Boolean(captainEndorsement);
+        captainDestination.textContent = captainEndorsement
+            ? 'Barangay Captain (Already referred)'
+            : 'Barangay Captain';
+    }
+
+    if (!timeline.some(item => /(initial report|report submitted|report logged)/i.test(item.action || ''))) {
+        timeline.unshift({
+            action: 'Incident report submitted.',
+            status: 'PENDING',
+            user: c.scenario_type === 'ONLINE_PORTAL' ? 'Resident Portal' : 'System Desk',
+            created_at: c.created_at,
+            type: 'report_submission'
+        });
+    }
+    timeline.sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+
+    document.getElementById('caseDetailTitle').textContent = c.incident_type || 'Incident report';
+    document.getElementById('caseDetailSubtitle').textContent = `${c.reference_number} · Reported ${formatDateTime(c.created_at)}`;
+    document.getElementById('caseDetailStatus').innerHTML = statusPill(status);
+    document.getElementById('caseIncidentFields').innerHTML = [
+        detailField('Reference Number', c.reference_number),
+        detailField('Incident Title', c.incident_type),
+        detailField('Category', c.incident_type),
+        detailField('Purok', c.purok),
+        detailField('Date Reported', formatDateTime(c.created_at)),
+        detailField('Incident Date', formatDateTime(c.incident_datetime)),
+        detailField('Priority', c.priority_level),
+        detailField('Status', caseStatusLabel(status)),
+        detailField('Captain Endorsement', captainEndorsementStatus),
+        `<div class="case-detail-field case-detail-field--wide"><span>Description</span><p>${escapeHtml(c.narrative_description || 'No description recorded.')}</p></div>`
+    ].join('');
+
+    const people = [
+        detailField('Complainant', c.complainant_name),
+        detailField('Complainant Contact', c.complainant_phone)
+    ];
+    if (data.lupon?.parties) people.push(detailField('Other Parties', data.lupon.parties));
+    document.getElementById('casePeopleFields').innerHTML = people.join('');
+
+    const assignmentFields = [
+        detailField('Assigned Officer', assignedOfficer || 'Not assigned'),
+        detailField('Assigned Personnel / Unit', assignedUnit || 'Not assigned')
+    ];
+    if (data.lupon?.next_hearing) assignmentFields.push(detailField('Next Lupon Hearing', formatDateTime(data.lupon.next_hearing)));
+    document.getElementById('caseAssignmentFields').innerHTML = assignmentFields.join('');
+
+    document.getElementById('caseTimeline').innerHTML = timeline.length
+        ? timeline.map(item => `
+            <li class="case-timeline-entry">
+                <div class="case-timeline-entry__heading">
+                    <strong>${escapeHtml(caseStatusLabel(item.status))}</strong>
+                    <time>${escapeHtml(formatDateTime(item.created_at))}</time>
+                </div>
+                <p>${escapeHtml(item.action || 'Case activity recorded.')}</p>
+                <small>By ${escapeHtml(item.user || 'System')}${item.assigned_to ? ` · Assigned to ${escapeHtml(item.assigned_to)}` : ''}</small>
+            </li>
+        `).join('')
+        : '<li class="empty-message">No case activity is recorded yet.</li>';
+
+    const findingEntries = Array.isArray(data.findings) ? data.findings : [];
+    state.currentCaseFindings = findingEntries;
+    const findingsSection = document.getElementById('caseFindingsSection');
+    const canRecordFindings = canAct && !isAdministrativelyClosed && !isResolved
+        && workflowReady
+        && ['PENDING', 'UNDER_REVIEW', 'CRITICAL', 'IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION'].includes(status);
+    findingsSection.hidden = !findingEntries.length && !canRecordFindings;
+    document.getElementById('caseFindingsList').innerHTML = findingEntries.length
+        ? `<ul class="case-findings-list">${findingEntries.map(item => `<li><strong>${escapeHtml(formatDateTime(item.created_at))}</strong><p><b>Observations:</b> ${escapeHtml(item.observations)}${item.persons_contacted ? `<br><b>Persons contacted:</b> ${escapeHtml(item.persons_contacted)}` : ''}<br><b>Action taken:</b> ${escapeHtml(item.action_taken)}<br><b>Findings:</b> ${escapeHtml(item.findings)}${item.recommended_next_steps ? `<br><b>Recommended next steps:</b> ${escapeHtml(item.recommended_next_steps)}` : ''}</p><small>By ${escapeHtml(item.submitted_by_name || 'System')}</small></li>`).join('')}</ul>`
+        : '<p class="case-detail-empty">No findings or evidence recorded yet.</p>';
+    const findingForm = document.getElementById('caseFindingForm');
+    findingForm.hidden = !canRecordFindings;
+    findingForm.dataset.referenceNumber = c.reference_number;
+
+    const resolutionEntries = Array.isArray(data.resolutions) ? data.resolutions : [];
+    const closureEntries = Array.isArray(data.closures) ? data.closures : [];
+    const resolutionSection = document.getElementById('caseResolutionSection');
+    const canResolve = canAct && !isAdministrativelyClosed && !isResolved
+        && workflowReady
+        && ['IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION'].includes(status)
+        && findingEntries.length > 0;
+    const canClosePending = workflowReady && canClose && ['PENDING', 'UNDER_REVIEW', 'CRITICAL'].includes(status) && findingEntries.length > 0;
+    const canFinalize = canClose && (isResolved || canClosePending);
+    resolutionSection.hidden = workflowReady
+        ? !resolutionEntries.length && !closureEntries.length && !canResolve && !canFinalize
+        : false;
+    document.getElementById('caseResolutionContent').innerHTML = !workflowReady
+        ? '<p class="notice">Case viewing is available, but findings and resolution actions need the database setup. Apply <code>case_workflow_migration.sql</code> to enable them.</p>'
+        : resolutionEntries.length || closureEntries.length
+        ? `<ul class="case-findings-list">${resolutionEntries.map(item => `<li><strong>${escapeHtml(formatDateTime(item.resolved_at))} · ${escapeHtml(caseResolutionOutcomeLabel(item.outcome))}</strong><p><b>Conclusion:</b> ${escapeHtml(item.conclusion)}${item.settlement_terms ? `<br><b>Settlement terms:</b> ${escapeHtml(item.settlement_terms)}` : ''}${item.remaining_obligations ? `<br><b>Remaining obligations:</b> ${escapeHtml(item.remaining_obligations)}` : ''}${item.follow_up_at ? `<br><b>Follow-up:</b> ${escapeHtml(formatDateTime(item.follow_up_at))}` : ''}</p><small>By ${escapeHtml(item.resolved_by_name || 'System')}; status: ${escapeHtml(caseStatusLabel(item.resulting_status))}</small></li>`).join('')}${closureEntries.map(item => `<li><strong>${escapeHtml(formatDateTime(item.closed_at))} · Resolution finalized</strong><p><b>Outcome:</b> ${escapeHtml(caseResolutionOutcomeLabel(item.outcome))}<br><b>Findings reviewed:</b> ${escapeHtml(item.findings_reviewed_summary)}<br><b>Conclusion:</b> ${escapeHtml(item.conclusion)}</p><small>Finalized by ${escapeHtml(item.closed_by_name || 'System')}</small></li>`).join('')}</ul>`
+        : '<p class="case-detail-empty">No resolution has been recorded.</p>';
+    const resolutionForm = document.getElementById('caseResolutionForm');
+    const latestResolution = resolutionEntries.length ? resolutionEntries[resolutionEntries.length - 1] : null;
+    state.currentCaseResolution = latestResolution;
+    const closeFromSavedResolution = canFinalize
+        && isResolved
+        && latestResolution?.resulting_status === 'RESOLVED'
+        && !latestResolution.remaining_obligations
+        && !latestResolution.follow_up_at;
+    resolutionForm.hidden = !workflowReady || isResolved || (!canResolve && !canFinalize);
+    resolutionForm.dataset.referenceNumber = c.reference_number;
+    const closeOnly = canFinalize && !canResolve;
+    resolutionForm.dataset.closeOnly = String(closeOnly);
+    document.getElementById('caseCloseNowLabel').hidden = !canClose || closeOnly;
+    document.getElementById('caseCloseNow').checked = closeOnly;
+    document.getElementById('caseCloseNow').disabled = closeOnly;
+    document.getElementById('caseResolutionReview').hidden = true;
+    document.getElementById('caseResolutionInputs').hidden = false;
+    document.getElementById('caseResolutionReviewBtn').hidden = false;
+    const closureConfirmation = document.getElementById('caseClosureConfirmation');
+    closureConfirmation.hidden = !closeFromSavedResolution || isAdministrativelyClosed;
+    document.getElementById('caseClosureActor').textContent = state.currentUserName || 'Current user';
+    document.getElementById('caseClosureDate').textContent = formatDateTime(new Date().toISOString());
+    document.getElementById('caseClosureConfirm').dataset.referenceNumber = c.reference_number;
+    document.getElementById('caseResolutionOutcome').value = latestResolution?.outcome || '';
+    document.getElementById('caseResolutionConclusion').value = isResolved ? latestResolution?.conclusion || '' : '';
+    document.getElementById('caseSettlementTerms').value = isResolved ? latestResolution?.settlement_terms || '' : '';
+    document.getElementById('caseRemainingObligations').value = isResolved ? latestResolution?.remaining_obligations || '' : '';
+    document.getElementById('caseFollowUpAt').value = isResolved && latestResolution?.follow_up_at ? String(latestResolution.follow_up_at).replace(' ', 'T').slice(0, 16) : '';
+    document.getElementById('caseFindingsReviewed').checked = false;
+    document.getElementById('caseResolutionReviewBtn').replaceChildren(document.createTextNode(
+        document.getElementById('caseResolutionForm').dataset.closeOnly === 'true'
+            ? 'Review resolution'
+            : 'Submit Resolution'
+    ));
+
+    const nextStep = status === 'PENDING' || status === 'CRITICAL' || status === 'UNDER_REVIEW'
+        ? assignedOfficer ? 'Complete triage, then move the case into active handling or dispatch.' : 'Assign an officer and review the report.'
+        : status === 'IN_PROGRESS'
+            ? assignedUnit ? 'Record field findings after dispatch, or refer the case for mediation.' : 'Assign / dispatch responding personnel.'
+            : status === 'DISPATCHED'
+                ? findingEntries.length ? 'Review field findings, then continue handling or refer the case.' : 'Record field findings from the responding unit.'
+                : status === 'FOR_RESOLUTION'
+                    ? data.lupon?.next_hearing ? 'Complete mediation and document its outcome.' : 'Schedule the Lupon hearing, then document its outcome.'
+                    : status === 'RESOLVED'
+                        ? 'An authorized Captain or administrator can finalize this resolution.'
+                        : canReopen ? 'This resolution is finalized. Reopening requires an authorized reason.' : 'This resolution is finalized and read-only.';
+    const nextStepElement = document.getElementById('caseNextStep');
+    if (nextStepElement) nextStepElement.textContent = nextStep;
+
+    const actions = document.getElementById('caseActionButtons');
+    const actionButtons = [];
+    if (canAct && !isAdministrativelyClosed) {
+        if (!isAdministrativelyClosed) {
+            if (['PENDING', 'UNDER_REVIEW', 'CRITICAL'].includes(status)) {
+                actionButtons.push(['accept', 'Accept into Blotter', 'btn-action-primary']);
+                actionButtons.push(['dispatch', 'Assign / Dispatch', 'btn-action-quiet']);
+            } else if (status === 'IN_PROGRESS') {
+                actionButtons.push(['dispatch', assignedUnit ? 'Update / Dispatch Unit' : 'Assign / Dispatch', 'btn-action-primary']);
+                actionButtons.push(['refer', 'Refer / Escalate', 'btn-action-quiet']);
+            } else if (status === 'DISPATCHED') {
+                actionButtons.push(['refer', 'Refer / Escalate', 'btn-action-quiet']);
+            }
+            if (status === 'FOR_RESOLUTION') {
+                actionButtons.push(['reschedule_lupon', 'Reschedule Lupon Hearing', 'btn-action-quiet']);
+            }
+            if (canResolve && status !== 'FOR_RESOLUTION') actionButtons.push(['resolve_case', 'Resolve Case', 'btn-action-primary']);
+            if (canResolve && status === 'FOR_RESOLUTION') actionButtons.push(['resolve_case', 'Complete Mediation', 'btn-action-primary']);
+        }
+        if (canFinalize) actionButtons.push(['close_case', 'Finalize Resolution', 'btn-action-primary']);
+    } else if (isAdministrativelyClosed && canReopen) {
+        actionButtons.push(['reopen_case', 'Reopen Case', 'btn-action-quiet']);
+    }
+    actions.innerHTML = actionButtons.map(([action, label, className]) =>
+        `<button type="button" class="${className}" data-action="${action}" data-ref="${escapeHtml(c.reference_number)}">${escapeHtml(label)}</button>`
+    ).join('');
+    document.getElementById('caseActionHint').textContent = !canAct
+        ? 'Your account does not have permission to change this case.'
+        : !workflowReady ? 'Case details remain viewable. Apply the case workflow database migration to enable findings, resolution, and finalization actions.'
+        : isAdministrativelyClosed ? canReopen ? 'Reopening is available only to an authorized Captain or administrator and requires a reason.' : 'This finalized resolution can only be viewed.'
+        : isResolved ? canClose ? 'This resolved case can be finalized by an authorized Captain or administrator.' : 'This case is resolved and read-only.'
+        : isDispatched ? 'Record findings below, or continue the case workflow.'
+        : 'Actions are shown based on the current case status and your role.';
+
+    document.getElementById('caseDetailLoading').hidden = true;
+    document.getElementById('caseDetailContent').hidden = false;
+    setView('case-detail');
+}
+
+async function openCaseDetails(referenceNumber) {
+    const loading = document.getElementById('caseDetailLoading');
+    const content = document.getElementById('caseDetailContent');
+    loading.hidden = false;
+    content.hidden = true;
+    setView('case-detail');
+    try {
+        const data = await requestOfficer('get_case_review_details', { reference_number: referenceNumber });
+        state.currentCaseReference = referenceNumber;
+        renderCaseDetail(data);
+    } catch (err) {
+        loading.hidden = true;
+        state.currentCaseReference = null;
+        showNotice(`Unable to load case details: ${err.message}`, true);
+        setView('blotter');
+    }
 }
 
 function renderNotifications() {
@@ -328,16 +724,16 @@ document.getElementById('notifDropdownList')?.addEventListener('click', (e) => {
     const item = e.target.closest('.notif-item');
     if (!item) return;
     notifDropdown?.classList.remove('is-active');
-    openCaseReview(item.dataset.ref);
+    const refInput = document.getElementById('dispatchRefInput');
+    if (refInput) refInput.value = ref;
+    populateDispatchDropdown();
+    document.getElementById('dispatchModal')?.showModal();
 });
 
 document.addEventListener('click', (e) => {
     if (!e.target.closest('.notif-container')) notifDropdown?.classList.remove('is-active');
 });
 
-// -------------------------------------------------------------
-// REFRESH & BACKGROUND POLLING
-// -------------------------------------------------------------
 async function refreshOperationsData() {
     try {
         const data = await requestOfficer();
@@ -346,13 +742,22 @@ async function refreshOperationsData() {
         state.urgentCases = data.urgent_cases || [];
         state.luponCases = data.lupon_cases || [];
         state.tanods = data.tanods || [];
+        state.dispatchQueue = data.dispatch_queue || [];
+        state.dispatchMetrics = data.dispatch_metrics || { on_duty: 0, available: 0, assigned: 0, off_duty: 0 };
+        state.dispatchTrackingReady = data.dispatch_tracking_ready === true;
         state.criticalCase = data.critical_case;
         state.notifications = data.notifications || [];
+        state.currentUserRole = data.officer?.role || '';
+        state.currentUserName = data.officer?.full_name || '';
 
-        setText('metricPendingTriage', data.metrics?.pending_triage ?? 0);
-        setText('metricActiveDispatched', data.metrics?.active_dispatched ?? 0);
-        setText('metricUnderInvestigation', data.metrics?.under_investigation ?? 0);
-        setText('metricResolvedToday', data.metrics?.resolved_today ?? 0);
+        const mPending = document.getElementById('metricPendingTriage');
+        if (mPending) mPending.textContent = data.metrics?.pending_triage ?? 0;
+        const mDispatch = document.getElementById('metricActiveDispatched');
+        if (mDispatch) mDispatch.textContent = data.metrics?.active_dispatched ?? 0;
+        const mInvestigate = document.getElementById('metricUnderInvestigation');
+        if (mInvestigate) mInvestigate.textContent = data.metrics?.under_investigation ?? 0;
+        const mResolved = document.getElementById('metricResolvedToday');
+        if (mResolved) mResolved.textContent = data.metrics?.resolved_today ?? 0;
 
         const banner = document.getElementById('criticalBanner');
         if (banner) {
@@ -408,158 +813,113 @@ async function refreshOperationsData() {
         showNotice(err.message, true);
     }
 }
+
 window.refreshOperationsData = refreshOperationsData;
 setInterval(refreshOperationsData, 10000);
 
-// -------------------------------------------------------------
-// LIVE ANALYSIS WHILE ENCODING
-// -------------------------------------------------------------
 let triageDebounceTimer = null;
-let inspectSeq = 0;
-
-const PRIORITY_BADGE_STYLE = {
-    Critical: ['var(--coral, #d61818)', '#fff'],
-    High: ['#d97706', '#fff'],
-    Moderate: ['#0284c7', '#fff'],
-    Low: ['#059669', '#fff']
-};
-
-function resetInspectPanel() {
-    setHtml('detectedKeywordsContainer', '<span style="font-size: 11.5px; color: var(--muted);">Type narrative details above to start AI classification...</span>');
-    setText('aiReasoningBox', 'Waiting for narrative facts to evaluate jurisdiction and emergency level...');
-    const scoreBadge = document.getElementById('aiUrgencyScoreBadge');
-    if (scoreBadge) { scoreBadge.textContent = 'Priority: Pending'; scoreBadge.style.background = ''; scoreBadge.style.color = ''; }
-    setText('aiAssessedCategoryBadge', 'Category: Pending');
-    const hc = document.getElementById('aiGeneratedCategoryInput'); if (hc) hc.value = '';
-    const hp = document.getElementById('aiGeneratedPriorityInput'); if (hp) hp.value = '';
-}
-
-let aiTimer = null;
-let aiSeq = 0;
-let lastAiText = '';
-
-async function postInspect(action, text) {
-    const response = await fetch('api/encode_case.php', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
-        body: JSON.stringify({ action, narrative_description: text })
-    });
-    return response.json();
-}
-
-const GUIDANCE_WARN_STYLE = 'margin: 0 0 8px; padding: 8px 10px; border-radius: 6px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; line-height: 1.4;';
-
-function guidanceListHtml(title, items, ordered, style) {
-    if (!items.length) return '';
-    const tag = ordered ? 'ol' : 'ul';
-    return `<div style="margin-top: 8px;"><strong>${escapeHtml(title)}</strong>` +
-        `<${tag} style="margin: 4px 0 0 18px; padding: 0; ${style}">${items.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</${tag}></div>`;
-}
-
-function renderInspect(result, sourceLabel) {
-    const cat = result.incident_type || 'Others';
-    const prio = result.priority_level || 'Low';
-    const hc = document.getElementById('aiGeneratedCategoryInput'); if (hc) hc.value = cat;
-    const hp = document.getElementById('aiGeneratedPriorityInput'); if (hp) hp.value = prio;
-    setText('aiAssessedCategoryBadge', `Category: ${cat}`);
-
-    const pct = Math.round(Number(result.ai_urgency_score || 0) * 100);
-    const scoreBadge = document.getElementById('aiUrgencyScoreBadge');
-    if (scoreBadge) {
-        scoreBadge.textContent = `Priority: ${prio} (${pct}%)`;
-        const [bg, fg] = PRIORITY_BADGE_STYLE[prio] || PRIORITY_BADGE_STYLE.Low;
-        scoreBadge.style.background = bg;
-        scoreBadge.style.color = fg;
-    }
-
-    const kws = Array.isArray(result.detected_keywords) ? result.detected_keywords : [];
-    setHtml('detectedKeywordsContainer', kws.length === 0
-        ? '<span style="font-size: 11px; color: var(--muted);">No immediate threat indicators identified.</span>'
-        : kws.map(kw => `<span class="pill" style="background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; font-weight: 700; margin-right: 4px; margin-bottom: 4px;">🔍 ${escapeHtml(kw)}</span>`).join(''));
-
-    const list = (v) => (Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim() !== '') : []);
-    const rulesActions = list(result.recommended_actions).slice(0, 3);
-    const aiSteps = list(result.ai_next_steps).slice(0, 5);
-    const questions = list(result.questions_for_resident).slice(0, 5);
-    const dis = (result.disagreement && result.disagreement.any) ? result.disagreement : null;
-
-    const warn = dis
-        ? `<div style="${GUIDANCE_WARN_STYLE}">⚠️ The rules and the AI disagree. ${escapeHtml(dis.message || '')}</div>`
-        : '';
-    const summary = (typeof result.summary === 'string' && result.summary.trim() !== '')
-        ? `<div style="margin-bottom: 6px;"><strong>Summary:</strong> ${escapeHtml(result.summary)}</div>`
-        : '';
-
-    const stepsHtml = aiSteps.length
-        ? guidanceListHtml('Proceed with the following actions:', rulesActions, true, 'color: var(--teal, #19766c); font-weight: 700;') +
-          guidanceListHtml('Suggested by the AI (check before acting):', aiSteps, true, 'color: var(--ink);')
-        : guidanceListHtml('Proceed with the following actions:', rulesActions, true, 'color: var(--teal, #19766c); font-weight: 700;');
-    const questionsHtml = guidanceListHtml('Ask the resident:', questions, false, 'color: var(--ink);');
-
-    setHtml('aiReasoningBox', `
-        <div style="font-size: 12px; line-height: 1.5; color: var(--ink);">
-            ${warn}
-            <div style="font-size: 11px; color: var(--muted); margin-bottom: 4px;">Source: ${escapeHtml(sourceLabel)}</div>
-            ${summary}
-            <strong>Evaluation:</strong> ${escapeHtml(result.reasoning || '')}
-            <div style="margin-top: 5px;"><strong>Jurisdiction:</strong> ${escapeHtml(result.legal_routing || '')}</div>
-            ${stepsHtml}
-            ${questionsHtml}
-            <div style="margin-top: 8px; font-size: 10.5px; color: var(--muted);">Suggestions only. The desk officer makes the final decision.</div>
-        </div>`);
-}
-
 async function inspectNarrativeWithAI(narrativeText) {
     const trimmed = String(narrativeText || '').trim();
-    clearTimeout(aiTimer);
-    if (trimmed.length < 3) { lastAiText = ''; resetInspectPanel(); return; }
+    const statusContainer = document.getElementById('aiTriageStatus');
+    const badgeContainer = document.getElementById('detectedKeywordsContainer');
+    const reasoningBox = document.getElementById('aiReasoningBox');
+    const scoreBadge = document.getElementById('aiUrgencyScoreBadge');
+    const categoryBadge = document.getElementById('aiAssessedCategoryBadge');
+    
+    const hiddenCategory = document.getElementById('aiGeneratedCategoryInput');
+    const hiddenPriority = document.getElementById('aiGeneratedPriorityInput');
 
-    const seq = ++inspectSeq;
-    const statusEl = document.getElementById('aiTriageStatus');
-    if (statusEl) { statusEl.textContent = 'Analyzing narrative...'; statusEl.classList.add('pulse'); }
-
-    try {
-        const result = await postInspect('inspect_triage', trimmed);
-        if (seq !== inspectSeq) return;
-
-        if (statusEl) { statusEl.textContent = 'Rules analysis updated'; statusEl.classList.remove('pulse'); }
-        if (!result.success) { setText('aiReasoningBox', result.error || result.message || 'Could not analyze the narrative.'); return; }
-
-        renderInspect(result, 'Rules');
-        scheduleAiInspect(trimmed);
-    } catch (err) {
-        if (seq !== inspectSeq) return;
-        if (statusEl) { statusEl.textContent = 'Analysis failed.'; statusEl.classList.remove('pulse'); }
-        setText('aiReasoningBox', err.message);
+    if (!trimmed || trimmed.length < 15) {
+        if (badgeContainer) badgeContainer.innerHTML = '<span style="font-size: 11.5px; color: var(--muted);">Type narrative details above to start AI classification...</span>';
+        if (reasoningBox) reasoningBox.textContent = 'Waiting for narrative facts to evaluate jurisdiction and emergency level...';
+        if (scoreBadge) {
+            scoreBadge.textContent = 'Priority: Low (0%)';
+            scoreBadge.style.background = '';
+            scoreBadge.style.color = '';
+        }
+        if (categoryBadge) categoryBadge.textContent = 'Category: Pending';
+        return;
     }
-}
 
-function scheduleAiInspect(text) {
-    clearTimeout(aiTimer);
-    const isThreatWord = /\b(baril|namaril|binaril|patay|pinatay|saksak|sinaksak|sunog|banta|dugo)\b/i.test(text);
-    if ((text.length < 15 && !isThreatWord) || text === lastAiText) return;
-    aiTimer = setTimeout(() => inspectNarrativeAI(text), 900);
-}
-
-async function inspectNarrativeAI(text) {
-    const seq = ++aiSeq;
-    const rulesSeq = inspectSeq;
-    const statusEl = document.getElementById('aiTriageStatus');
-    if (statusEl) { statusEl.textContent = 'Checking with AI...'; statusEl.classList.add('pulse'); }
+    if (statusContainer) {
+        statusContainer.textContent = 'AI is evaluating narrative...';
+        statusContainer.classList.add('pulse');
+    }
 
     try {
-        const result = await postInspect('inspect_triage_ai', text);
-        if (seq !== aiSeq || rulesSeq !== inspectSeq) return;
-        if (statusEl) statusEl.classList.remove('pulse');
-        if (!result.success) { if (statusEl) statusEl.textContent = 'Rules analysis updated'; return; }
+        const response = await fetch('api/encode_case.php', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': (document.querySelector('meta[name="csrf-token"]') || {}).content || ''
+            },
+            body: JSON.stringify({
+                action: 'inspect_triage',
+                narrative_description: trimmed
+            })
+        });
 
-        lastAiText = text;
-        renderInspect(result, result.ai_used ? 'Rules + AI' : 'Rules only');
-        if (statusEl) {
-            statusEl.textContent = result.ai_used
-                ? 'Rules + AI updated'
-                : 'Rules analysis updated' + (result.ai_note ? ' (' + result.ai_note + ')' : '');
+        const result = await response.json();
+
+        if (statusContainer) {
+            statusContainer.textContent = 'AI Classification Applied';
+            statusContainer.classList.remove('pulse');
+        }
+
+        if (!result.success) {
+            if (reasoningBox) reasoningBox.textContent = result.error || 'Failed to inspect narrative.';
+            return;
+        }
+
+        if (result.incident_type) {
+            if (hiddenCategory) hiddenCategory.value = result.incident_type;
+            if (categoryBadge) categoryBadge.textContent = `Category: ${result.incident_type}`;
+        }
+
+        if (result.priority_level) {
+            if (hiddenPriority) hiddenPriority.value = result.priority_level;
+            const pct = Math.round(Number(result.ai_urgency_score || 0) * 100);
+            if (scoreBadge) {
+                scoreBadge.textContent = `${result.priority_level} (${pct}%)`;
+                if (result.priority_level === 'Critical') {
+                    scoreBadge.style.background = 'var(--coral)';
+                    scoreBadge.style.color = '#fff';
+                } else if (result.priority_level === 'High') {
+                    scoreBadge.style.background = '#d97706';
+                    scoreBadge.style.color = '#fff';
+                } else if (result.priority_level === 'Moderate') {
+                    scoreBadge.style.background = '#0284c7';
+                    scoreBadge.style.color = '#fff';
+                } else {
+                    scoreBadge.style.background = '#059669';
+                    scoreBadge.style.color = '#fff';
+                }
+            }
+        }
+
+        if (badgeContainer) {
+            const keywords = Array.isArray(result.detected_keywords) ? result.detected_keywords : [];
+            if (keywords.length === 0) {
+                badgeContainer.innerHTML = '<span style="font-size: 11px; color: var(--muted);">No immediate threat indicators identified.</span>';
+            } else {
+                badgeContainer.innerHTML = keywords.map(kw => `
+                    <span class="pill" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); font-weight: 700; margin-right: 4px; margin-bottom: 4px;">
+                        🔍 ${escapeHtml(kw)}
+                    </span>
+                `).join('');
+            }
+        }
+
+        if (reasoningBox) {
+            reasoningBox.innerHTML = `
+                <div style="font-size: 12.5px; line-height: 1.5; color: var(--ink);">
+                    <strong>Evaluation:</strong> ${escapeHtml(result.reasoning || 'Evaluated under Katarungang Pambarangay scope.')}
+                    <div style="margin-top: 6px; color: var(--teal); font-weight: 700;">
+                        Recommended Action: ${escapeHtml(result.ai_recommendation || 'Proceed with standard desk logging.')}
+                    </div>
+                </div>
+            `;
         }
     } catch (err) {
         if (seq !== aiSeq) return;
@@ -567,162 +927,14 @@ async function inspectNarrativeAI(text) {
     }
 }
 
-// -------------------------------------------------------------
-// CASE REVIEW POPUP
-// -------------------------------------------------------------
-const PILL_STYLE = {
-    Critical: 'background: var(--coral); color: #fff;',
-    High: 'background: #d97706; color: #fff;',
-    Moderate: 'background: #0284c7; color: #fff;',
-    Low: 'background: #059669; color: #fff;'
-};
-const KP_STYLE = {
-    EXEMPT:    { bg: 'rgba(239, 68, 68, 0.12)', border: 'var(--coral)', color: 'var(--coral)', pill: 'background:#fee2e2;color:#991b1b;' },
-    VERIFY:    { bg: 'rgba(217, 119, 6, 0.12)', border: '#d97706', color: '#b45309', pill: 'background:#fef3c7;color:#92400e;' },
-    COMPETENT: { bg: 'rgba(25, 118, 108, 0.10)', border: 'var(--teal)', color: 'var(--teal)', pill: 'background:#e6f3e9;color:#287048;' }
-};
-
-async function openCaseReview(ref) {
-    if (!ref) return;
-    try {
-        const res = await requestOfficer('get_case_review_details', { reference_number: ref });
-        const c = res.case;
-        const a = res.analysis || {};
-        const sev = res.severity || {};
-        const dups = res.duplicates || [];
-        const hist = res.history || { items: [], insights: [] };
-        const beat = res.beat || {};
-
-        setText('modalReviewRef', c.reference_number);
-        setText('modalReviewCategory', c.incident_type || a.incident_type || 'Incident Review');
-        setText('modalComplainantName', c.complainant_name || 'Walk-in Resident');
-        setText('modalComplainantPhone', c.complainant_phone || 'None provided');
-        setText('modalLocationPurok', [c.purok, c.street_address].filter(Boolean).join(' • ') || 'Barangay Duale');
-        setText('modalNarrativeText', c.narrative_description || 'No narrative facts recorded.');
-
-        const prio = c.priority_level || 'Low';
-        const pBadge = document.getElementById('modalPriorityBadge');
-        if (pBadge) { pBadge.textContent = prio; pBadge.className = 'pill'; pBadge.setAttribute('style', PILL_STYLE[prio] || PILL_STYLE.Low); }
-
-        const routingBanner = document.getElementById('modalLegalRoutingBanner');
-        let sevNotice = document.getElementById('modalSeverityNotice');
-        if (!sevNotice && routingBanner) {
-            sevNotice = document.createElement('div');
-            sevNotice.id = 'modalSeverityNotice';
-            routingBanner.parentNode.insertBefore(sevNotice, routingBanner);
-        }
-        if (sevNotice) {
-            if (sev.auto_raised) {
-                sevNotice.setAttribute('style', 'margin: 0 0 10px; padding: 8px 12px; border-radius: 6px; background: #fee2e2; color: #991b1b; font-size: 12px; font-weight: 700;');
-                sevNotice.textContent = `Severity raised from ${sev.previous} to ${sev.record} by the automatic review (logged in the audit trail).`;
-            } else if (c.severity_review_status === 'PENDING_CAPTAIN') {
-                sevNotice.setAttribute('style', 'margin: 0 0 10px; padding: 8px 12px; border-radius: 6px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700;');
-                sevNotice.textContent = 'A severity change is pending Captain approval. The case keeps its current severity until then.';
-            } else {
-                sevNotice.removeAttribute('style');
-                sevNotice.textContent = '';
-            }
-        }
-
-        const kp = a.kp_status || 'COMPETENT';
-        const st = KP_STYLE[kp] || KP_STYLE.COMPETENT;
-        setText('modalLegalRoutingTitle', a.legal_routing || 'Standard Desk Blotter Recording');
-        setText('modalLegalRoutingDesc', a.legal_routing_desc || a.ai_recommendation || '');
-        const routingTitle = document.getElementById('modalLegalRoutingTitle');
-        if (routingTitle) routingTitle.style.color = st.color;
-        if (routingBanner) { routingBanner.style.background = st.bg; routingBanner.style.border = `1px solid ${st.border}`; }
-        const pill = document.getElementById('modalVawcStatusPill');
-        if (pill) { pill.textContent = a.legal_pill || 'KP Competent'; pill.className = 'pill'; pill.setAttribute('style', st.pill); }
-
-        const wp = document.getElementById('modalWeaponFlag');
-        if (wp) {
-            wp.innerHTML = (a.weapon_flag && a.weapon_flag !== 'NONE')
-                ? `<span style="color: var(--coral); font-weight: 800;">⚠️ ${escapeHtml(a.weapon_flag)}</span>`
-                : '<span style="color: var(--muted);">NONE DETECTED</span>';
-        }
-        setText('modalMedicalFlag', a.medical_flag || 'No injury or medical emergency indicated.');
-        setText('modalSubstanceFlag', a.substance_flag || 'No intoxication or substance use indicated.');
-
-        const ent = a.entities || {};
-        const entLines = [];
-        if ((ent.respondents || []).length) entLines.push(`<div><strong>Respondent(s):</strong> ${ent.respondents.map(escapeHtml).join(', ')}</div>`);
-        if ((ent.aliases || []).length) entLines.push(`<div><strong>Alias:</strong> ${ent.aliases.map(escapeHtml).join(', ')}</div>`);
-        if ((ent.vehicles || []).length) entLines.push(`<div><strong>Vehicles:</strong> ${ent.vehicles.map(escapeHtml).join(', ')}</div>`);
-        if ((ent.plates || []).length) entLines.push(`<div><strong>Plates:</strong> ${ent.plates.map(escapeHtml).join(', ')}</div>`);
-        const actions = Array.isArray(a.recommended_actions) ? a.recommended_actions : [];
-        setHtml('modalAiReasoning', `
-            <div style="line-height: 1.5;">
-                <div><strong>Why:</strong> ${escapeHtml(a.reasoning || '')}</div>
-                ${actions.length ? `<div style="margin-top: 6px;"><strong>Recommended actions:</strong><ol style="margin: 4px 0 0 18px; padding: 0;">${actions.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ol></div>` : ''}
-                ${entLines.length ? `<div style="margin-top: 6px;">${entLines.join('')}</div>` : ''}
-                <div style="margin-top: 6px; font-size: 10.5px; color: var(--muted);">Decision support only. The final legal determination rests with the Punong Barangay or the Lupon Secretary.</div>
-            </div>`);
-
-        const kws = Array.isArray(a.detected_keywords) ? a.detected_keywords : [];
-        const neg = Array.isArray(a.negated_terms) ? a.negated_terms : [];
-        setHtml('modalDetectedKeywords',
-            (kws.length === 0 && neg.length === 0)
-                ? '<span style="font-size: 11px; color: var(--muted);">No specific threat words flagged.</span>'
-                : kws.map(kw => `<span class="pill" style="background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; font-weight: 800; font-size: 11.5px; padding: 3px 8px;">🔍 ${escapeHtml(kw)}</span>`).join(' ')
-                  + neg.map(n => `<span class="pill" style="background: #eef2f2; color: #52676f; font-size: 11px;" title="Mentioned but ignored">ignored: ${escapeHtml(n)}</span>`).join(' '));
-
-        setHtml('modalDuplicateBox', dups.length === 0
-            ? '<span style="color: var(--muted);">✓ No duplicate or related report in this Purok within 4 hours.</span>'
-            : dups.map(d => `
-                <div style="border-left: 3px solid ${d.label === 'LIKELY DUPLICATE' ? 'var(--coral)' : 'var(--gold)'}; padding-left: 8px; margin-bottom: 6px;">
-                    <div><strong>${escapeHtml(d.label)}</strong> • ${d.similarity}% keyword overlap • ${d.minutes_apart} min apart</div>
-                    <div>${refLink(d.reference_number)} ${escapeHtml(d.incident_type)} • ${escapeHtml(d.status)}${d.shared_terms.length ? ` • shared: ${d.shared_terms.map(escapeHtml).join(', ')}` : ''}</div>
-                    ${d.linked
-                        ? '<span style="font-size: 11px; color: var(--muted);">Already linked</span>'
-                        : `<button type="button" class="btn-action-quiet" style="margin-top: 4px;" data-action="link_duplicate" data-ref="${escapeHtml(d.reference_number)}" data-primary="${escapeHtml(c.reference_number)}">Link as duplicate report</button>`}
-                </div>`).join(''));
-
-        const insights = (hist.insights || []).map(i =>
-            `<div style="margin-bottom: 4px; padding: 6px 8px; border-radius: 6px; font-size: 11.5px; ${i.level === 'high' ? 'background:#fee2e2;color:#991b1b;font-weight:700;' : 'background:#eef2f2;color:#40575f;'}">${i.level === 'high' ? '📊 ' : 'ℹ️ '}${escapeHtml(i.text)}</div>`).join('');
-        const items = (hist.items || []).map(h => `
-            <div style="display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding: 3px 0;">
-                <span>${refLink(h.reference_number)} • ${escapeHtml(h.incident_type)} <span style="color: var(--muted);">(${escapeHtml((h.reasons || []).join(', '))})</span></span>
-                <span class="pill ${h.priority_level === 'Critical' ? 'pill-rejected' : 'pill-pending'}">${escapeHtml(h.status)}</span>
-            </div>`).join('');
-        setHtml('modalHistoryList', (insights + items) || '<span style="color: var(--muted);">✓ No related earlier reports in the past 12 months.</span>');
-
-        setText('modalBeatRecommendation', beat.summary || `${c.purok} sector patrol beat`);
-
-        ['modalBtnAccept', 'modalBtnDispatch', 'modalBtnLupon', 'modalBtnReject'].forEach(id => {
-            const b = document.getElementById(id);
-            if (b) b.setAttribute('data-ref', c.reference_number);
-        });
-        const luponBtn = document.getElementById('modalBtnLupon');
-        if (luponBtn) {
-            const blocked = kp === 'EXEMPT';
-            luponBtn.disabled = blocked;
-            luponBtn.style.opacity = blocked ? '0.4' : '1';
-            luponBtn.style.cursor = blocked ? 'not-allowed' : 'pointer';
-            luponBtn.title = blocked ? (a.legal_routing || 'Exempt from Katarungang Pambarangay') : (kp === 'VERIFY' ? 'Verify eligibility before endorsing' : 'Endorse to Katarungang Pambarangay');
-        }
-        const rejectBtn = document.getElementById('modalBtnReject');
-        if (rejectBtn) {
-            const locked = prio === 'Critical' || prio === 'High';
-            rejectBtn.disabled = locked;
-            rejectBtn.style.opacity = locked ? '0.4' : '1';
-            rejectBtn.title = locked ? 'High and Critical cases cannot be closed with the quick Flag button.' : '';
-        }
-
-        const dlg = document.getElementById('caseReviewModal');
-        if (dlg && !dlg.open) dlg.showModal();
-    } catch (err) {
-        showNotice('Failed to open case review: ' + err.message, true);
-    }
-}
-
-// -------------------------------------------------------------
-// CLICK DELEGATION
-// -------------------------------------------------------------
 document.addEventListener('click', async (e) => {
     const idTrigger = e.target.closest('[data-trigger-review="true"]');
     if (idTrigger) {
         e.preventDefault();
-        await openCaseReview(idTrigger.dataset.ref);
+        const ref = idTrigger.dataset.ref;
+        if (!ref) return;
+
+        await openCaseDetails(ref);
         return;
     }
 
@@ -753,44 +965,69 @@ document.addEventListener('click', async (e) => {
             document.getElementById('caseReviewModal')?.close();
             showNotice(res.message);
             await refreshOperationsData();
+            if (state.currentCaseReference === ref) await openCaseDetails(ref);
         } else if (action === 'reject') {
-            if (confirm(`Flag and close case #${ref}?`)) {
-                const res = await requestOfficer('flag_reject', { reference_number: ref });
-                document.getElementById('caseReviewModal')?.close();
-                showNotice(res.message);
-                await refreshOperationsData();
+            document.getElementById('caseReviewModal')?.close();
+            await openCaseDetails(ref);
+            showNotice('Record findings and a written conclusion before closing this case.');
+        } else if (action === 'resolve_case') {
+            document.getElementById('caseResolutionForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (action === 'close_case') {
+            const closePanel = document.getElementById('caseClosureConfirmation');
+            if (closePanel && !closePanel.hidden) {
+                closePanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+                document.getElementById('caseResolutionForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
+        } else if (action === 'complete_mediation') {
+            await openCaseDetails(ref);
+            const target = document.getElementById('caseResolutionForm')?.hidden
+                ? document.getElementById('caseFindingForm')
+                : document.getElementById('caseResolutionForm');
+            target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } else if (action === 'dispatch') {
             document.getElementById('caseReviewModal')?.close();
             document.getElementById('dispatchRefInput').value = ref;
+            populateDispatchDropdown();
             document.getElementById('dispatchModal').showModal();
-        } else if (action === 'endorse_lupon') {
+        } else if (action === 'refer') {
             document.getElementById('caseReviewModal')?.close();
             document.getElementById('luponRefInput').value = ref;
-            document.getElementById('luponActionMode').value = 'endorse';
-            document.getElementById('luponModalTitle').textContent = `Endorse #${ref} to Lupon Mediation`;
+            document.getElementById('luponActionMode').value = 'refer';
+            document.getElementById('luponModalTitle').textContent = `Refer / Escalate Case #${ref}`;
+            document.getElementById('luponDestinationFields').style.display = 'block';
+            document.getElementById('luponReasonFields').style.display = 'block';
+            document.getElementById('luponDestinationSelect').value = 'LUPON';
             document.getElementById('luponEndorseFields').style.display = 'block';
-            document.getElementById('luponSettleFields').style.display = 'none';
-            document.getElementById('luponSubmitBtn').textContent = 'Confirm Lupon Endorsement';
+            document.getElementById('luponReasonInput').value = '';
+            document.getElementById('luponReasonInput').required = true;
+            document.getElementById('luponScheduleInput').value = '';
+            document.getElementById('luponMediatorInput').required = true;
+            document.getElementById('luponScheduleInput').required = true;
+            document.getElementById('luponSubmitBtn').textContent = 'Confirm Referral';
             document.getElementById('luponModal').showModal();
-        } else if (action === 'settle_lupon') {
+        } else if (action === 'reschedule_lupon') {
+            const caseData = state.luponCases.find(item => item.reference_number === ref);
             document.getElementById('luponRefInput').value = ref;
-            document.getElementById('luponActionMode').value = 'settle';
-            document.getElementById('luponModalTitle').textContent = `Record Amicable Settlement for #${ref}`;
-            document.getElementById('luponEndorseFields').style.display = 'none';
-            document.getElementById('luponSettleFields').style.display = 'block';
-            document.getElementById('luponSubmitBtn').textContent = 'Confirm Settlement';
+            document.getElementById('luponActionMode').value = 'reschedule';
+            document.getElementById('luponModalTitle').textContent = `Reschedule Hearing for #${ref}`;
+            document.getElementById('luponDestinationFields').style.display = 'none';
+            document.getElementById('luponReasonFields').style.display = 'none';
+            document.getElementById('luponReasonInput').required = false;
+            document.getElementById('luponEndorseFields').style.display = 'block';
+            document.getElementById('luponMediatorInput').value = caseData?.assigned_officer || 'Barangay Lupon Panel';
+            document.getElementById('luponScheduleInput').value = caseData?.next_hearing ? String(caseData.next_hearing).replace(' ', 'T').slice(0, 16) : '';
+            document.getElementById('luponMediatorInput').required = true;
+            document.getElementById('luponScheduleInput').required = true;
+            document.getElementById('luponSubmitBtn').textContent = 'Save New Hearing Schedule';
             document.getElementById('luponModal').showModal();
-        } else if (action === 'assign_tanod') {
-            const tanod = btn.dataset.tanod;
-            const sel = document.getElementById('dispatchUnitSelect');
-            if (sel) sel.value = `Tanod Patrol (${tanod})`;
-            setView('blotter');
-            showNotice(`Select a case to assign ${tanod}`);
-        } else if (action === 'link_duplicate') {
-            const res = await requestOfficer('link_duplicate', { reference_number: ref, primary_reference: btn.dataset.primary });
+        } else if (action === 'reopen_case') {
+            const reason = prompt(`Enter the authorized reason for reopening case #${ref}:`);
+            if (reason === null) return;
+            const res = await requestOfficer('reopen_case', { reference_number: ref, reason });
             showNotice(res.message);
-            await openCaseReview(btn.dataset.primary);
+            await refreshOperationsData();
+            if (state.currentCaseReference === ref) await openCaseDetails(ref);
         }
     } catch (err) {
         showNotice(err.message, true);
@@ -801,20 +1038,260 @@ document.getElementById('criticalDispatchBtn')?.addEventListener('click', (e) =>
     const ref = e.currentTarget.getAttribute('data-ref');
     if (ref) {
         document.getElementById('dispatchRefInput').value = ref;
+        populateDispatchDropdown();
         document.getElementById('dispatchModal').showModal();
     }
 });
 
 document.getElementById('dispatchForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const payload = Object.fromEntries(new FormData(e.currentTarget).entries());
+    const form = e.currentTarget;
+    const payload = {
+        reference_number: document.getElementById('dispatchRefInput').value,
+        responder_ids: [...document.getElementById('dispatchUnitSelect').selectedOptions].map(option => Number(option.value)),
+        dispatch_notes: document.getElementById('dispatchNotesTextarea').value.trim()
+    };
     try {
         const res = await requestOfficer('dispatch_tanod', payload);
         document.getElementById('dispatchModal').close();
         showNotice(res.message);
         await refreshOperationsData();
+        if (state.currentCaseReference === payload.reference_number) await openCaseDetails(payload.reference_number);
     } catch (err) {
         showNotice(err.message, true);
+    }
+});
+
+document.getElementById('addResponderBtn')?.addEventListener('click', () => {
+    document.getElementById('responderForm').reset();
+    document.getElementById('responderIdInput').value = '';
+    document.getElementById('responderModalTitle').textContent = 'Add Responder';
+    document.getElementById('responderModal').showModal();
+});
+
+document.getElementById('tanodRosterContainer')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-edit-responder]');
+    if (!button) return;
+    const responder = state.tanods.find(item => String(item.id) === button.dataset.editResponder);
+    if (!responder) return;
+    document.getElementById('responderForm').reset();
+    document.getElementById('responderIdInput').value = responder.id;
+    document.getElementById('responderNameInput').value = responder.name || '';
+    document.getElementById('responderStationInput').value = responder.station || '';
+    document.getElementById('responderContactInput').value = responder.contact_number || '';
+    document.getElementById('responderModalTitle').textContent = 'Edit Responder Profile';
+    document.getElementById('responderModal').showModal();
+});
+
+document.getElementById('tanodRosterContainer')?.addEventListener('change', async (event) => {
+    const select = event.target.closest('[data-tanod-availability]');
+    if (!select) return;
+    try {
+        const result = await requestOfficer('update_responder_availability', {
+            tanod_id: Number(select.dataset.tanodAvailability),
+            status: select.value
+        });
+        showNotice(result.message);
+        await refreshOperationsData();
+    } catch (error) {
+        showNotice(error.message, true);
+        await refreshOperationsData();
+    }
+});
+
+document.getElementById('responderForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const payload = Object.fromEntries(new FormData(form).entries());
+    const tanodId = Number(payload.tanod_id || 0);
+    delete payload.tanod_id;
+    try {
+        const result = await requestOfficer(tanodId ? 'update_responder' : 'create_responder', {
+            ...payload,
+            ...(tanodId ? { tanod_id: tanodId } : {})
+        });
+        document.getElementById('responderModal').close();
+        showNotice(result.message);
+        await refreshOperationsData();
+    } catch (error) {
+        showNotice(error.message, true);
+    }
+});
+
+document.getElementById('dispatchQueueContainer')?.addEventListener('click', async (event) => {
+    const assignButton = event.target.closest('[data-assign-case]');
+    const viewButton = event.target.closest('[data-view-case]');
+    const stepButton = event.target.closest('[data-response-step]');
+    if (assignButton) {
+        const ref = assignButton.dataset.assignCase;
+        document.getElementById('dispatchRefInput').value = ref;
+        populateDispatchDropdown();
+        document.getElementById('dispatchModal').showModal();
+        return;
+    }
+    if (viewButton) {
+        await openCaseDetails(viewButton.dataset.viewCase);
+        return;
+    }
+    if (stepButton) {
+        try {
+            const result = await requestOfficer('dispatch_response_update', {
+                reference_number: stepButton.dataset.ref,
+                step: stepButton.dataset.responseStep
+            });
+            showNotice(result.message);
+            await refreshOperationsData();
+        } catch (error) {
+            showNotice(error.message, true);
+        }
+    }
+});
+
+document.getElementById('dispatchQueueContainer')?.addEventListener('submit', async (event) => {
+    const form = event.target.closest('[data-response-form]');
+    if (!form) return;
+    event.preventDefault();
+    const data = new FormData(form);
+    try {
+        const result = await requestOfficer('dispatch_response_update', {
+            reference_number: form.dataset.responseForm,
+            step: 'SUBMIT',
+            findings: String(data.get('findings') || '').trim(),
+            action_taken: String(data.get('action_taken') || '').trim()
+        });
+        showNotice(result.message);
+        await refreshOperationsData();
+    } catch (error) {
+        showNotice(error.message, true);
+    }
+});
+
+document.querySelector('[data-case-back]')?.addEventListener('click', () => {
+    state.currentCaseReference = null;
+    setView('blotter');
+});
+
+document.getElementById('caseFindingForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const referenceNumber = form.dataset.referenceNumber;
+    if (!referenceNumber) return;
+
+    try {
+        const result = await requestOfficer('record_case_findings', {
+            reference_number: referenceNumber,
+            observations: document.getElementById('caseFindingObservations').value.trim(),
+            persons_contacted: document.getElementById('caseFindingPersons').value.trim(),
+            action_taken: document.getElementById('caseFindingAction').value.trim(),
+            findings: document.getElementById('caseFindingSummary').value.trim(),
+            recommended_next_steps: document.getElementById('caseFindingNextSteps').value.trim()
+        });
+        form.reset();
+        showNotice(result.message || 'Field findings recorded.');
+        await openCaseDetails(referenceNumber);
+    } catch (error) {
+        showNotice(error.message, true);
+    }
+});
+
+document.getElementById('caseResolutionForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    const closeRequested = form.dataset.closeOnly === 'true' || formData.get('close_case') === '1';
+    const payload = {
+        reference_number: form.dataset.referenceNumber,
+        outcome: formData.get('outcome'),
+        conclusion: String(formData.get('conclusion') || '').trim(),
+        settlement_terms: String(formData.get('settlement_terms') || '').trim(),
+        remaining_obligations: String(formData.get('remaining_obligations') || '').trim(),
+        follow_up_at: formData.get('follow_up_at') || '',
+        findings_reviewed: formData.get('findings_reviewed') === '1' ? 1 : 0,
+        close_case: closeRequested ? 1 : 0
+    };
+    if (payload.outcome === 'SETTLED_THROUGH_MEDIATION' && !payload.settlement_terms) {
+        showNotice('Record the agreed settlement terms before finalizing mediation.', true);
+        document.getElementById('caseSettlementTerms').focus();
+        return;
+    }
+    if (payload.conclusion.length < 30) {
+        showNotice('Enter a written conclusion of at least 30 characters.', true);
+        document.getElementById('caseResolutionConclusion').focus();
+        return;
+    }
+    const outcomeLabel = caseResolutionOutcomeLabel(payload.outcome);
+    const closeLabel = 'Resolved';
+    const findingsSummary = state.currentCaseFindings.map(item =>
+        `Recorded ${formatDateTime(item.created_at)} by ${item.submitted_by_name || 'System'}: `
+        + `Observations: ${item.observations}; Persons contacted: ${item.persons_contacted || 'Not recorded'}; `
+        + `Action taken: ${item.action_taken}; Findings: ${item.findings}; `
+        + `Recommended next steps: ${item.recommended_next_steps || 'Not recorded'}`
+    ).join('\n\n');
+    if (!closeRequested) {
+        saveCaseResolution(payload);
+        return;
+    }
+
+    state.pendingResolutionPayload = payload;
+    document.getElementById('caseResolutionReviewSummary').innerHTML = `
+        <dl class="case-resolution-summary">
+            <dt>Outcome</dt><dd>${escapeHtml(outcomeLabel)}</dd>
+            <dt>Findings reviewed</dt><dd>${escapeHtml(findingsSummary || 'No recorded findings')}</dd>
+            <dt>Conclusion</dt><dd>${escapeHtml(payload.conclusion)}</dd>
+            ${payload.settlement_terms ? `<dt>Settlement terms</dt><dd>${escapeHtml(payload.settlement_terms)}</dd>` : ''}
+            ${payload.remaining_obligations ? `<dt>Remaining obligations</dt><dd>${escapeHtml(payload.remaining_obligations)}</dd>` : ''}
+            ${payload.follow_up_at ? `<dt>Follow-up</dt><dd>${escapeHtml(formatDateTime(payload.follow_up_at))}</dd>` : ''}
+            <dt>Final status</dt><dd>${escapeHtml(closeLabel)}</dd>
+            ${closeRequested ? `<dt>Responsible officer</dt><dd>${escapeHtml(state.currentUserName || 'Current user')}</dd><dt>Finalized</dt><dd>${escapeHtml(formatDateTime(new Date().toISOString()))} (server timestamp saved on confirmation)</dd>` : ''}
+        </dl>`;
+    document.getElementById('caseResolutionInputs').hidden = true;
+    document.getElementById('caseResolutionReviewBtn').hidden = true;
+    document.getElementById('caseResolutionReview').hidden = false;
+});
+
+async function saveCaseResolution(payload) {
+    try {
+        const action = payload.close_case ? 'close_case' : 'resolve_case';
+        const result = await requestOfficer(action, payload);
+        state.pendingResolutionPayload = null;
+        showNotice(result.message);
+        await refreshOperationsData();
+        await openCaseDetails(payload.reference_number);
+    } catch (error) {
+        showNotice(error.message, true);
+    }
+}
+
+document.getElementById('caseResolutionEdit')?.addEventListener('click', () => {
+    state.pendingResolutionPayload = null;
+    document.getElementById('caseResolutionInputs').hidden = false;
+    document.getElementById('caseResolutionReview').hidden = true;
+    document.getElementById('caseResolutionReviewBtn').hidden = false;
+});
+
+document.getElementById('caseResolutionConfirm')?.addEventListener('click', async () => {
+    const payload = state.pendingResolutionPayload;
+    if (!payload) return;
+    await saveCaseResolution(payload);
+});
+
+document.getElementById('caseClosureBack')?.addEventListener('click', () => {
+    document.getElementById('caseClosureConfirmation').hidden = true;
+});
+
+document.getElementById('caseClosureConfirm')?.addEventListener('click', async (e) => {
+    const referenceNumber = e.currentTarget.dataset.referenceNumber;
+    if (!referenceNumber) return;
+    e.currentTarget.disabled = true;
+    try {
+        const result = await requestOfficer('close_case', { reference_number: referenceNumber });
+        showNotice(result.message || 'Resolution finalized.');
+        await refreshOperationsData();
+        await openCaseDetails(referenceNumber);
+    } catch (error) {
+        showNotice(error.message, true);
+    } finally {
+        e.currentTarget.disabled = false;
     }
 });
 
@@ -824,99 +1301,42 @@ document.getElementById('luponForm')?.addEventListener('submit', async (e) => {
     const ref = document.getElementById('luponRefInput').value;
     const formData = new FormData(e.currentTarget);
     try {
-        const res = mode === 'endorse'
-            ? await requestOfficer('endorse_lupon', { reference_number: ref, mediator: formData.get('mediator'), schedule: formData.get('schedule') })
-            : await requestOfficer('settle_lupon', { reference_number: ref, notes: formData.get('settlement_notes') });
-        showNotice(res.message);
+        if (mode === 'refer') {
+            const destination = formData.get('destination');
+            const actionPayload = {
+                reference_number: ref,
+                destination,
+                reason: formData.get('reason')
+            };
+            if (destination === 'LUPON') {
+                actionPayload.mediator = formData.get('mediator');
+                actionPayload.schedule = formData.get('schedule');
+            }
+            const res = await requestOfficer('refer_case', actionPayload);
+            showNotice(res.message);
+        } else if (mode === 'reschedule') {
+            const res = await requestOfficer('reschedule_lupon', {
+                reference_number: ref,
+                mediator: formData.get('mediator'),
+                schedule: formData.get('schedule')
+            });
+            showNotice(res.message);
+        }
         document.getElementById('luponModal').close();
         await refreshOperationsData();
+        if (state.currentCaseReference === ref) await openCaseDetails(ref);
     } catch (err) {
         showNotice(err.message, true);
     }
 });
 
-// -------------------------------------------------------------
-// CONTACT PHONE: exactly 11 digits (09XXXXXXXXX)
-// -------------------------------------------------------------
-const PHONE_MESSAGES = {
-    limit: 'A Philippine mobile number has only 11 digits (09XXXXXXXXX), so no more digits can be added.',
-    long: 'This number has more than 11 digits, so it might be wrong. Please re-enter the phone number (09XXXXXXXXX). The number you entered has been cleared.',
-    short: 'This number has fewer digits than a Philippine mobile number, which has 11 digits (09XXXXXXXXX). Please re-enter the phone number. The number you typed has been cleared.',
-    prefix: 'A Philippine mobile number starts with 09 (09XXXXXXXXX). Please re-enter the phone number. The number you typed has been cleared.'
-};
-const phoneInput = document.getElementById('complainantPhoneInput');
-let phoneErrorEl = null;
-let phoneLastGood = '';
-
-function showPhoneError(kind, clearBox = true) {
-    if (!phoneInput) return;
-    if (!phoneErrorEl) {
-        phoneErrorEl = document.createElement('p');
-        phoneErrorEl.id = 'complainantPhoneError';
-        phoneErrorEl.setAttribute('role', 'alert');
-        phoneErrorEl.style.cssText = 'margin: 4px 0 0; font-size: 12px; font-weight: 700; color: #d61818; line-height: 1.4;';
-        phoneInput.insertAdjacentElement('afterend', phoneErrorEl);
-        phoneInput.setAttribute('aria-describedby', 'complainantPhoneError');
-    }
-    phoneErrorEl.textContent = PHONE_MESSAGES[kind];
-    phoneErrorEl.hidden = false;
-    if (clearBox) {
-        phoneInput.value = '';
-        phoneLastGood = '';
-        phoneInput.setAttribute('aria-invalid', 'true');
-    }
-}
-
-function hidePhoneError() {
-    if (phoneErrorEl) phoneErrorEl.hidden = true;
-    if (phoneInput) phoneInput.removeAttribute('aria-invalid');
-}
-
-function isSingleDigitInsertion(prev, cur) {
-    if (prev.length !== 11 || cur.length !== 12) return false;
-    for (let i = 0; i < cur.length; i++) {
-        if (cur.slice(0, i) + cur.slice(i + 1) === prev) return true;
-    }
-    return false;
-}
-
-function validatePhoneField(focusOnError) {
-    if (!phoneInput) return true;
-    const digits = phoneInput.value.replace(/\D/g, '');
-    if (digits === '') { phoneInput.value = ''; phoneLastGood = ''; return true; }
-    let kind = null;
-    if (digits.length > 11) kind = 'long';
-    else if (digits.length < 11) kind = 'short';
-    else if (!digits.startsWith('09')) kind = 'prefix';
-    if (!kind) { phoneInput.value = digits; phoneLastGood = digits; hidePhoneError(); return true; }
-    showPhoneError(kind);
-    if (focusOnError) phoneInput.focus();
-    return false;
-}
-
-if (phoneInput) {
-    phoneInput.setAttribute('inputmode', 'numeric');
-    phoneInput.addEventListener('focus', () => { phoneLastGood = phoneInput.value.replace(/\D/g, '').slice(0, 11); });
-    phoneInput.addEventListener('input', () => {
-        const digits = phoneInput.value.replace(/\D/g, '');
-        if (digits.length > 11) {
-            if (isSingleDigitInsertion(phoneLastGood, digits)) {
-                const caret = Math.max(0, (phoneInput.selectionStart ?? 12) - 1);
-                phoneInput.value = phoneLastGood;
-                try { phoneInput.setSelectionRange(caret, caret); } catch (e) {}
-                showPhoneError('limit', false);
-            } else {
-                showPhoneError('long');
-            }
-            return;
-        }
-        if (digits !== phoneInput.value) phoneInput.value = digits;
-        phoneLastGood = digits;
-        hidePhoneError();
-    });
-    phoneInput.addEventListener('blur', () => { validatePhoneField(false); });
-    document.getElementById('encodeCaseDialog')?.addEventListener('close', hidePhoneError);
-}
+document.getElementById('luponDestinationSelect')?.addEventListener('change', (e) => {
+    const isLupon = e.currentTarget.value === 'LUPON';
+    document.getElementById('luponEndorseFields').style.display = isLupon ? 'block' : 'none';
+    document.getElementById('luponMediatorInput').required = isLupon;
+    document.getElementById('luponScheduleInput').required = isLupon;
+    document.getElementById('luponReasonInput').required = true;
+});
 
 document.getElementById('encodeCaseForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -958,9 +1378,6 @@ document.addEventListener('input', (e) => {
     }
 });
 
-// -------------------------------------------------------------
-// PROFILE, PASSWORD, FILTERS, DRAWER, THEME, LOGOUT
-// -------------------------------------------------------------
 document.getElementById('profileForm')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -1005,27 +1422,22 @@ if (photoInput) {
 document.querySelectorAll('[data-blotter-filter]').forEach(tab => {
     tab.addEventListener('click', () => {
         state.filter = tab.dataset.blotterFilter;
-        document.querySelectorAll('[data-blotter-filter]').forEach(t => t.classList.toggle('is-selected', t === tab));
         renderBlotterTable();
     });
 });
+
+document.querySelectorAll('[data-blotter-summary-filter]').forEach(button => {
+    button.addEventListener('click', () => {
+        state.filter = button.dataset.blotterSummaryFilter;
+        renderBlotterTable();
+    });
+});
+
 document.getElementById('blotterSearchInput')?.addEventListener('input', renderBlotterTable);
 document.querySelector('[data-refresh-cases]')?.addEventListener('click', refreshOperationsData);
 document.querySelectorAll('[data-close-dialog]').forEach(btn => btn.addEventListener('click', () => btn.closest('dialog').close()));
-navLinks.forEach(link => link.addEventListener('click', () => setView(link.dataset.view)));
 
-const mobileMenuBtn = document.getElementById('mobileMenuBtn');
-const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
-const sidebarBackdrop = document.getElementById('sidebarBackdrop');
-const adminSidebar = document.getElementById('adminSidebar');
-function toggleDrawer(open) {
-    if (adminSidebar) adminSidebar.classList.toggle('is-open', open);
-    if (sidebarBackdrop) sidebarBackdrop.classList.toggle('is-open', open);
-    document.body.style.overflow = open ? 'hidden' : '';
-}
-mobileMenuBtn?.addEventListener('click', () => toggleDrawer(true));
-sidebarCloseBtn?.addEventListener('click', () => toggleDrawer(false));
-sidebarBackdrop?.addEventListener('click', () => toggleDrawer(false));
+navLinks.forEach(link => link.addEventListener('click', () => setView(link.dataset.view)));
 
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const themeToggleLabel = document.getElementById('themeToggleLabel');

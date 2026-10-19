@@ -1,4 +1,5 @@
 <?php
+session_start();
 require_once __DIR__ . '/../auth.php';
 
 header('Content-Type: application/json; charset=UTF-8');
@@ -23,9 +24,25 @@ $dob = trim((string) ($data['date_of_birth'] ?? $data['dateOfBirth'] ?? ''));
 $address = trim((string) ($data['address'] ?? ''));
 $purok = trim((string) ($data['purok'] ?? ''));
 $contactNumber = trim((string) ($data['contact_number'] ?? $data['contactNumber'] ?? ''));
+$otpCode = trim((string) ($data['otp_code'] ?? ''));
 
 if ($firstName === '' || $lastName === '' || $username === '' || $password === '' || $confirmPassword === '' || $dob === '' || $address === '' || $purok === '' || $contactNumber === '') {
     echo json_encode(['success' => false, 'message' => 'Please complete all required resident registration fields.']);
+    exit;
+}
+
+if ($otpCode === '') {
+    echo json_encode(['success' => false, 'message' => 'OTP verification code is required.']);
+    exit;
+}
+
+if (!isset($_SESSION['registration_otp']) || $otpCode != $_SESSION['registration_otp']) {
+    echo json_encode(['success' => false, 'message' => 'Invalid or expired OTP.']);
+    exit;
+}
+
+if ($contactNumber !== $_SESSION['registration_phone']) {
+    echo json_encode(['success' => false, 'message' => 'Phone number was changed after requesting OTP.']);
     exit;
 }
 
@@ -110,6 +127,9 @@ try {
         'contact_number' => $contactNumber,
     ], null, $userId);
 
+    unset($_SESSION['registration_otp']);
+    unset($_SESSION['registration_phone']);
+
     echo json_encode([
         'success' => true,
         'message' => 'Your registration has been submitted and is currently pending verification by the System Administrator.',
@@ -121,3 +141,4 @@ try {
     echo json_encode(['success' => false, 'message' => 'Registration failed. Please try again.']);
     exit;
 }
+?>

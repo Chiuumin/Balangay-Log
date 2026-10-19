@@ -16,8 +16,10 @@ try {
     $counts = [
         'pending' => 0,
         'in_progress' => 0,
+        'dispatched' => 0,
         'for_resolution' => 0,
         'resolved' => 0,
+        'closed' => 0,
         'critical' => 0,
         'total' => 0
     ];
@@ -42,12 +44,12 @@ try {
     // 3. Urgent cases
     $urgentCases = $pdo->query("SELECT {$cols} FROM incident_reports
         WHERE (priority_level IN ('Critical', 'High') OR status = 'CRITICAL')
-          AND status NOT IN ('RESOLVED', 'FOR_RESOLUTION')
+          AND status NOT IN ('RESOLVED', 'CLOSED', 'FOR_RESOLUTION')
         ORDER BY CASE WHEN priority_level = 'Critical' OR status = 'CRITICAL' THEN 0 ELSE 1 END, created_at DESC")->fetchAll();
 
     // 4. Case queue
     $caseQueue = $pdo->query("SELECT {$cols} FROM incident_reports
-        WHERE status NOT IN ('RESOLVED', 'FOR_RESOLUTION')
+        WHERE status NOT IN ('RESOLVED', 'CLOSED', 'FOR_RESOLUTION')
         ORDER BY CASE WHEN priority_level = 'Critical' OR status = 'CRITICAL' THEN 0
                       WHEN priority_level = 'High' THEN 1 ELSE 2 END, created_at DESC")->fetchAll();
 

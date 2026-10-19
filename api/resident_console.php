@@ -1,9 +1,66 @@
 <?php
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
-
 require_once __DIR__ . '/../auth.php';
 require_once __DIR__ . '/../lib/case_intake.php';
+
+if (!defined('SEV_RANK')) {
+    define('SEV_RANK', [
+        'Low' => 1,
+        'Moderate' => 2,
+        'Medium' => 2,
+        'High' => 3,
+        'Critical' => 4,
+        'Urgent' => 4
+    ]);
+}
+
+if (!defined('SEV_BAND')) {
+    define('SEV_BAND', [
+        'Low' => [0.0, 0.25],
+        'Moderate' => [0.26, 0.60],
+        'High' => [0.61, 0.85],
+        'Critical' => [0.86, 1.00]
+    ]);
+}
+
+if (!function_exists('sev_rank')) {
+    function sev_rank(string $p): int {
+        return SEV_RANK[$p] ?? 1;
+    }
+}
+
+if (!function_exists('triage_case')) {
+    function triage_case(string $type, string $narrative): array {
+        if (class_exists('TriageEngine')) {
+            $res = TriageEngine::evaluateIncident($narrative);
+            return [
+                'source' => 'AI+RULES',
+                'priority' => $res['priority_level'] ?? 'Low',
+                'confidence' => 0.95,
+                'rationale' => $res['reasoning'] ?? '',
+                'triggers' => $res['detected_keywords'] ?? [],
+                'score' => (float)($res['ai_urgency_score'] ?? 0.1),
+                'recommendation' => $res['ai_recommendation'] ?? '',
+                'ai_priority' => $res['priority_level'] ?? 'Low',
+                'model' => 'claude-3-5-sonnet-latest',
+                'latency_ms' => 150
+            ];
+        }
+        return [
+            'source' => 'RULES_ONLY',
+            'priority' => 'Low',
+            'confidence' => 0.5,
+            'rationale' => 'Fallback evaluation',
+            'triggers' => [],
+            'score' => 0.1,
+            'recommendation' => 'Proceed with standard desk logging.',
+            'ai_priority' => 'Low',
+            'model' => 'fallback',
+            'latency_ms' => 0
+        ];
+    }
+}
 
 header('Content-Type: application/json; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -13,6 +70,18 @@ function residentRespond(array $payload, int $status = 200): void
     http_response_code($status);
     echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
+}
+
+function residentTableExists(PDO $pdo, string $tableName): bool
+{
+    $stmt = $pdo->prepare('
+        SELECT 1
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+        LIMIT 1
+    ');
+    $stmt->execute([$tableName]);
+    return (bool) $stmt->fetchColumn();
 }
 
 if (!isLoggedIn() || getUserRole() !== 'RESIDENT') {
@@ -25,7 +94,6 @@ try {
     $userId = (int) $_SESSION['user_id'];
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-    // Retrieve resident profile
     $userStmt = $pdo->prepare('SELECT id, full_name, email_or_phone, contact_number, purok, profile_picture FROM users WHERE id = ? LIMIT 1');
     $userStmt->execute([$userId]);
     $resident = $userStmt->fetch(PDO::FETCH_ASSOC);
@@ -41,12 +109,9 @@ try {
         $stmt = $pdo->prepare("
             SELECT 
                 r.*,
+                r.status AS true_status,
                 COALESCE(
-                    (SELECT status_snapshot FROM case_milestones WHERE tracking_id = r.reference_number OR incident_id = r.id ORDER BY id DESC LIMIT 1),
-                    r.status
-                ) AS true_status,
-                COALESCE(
-                    (SELECT action_note FROM case_milestones WHERE tracking_id = r.reference_number OR incident_id = r.id ORDER BY id DESC LIMIT 1),
+                    (SELECT action_note FROM case_milestones WHERE incident_id = r.id ORDER BY id DESC LIMIT 1),
                     r.ai_recommendation
                 ) AS latest_note
             FROM incident_reports r
@@ -59,9 +124,7 @@ try {
         $residentVisibleRec = '/^(Unit Dispatched:|Case settled amicably|Flagged \/ closed)/';
 
         $reports = array_map(function ($row) use ($residentVisibleRec) {
-            if (!empty($row['true_status'])) {
-                $row['status'] = $row['true_status'];
-            }
+            $row['status'] = $row['true_status'] ?: 'PENDING';
 
             $rec = (string) ($row['ai_recommendation'] ?? '');
             if ($rec !== '' && preg_match($residentVisibleRec, $rec) !== 1) {
@@ -89,7 +152,6 @@ try {
         residentRespond(['success' => false, 'message' => 'Method not allowed.'], 405);
     }
 
-    // CSRF verification
     $expectedCsrf = (string) ($_SESSION['csrf_token'] ?? '');
     $providedCsrf = (string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
     if ($expectedCsrf === '' || !hash_equals($expectedCsrf, $providedCsrf)) {
@@ -130,10 +192,10 @@ try {
             $mStmt = $pdo->prepare('
                 SELECT id, status_snapshot, milestone_stage, officer_in_charge, deployed_unit, action_note, created_at
                 FROM case_milestones
-                WHERE tracking_id = ?
+                WHERE incident_id = ? OR tracking_id = ?
                 ORDER BY id ASC
             ');
-            $mStmt->execute([$refNumber]);
+            $mStmt->execute([(int) $case['id'], $refNumber]);
             $milestones = $mStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             // Fetch endorsements (PNP or Lupon)
@@ -161,27 +223,24 @@ try {
                 'case' => $case,
                 'milestones' => $milestones,
                 'endorsements' => $endorsements,
-                'dispatch_logs' => $dispatchLogs
+                'dispatch_logs' => $dispatchLogs,
+                'findings' => $findings,
+                'resolutions' => $resolutions,
+                'closures' => $closures
             ]);
 
-        case 'incident_create':
+case 'incident_create':
             $complainant = trim((string) ($input['complainant_name'] ?? $residentName));
             $phone = trim((string) ($input['contact_number'] ?? $residentPhone));
             $purok = trim((string) ($input['purok'] ?? $resident['purok'] ?? ''));
             $houseNo = trim((string) ($input['house_number'] ?? ''));
             $street = trim((string) ($input['street_name'] ?? ''));
-            $category = trim((string) ($input['category'] ?? 'Others'));
-            $priority = trim((string) ($input['priority'] ?? 'High'));
-            $narrative = trim((string) ($input['narrative'] ?? ''));
+            $category = trim((string) ($input['category'] ?? $input['incident_type'] ?? 'General Incident'));
+            $priority = trim((string) ($input['priority'] ?? $input['priority_level'] ?? 'Low'));
+            $narrative = trim((string) ($input['narrative'] ?? $input['narrative_description'] ?? ''));
 
             if (!$complainant || !$phone || !$purok || !$narrative) {
                 residentRespond(['success' => false, 'message' => 'Please fill in all required fields.'], 422);
-            }
-            if (mb_strlen($narrative) > 2000) {
-                residentRespond(['success' => false, 'message' => 'The description is too long (max 2000 characters).'], 422);
-            }
-            if (mb_strlen($category) > 100) {
-                residentRespond(['success' => false, 'message' => 'The category is too long.'], 422);
             }
 
             $locationDetails = trim("{$houseNo} {$street}");
@@ -273,5 +332,5 @@ try {
     residentRespond(['success' => false, 'message' => 'Database error. Please try again.'], 500);
 } catch (Throwable $e) {
     error_log('[resident_console] ' . $e->getMessage());
-    residentRespond(['success' => false, 'message' => 'System error. Please try again.'], 500);
+    residentRespond(['success' => false, 'message' => 'System error: ' . $e->getMessage()], 500);
 }

@@ -5,7 +5,6 @@ requireRole(['RESIDENT']);
 $pdo = getDatabaseConnection();
 $userId = (int) ($_SESSION['user_id'] ?? 0);
 
-
 $stmt = $pdo->prepare('SELECT full_name, email_or_phone, contact_number, purok, profile_picture FROM users WHERE id = ? LIMIT 1');
 $stmt->execute([$userId]);
 $userRecord = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -40,10 +39,8 @@ if (!$initials) $initials = 'JD';
 </head>
 <body>
 <div class="admin-shell">
-        <!-- Backdrop Dimmer Overlay -->
         <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
-        <!-- Sticky Mobile Header Bar -->
         <header class="mobile-top-header">
             <button class="mobile-hamburger-btn" id="mobileMenuBtn" type="button" aria-label="Open Navigation">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
@@ -58,23 +55,27 @@ if (!$initials) $initials = 'JD';
             </a>
         </header>
 
-        <!-- Sliding Sidebar Drawer -->
         <aside class="admin-sidebar" id="adminSidebar">
             <div class="sidebar-header-row">
                 <a class="admin-brand" href="resident_dashboard.php" aria-label="BalangayLog Resident Portal">
                     <span class="admin-brand-mark">B</span>
                     <span><strong>BalangayLog</strong><small>BARANGAY DUALE</small></span>
                 </a>
-                <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close Navigation">×</button>
+                <div class="sidebar-header-actions">
+                    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" type="button" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">
+                        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+                    </button>
+                    <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close Navigation">×</button>
+                </div>
             </div>
 
-<div class="admin-identity">
-        <span class="identity-avatar" id="residentAvatar" style="position: relative; overflow: hidden;">
-            <span id="residentSidebarInitials" style="<?= $profilePic ? 'display: none;' : '' ?>"><?= $initials ?></span>
-            <img id="residentSidebarPic" src="<?= $profilePic ?? '' ?>" alt="Resident Avatar" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; <?= $profilePic ? 'display: block;' : 'display: none;' ?>">
-        </span>
-        <span><strong id="residentName"><?= $residentName ?></strong><small>Verified • <?= $purok ?></small></span>
-    </div>
+            <div class="admin-identity">
+                <span class="identity-avatar" id="residentAvatar" style="position: relative; overflow: hidden;">
+                    <span id="residentSidebarInitials" style="<?= $profilePic ? 'display: none;' : '' ?>"><?= $initials ?></span>
+                    <img id="residentSidebarPic" src="<?= $profilePic ?? '' ?>" alt="Resident Avatar" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; <?= $profilePic ? 'display: block;' : 'display: none;' ?>">
+                </span>
+                <span><strong id="residentName"><?= $residentName ?></strong><small>Verified • <?= $purok ?></small></span>
+            </div>
 
             <nav class="admin-nav" aria-label="Resident Portal Views">
                 <button class="admin-nav-link is-active" type="button" data-view="overview"><span class="nav-symbol">▦</span>Dashboard / Home</button>
@@ -91,7 +92,6 @@ if (!$initials) $initials = 'JD';
             </div>
         </aside>
 
-        <!-- MAIN VIEWSPACE -->
         <main class="admin-main">
             <header class="admin-topbar">
                 <div>
@@ -103,7 +103,6 @@ if (!$initials) $initials = 'JD';
 
             <div class="notice" id="pageNotice" role="status" hidden></div>
 
-            <!-- VIEW 1: DASHBOARD / HOME -->
             <section class="admin-view" id="view-overview">
                 <div class="section-heading">
                     <div>
@@ -148,7 +147,6 @@ if (!$initials) $initials = 'JD';
                 </div>
             </section>
 
-            <!-- VIEW 2: ALL FILED REPORTS (Full table + filters) -->
             <section class="admin-view" id="view-reports" hidden>
                 <div class="section-heading">
                     <div>
@@ -190,7 +188,6 @@ if (!$initials) $initials = 'JD';
                 </div>
             </section>
 
-            <!-- VIEW 3: EMERGENCY HOTLINES -->
             <section class="admin-view" id="view-hotlines" hidden>
                 <div class="section-heading">
                     <div>
@@ -241,7 +238,6 @@ if (!$initials) $initials = 'JD';
                 </div>
             </section>
 
-            <!-- VIEW 4: RESIDENCY PROFILE & SECURITY SETTINGS (Identical to Admin Settings) -->
             <section class="admin-view" id="view-profile" hidden>
                 <div class="section-heading">
                     <div>
@@ -250,7 +246,7 @@ if (!$initials) $initials = 'JD';
                     </div>
                 </div>
 
-<div class="settings-stack">
+                <div class="settings-stack">
                     <div class="content-panel profile-card">
                         <form id="profileForm" enctype="multipart/form-data">
                             <div class="profile-header-group">
@@ -336,174 +332,198 @@ if (!$initials) $initials = 'JD';
         </main>
     </div>
 
-    <!-- DIALOG: FILE INCIDENT REPORT (Identical Dialog Architecture) -->
-<!-- DIALOG: ENCODE NEW INCIDENT REPORT (Matches Official Schema Exactly) -->
-<dialog class="admin-dialog" id="reportDialog" style="width: min(640px, calc(100vw - 32px)); max-height: 90vh;">
-    <form id="incidentForm" method="dialog">
+    <!-- MODAL: ENCODE WALK-IN CASE (AI-Driven Format Matching Officer UI) -->
+    <dialog class="admin-dialog" id="reportDialog" style="width: min(640px, calc(100vw - 32px)); max-height: 90vh;">
+        <form id="incidentForm" method="dialog">
+            <div class="dialog-heading">
+                <div>
+                    <h2 style="font-size: 19px; font-weight: 800; font-family: 'Manrope', sans-serif;">Encode Walk-In Desk Blotter</h2>
+                    <p style="margin: 3px 0 0; color: var(--muted); font-size: 12px;">Transcribe citizen narrative. Category and Priority are evaluated automatically by AI[cite: 17].</p>
+                </div>
+                <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
+            </div>
+            <div style="max-height: calc(90vh - 170px); overflow-y: auto; padding-right: 6px; display: grid; gap: 14px;">
+                <div style="border-bottom: 1px solid var(--line); padding-bottom: 12px;">
+                    <p class="eyebrow" style="color: var(--teal); font-weight: 800; margin-bottom: 8px;">COMPLAINANT INFORMATION</p>
+                    <div class="form-row">
+                        <div>
+                            <label for="complainantNameInput">Complainant Full Name *</label>
+                            <input id="complainantNameInput" name="complainant_name" value="<?= $residentName ?>" required autocomplete="name" placeholder="e.g., Marites Ramos">
+                        </div>
+                        <div>
+                            <label for="complainantPhoneInput">Contact Phone (09XXXXXXXXX) *</label>
+                            <input id="complainantPhoneInput" name="contact_number" value="<?= $contactNumber ?>" required autocomplete="tel" placeholder="09171234567">
+                        </div>
+                    </div>
+                    <div class="form-row" style="margin-top: 10px;">
+                        <div>
+                            <label for="purokSelect">Purok / Zone *</label>
+                            <select id="purokSelect" name="purok" required autocomplete="address-level3">
+                                <option value="">Select Purok</option>
+                                <option value="Purok 1">Purok 1</option>
+                                <option value="Purok 2" <?= $purok === 'Purok 2' ? 'selected' : '' ?>>Purok 2</option>
+                                <option value="Purok 3" <?= $purok === 'Purok 3' ? 'selected' : '' ?>>Purok 3</option>
+                                <option value="Purok 4">Purok 4</option>
+                                <option value="Purok 5">Purok 5</option>
+                                <option value="Purok 6">Purok 6</option>
+                                <option value="Purok 7">Purok 7</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="streetAddressInput">
+                                Street Address / Landmark
+                                <input id="streetAddressInput" name="street_name" autocomplete="street-address" placeholder="e.g., Lot 5, Batol St.">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <p class="eyebrow" style="color: var(--teal); font-weight: 800; margin-bottom: 8px;">INCIDENT NARRATIVE &amp; AI CLASSIFICATION</p>
+                    <div>
+                        <label for="narrativeDescriptionInput">Blotter Narrative &amp; Facts *</label>
+                        <textarea id="narrativeDescriptionInput" name="narrative" rows="5" required placeholder="Type the incident narrative facts here. The AI will evaluate the details to automatically categorize and assign priority..."></textarea>
+                    </div>
+
+                    <input type="hidden" name="incident_type" id="aiGeneratedCategoryInput" value="General Incident">
+                    <input type="hidden" name="priority_level" id="aiGeneratedPriorityInput" value="Low">
+
+                    <div class="ai-inspection-panel" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line, rgba(255, 255, 255, 0.08)); border-radius: 8px; padding: 14px; margin-top: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--muted);" id="aiTriageStatus">
+                                🤖 AI Automated Triage &amp; Categorization[cite: 17]
+                            </span>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <span id="aiAssessedCategoryBadge" class="pill pill-blue" style="font-weight: 700; font-size: 11px;">Category: Pending</span>
+                                <span id="aiUrgencyScoreBadge" class="pill" style="font-weight: 800; font-size: 11px;">Priority: Low (0%)</span>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 10px;">
+                            <label style="font-size: 11.5px; font-weight: 700; display: block; margin-bottom: 4px; color: var(--ink);">
+                                Identified Threat &amp; Disturbance Keywords:
+                            </label>
+                            <div id="detectedKeywordsContainer" style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                <span style="font-size: 11.5px; color: var(--muted);">Type narrative details above to start AI classification...</span>
+                            </div>
+                        </div>
+
+                        <div style="border-top: 1px dashed var(--line, rgba(255, 255, 255, 0.15)); padding-top: 10px;">
+                            <label style="font-size: 11.5px; font-weight: 700; display: block; margin-bottom: 3px; color: var(--ink);">
+                                AI Assessment &amp; Action Recommendation:
+                            </label>
+                            <div id="aiReasoningBox" style="font-size: 12.5px; color: var(--muted); background: rgba(0, 0, 0, 0.15); padding: 10px; border-radius: 6px; line-height: 1.5;">
+                                Waiting for narrative facts to evaluate jurisdiction and emergency level...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="dialog-actions" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line);">
+                <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
+                <button class="button button-primary" type="submit" style="background: #173d3b; border-color: #173d3b;">Encode &amp; Log Case</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog class="admin-dialog resident-status-dialog" id="reportDetailDialog">
         <div class="dialog-heading">
             <div>
-                <h2 style="font-size: 19px; font-weight: 800; font-family: 'Manrope', sans-serif;">Encode New Incident Report</h2>
-                <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
-                    <span class="eyebrow" style="margin: 0; font-size: 11px;">REPORTING CHANNEL:</span>
-                    <select name="reporting_channel" style="min-height: 30px; font-size: 11.5px; padding: 2px 8px; width: auto; border: 1px solid var(--line); border-radius: 4px;">
-                        <option value="Citizen Online Report" selected>Citizen Online Report</option>
-                        <option value="Walk-in Desk">Walk-in Desk</option>
-                        <option value="Hotline Call">Hotline Call</option>
-                    </select>
-                </div>
+                <p class="eyebrow">CASE STATUS TRACKING</p>
+                <h2 id="detailDialogTitle">Incident Progress</h2>
             </div>
             <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
         </div>
 
-        <div style="max-height: calc(90vh - 170px); overflow-y: auto; padding-right: 6px; display: grid; gap: 14px;">
-            <!-- SECTION 1: COMPLAINANT / REPORTER INFO -->
-            <div style="border-bottom: 1px solid var(--line); padding-bottom: 12px;">
-                <p class="eyebrow" style="color: var(--teal); font-weight: 800; letter-spacing: 0.5px; margin-bottom: 10px;">COMPLAINANT / REPORTER INFO</p>
-                <div class="form-row">
-                    <label>Full Name *
-                        <input name="complainant_name" value="<?= $residentName ?>" required placeholder="e.g., Ligaya Bautista">
-                    </label>
-                    <label>Contact Number *
-                        <input name="contact_number" value="<?= htmlspecialchars((string)($currentUser['contact_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" required placeholder="09xxxxxxxxx">
-                    </label>
+        <div class="tracking-stepper resident-status-stepper" id="trackingStepper">
+            <div class="stepper-step is-done" id="step-reported">
+                <div class="stepper-node">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
                 </div>
-
-                <div class="form-row" style="margin-top: 10px;">
-                    <label>Purok / Zone *
-                        <select name="purok" id="purokSelect" required>
-                            <option value="">Select Purok</option>
-                            <option value="Purok 1">Purok 1</option>
-                            <option value="Purok 2" <?= $purok === 'Purok 2' ? 'selected' : '' ?>>Purok 2</option>
-                            <option value="Purok 3" <?= $purok === 'Purok 3' ? 'selected' : '' ?>>Purok 3</option>
-                            <option value="Purok 4">Purok 4</option>
-                            <option value="Purok 5">Purok 5</option>
-                            <option value="Purok 6">Purok 6</option>
-                        </select>
-                    </label>
-                    <label>House / Bldg No. *
-                        <input name="house_number" required placeholder="e.g., 124 or Lot 5">
-                    </label>
-                </div>
-
-                <div style="margin-top: 10px;">
-                    <label>Street Name *
-                        <input name="street_name" required placeholder="e.g., Rizal St.">
-                    </label>
-                </div>
+                <span class="stepper-label">Reported</span>
             </div>
 
-            <!-- SECTION 2: INCIDENT DETAILS -->
-            <div>
-                <p class="eyebrow" style="color: var(--teal); font-weight: 800; letter-spacing: 0.5px; margin-bottom: 10px;">INCIDENT DETAILS</p>
-                <label>Incident Summary / Title *
-                    <input name="summary" required placeholder="e.g., Loud Music Disturbance at Sitio Masaya">
-                </label>
-
-                <div class="form-row" style="margin-top: 10px;">
-                    <label>Category *
-                        <select name="category" required>
-                            <option value="">Select Category</option>
-                            <option value="Noise Disturbance">Noise Disturbance</option>
-                            <option value="Flooding">Flooding / Drainage</option>
-                            <option value="Road Obstruction">Road Obstruction</option>
-                            <option value="Vandalism">Vandalism</option>
-                            <option value="Physical Altercation">Physical Altercation</option>
-                            <option value="Property Dispute">Property Dispute</option>
-                            <option value="Others">Others</option>
-                        </select>
-                    </label>
-                    <label>Initial Priority (AI / Officer) *
-                        <select name="priority" required>
-                            <option value="Low">Low</option>
-                            <option value="Normal">Normal</option>
-                            <option value="High" selected>High</option>
-                            <option value="Urgent">Urgent / Critical</option>
-                        </select>
-                    </label>
+            <div class="stepper-step" id="step-review">
+                <div class="stepper-node">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                    </svg>
                 </div>
-
-                <div style="margin-top: 10px;">
-                    <label>Incident Narrative / Blotter Notes *
-                        <textarea name="narrative" rows="4" required placeholder="Provide clear description of the incident..."></textarea>
-                    </label>
-                </div>
+                <span class="stepper-label">Desk Review</span>
             </div>
+
+            <div class="stepper-step" id="step-in-progress">
+                <div class="stepper-node">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="9"></circle>
+                        <path d="M12 7v5l3 2"></path>
+                    </svg>
+                </div>
+                <span class="stepper-label">In Progress</span>
+            </div>
+
+            <div class="stepper-step" id="step-action">
+                <div class="stepper-node">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    </svg>
+                </div>
+                <span class="stepper-label">Unit Dispatched</span>
+            </div>
+
+            <div class="stepper-step" id="step-awaiting-resolution">
+                <div class="stepper-node">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3v18"></path>
+                        <path d="M5 7h14"></path>
+                        <path d="M7 7l-4 7h8L7 7z"></path>
+                        <path d="M17 7l-4 7h8l-4-7z"></path>
+                    </svg>
+                </div>
+                <span class="stepper-label">Awaiting Resolution</span>
+            </div>
+
+            <div class="stepper-step" id="step-findings">
+                <div class="stepper-node">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <path d="M14 2v6h6"></path>
+                        <path d="m9 15 2 2 4-4"></path>
+                    </svg>
+                </div>
+                <span class="stepper-label">Findings</span>
+            </div>
+
+            <div class="stepper-step" id="step-resolved">
+                <div class="stepper-node">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="m9 12 2 2 4-4"></path>
+                    </svg>
+                </div>
+                <span class="stepper-label">Resolved</span>
+            </div>
+
+        </div>
+
+        <div class="resident-status-scroll" id="reportDetailScroll">
+            <div id="reportDetailContent" class="detail-content" style="border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 16px;"></div>
+            <h3 class="resident-status-history-title">Milestone History</h3>
+            <div class="tracking-timeline" id="trackingTimeline"></div>
         </div>
 
         <div class="dialog-actions" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line);">
-            <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
-            <button class="button button-primary" type="submit" style="background: #112222; border-color: #112222;">Encode &amp; File Case</button>
+            <button class="button button-quiet" type="button" data-close-dialog>Close</button>
         </div>
-    </form>
-</dialog>
+    </dialog>
 
-    <!-- DIALOG: VIEW INCIDENT DETAILS & OFFICER FEEDBACK -->
-<dialog class="admin-dialog" id="reportDetailDialog" style="width: min(640px, calc(100vw - 32px)); max-height: 92vh;">
-    <div class="dialog-heading">
-        <div>
-            <p class="eyebrow">CASE STATUS TRACKING</p>
-            <h2 id="detailDialogTitle">Incident Progress</h2>
-        </div>
-        <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
-    </div>
-
-<!-- Modern Civic Logistics Stepper -->
-<div class="tracking-stepper" id="trackingStepper">
-    <div class="stepper-step is-done" id="step-reported">
-        <div class="stepper-node">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-        </div>
-        <span class="stepper-label">Reported</span>
-    </div>
-
-    <div class="stepper-step" id="step-review">
-        <div class="stepper-node">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-            </svg>
-        </div>
-        <span class="stepper-label">Desk Review</span>
-    </div>
-
-    <div class="stepper-step" id="step-action">
-        <div class="stepper-node">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-            </svg>
-        </div>
-        <span class="stepper-label">Unit Dispatched</span>
-    </div>
-
-    <div class="stepper-step" id="step-resolved">
-        <div class="stepper-node">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <path d="m9 12 2 2 4-4"></path>
-            </svg>
-        </div>
-        <span class="stepper-label">Resolved</span>
-    </div>
-</div>
-
-    <div style="max-height: calc(92vh - 240px); overflow-y: auto; padding-right: 6px;">
-        <!-- Core Details -->
-        <div id="reportDetailContent" class="detail-content" style="border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 16px;"></div>
-
-        <!-- Timeline Log -->
-        <h3 style="font-size: 13px; font-weight: 800; font-family: 'Manrope', sans-serif; margin-bottom: 12px; color: var(--ink);">Milestone History</h3>
-        <div class="tracking-timeline" id="trackingTimeline"></div>
-    </div>
-
-    <div class="dialog-actions" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line);">
-        <button class="button button-quiet" type="button" data-close-dialog>Close</button>
-    </div>
-</dialog>
-
+    <script src="sidebar.js?v=<?= time() ?>"></script>
+    <script src="officer-ai.js?v=<?= time() ?>"></script>
     <script src="resident-dashboard.js?v=<?= time() ?>"></script>
 </body>
 </html>

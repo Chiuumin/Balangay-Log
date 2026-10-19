@@ -68,3 +68,4 @@ try {
     error_log('[encode_case] ' . $e->getMessage());
     jsonError(500, 'The request could not be completed.');
 }
+?>

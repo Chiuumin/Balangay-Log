@@ -61,9 +61,10 @@
 .pill-resolved, .pill-endorsed, .pill-ongoing { color: #287048; background: #e6f3e9; }
 
 .analytics-filters { margin-top: 14px; }
-.filter-grid { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; }
-.filter-grid label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
-.filter-grid input, .filter-grid select, .panel-heading .select-field select {
+.filter-toolbar { display: grid; gap: 12px; }
+.filter-toolbar-row, .advanced-filter-grid, .filter-grid { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; }
+.filter-toolbar-row label, .advanced-filter-grid label, .filter-grid label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.filter-toolbar-row input, .filter-toolbar-row select, .advanced-filter-grid input, .advanced-filter-grid select, .filter-grid input, .filter-grid select, .panel-heading .select-field select {
     min-width: 0;
     min-height: 39px;
     padding: 8px 10px;
@@ -73,6 +74,11 @@
     background: #fff;
     font: 500 12px 'DM Sans', sans-serif;
 }
+.advanced-filters { border: 1px solid var(--line); border-radius: 4px; background: #f7faf9; }
+.advanced-filters summary { list-style: none; padding: 10px 12px; color: var(--teal-dark); font: 700 11px 'DM Sans', sans-serif; cursor: pointer; }
+.advanced-filters summary::-webkit-details-marker { display: none; }
+.advanced-filters[open] summary { border-bottom: 1px solid var(--line); }
+.advanced-filter-grid { padding: 12px; }
 .filter-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-top: 14px; }
 .filter-feedback, .coverage-note { color: var(--muted); font-size: 11px; }
 .coverage-note { margin-top: 11px; }
@@ -123,7 +129,7 @@
     .summary-cards { grid-template-columns: repeat(3, minmax(130px, 1fr)); }
 }
 @media (max-width: 760px) {
-    .filter-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+    .filter-toolbar-row, .advanced-filter-grid, .filter-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
     .analytics-tabs { overflow-x: auto; }
     .analytics-tabs [role="tab"] { flex: 0 0 auto; }
     .summary-cards { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
@@ -134,7 +140,7 @@
     .report-summary { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 420px) {
-    .filter-grid, .summary-cards { grid-template-columns: 1fr; }
+    .filter-toolbar-row, .advanced-filter-grid, .filter-grid, .summary-cards { grid-template-columns: 1fr; }
     .report-pagination { justify-content: center; }
 }
 

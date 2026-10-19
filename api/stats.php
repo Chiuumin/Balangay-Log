@@ -13,8 +13,8 @@ try {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
     ]);
 
-    // 1. Active Cases (Anything not RESOLVED or DISMISSED)
-    $stmt = $pdo->query("SELECT COUNT(*) as count FROM incident_reports WHERE status NOT IN ('RESOLVED', 'DISMISSED')");
+    // 1. Active cases exclude resolved and administratively closed records.
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM incident_reports WHERE status NOT IN ('RESOLVED', 'CLOSED', 'DISMISSED')");
     $activeCases = $stmt->fetch()['count'];
 
     // 2. Resolved This Month

@@ -5,6 +5,7 @@ date_default_timezone_set('Asia/Manila');
 header('Content-Type: application/json; charset=UTF-8');
 
 require_once __DIR__ . '/../auth.php';
+require_once __DIR__ . '/../lib/case_workflow.php';
 require_once __DIR__ . '/../lib/triage.php';          // SEV_RANK
 require_once __DIR__ . '/../lib/override_gate.php';
 
@@ -33,6 +34,10 @@ function audit_insert(PDO $pdo, int $incidentId, string $action, int $actorId, s
 requireJsonPost();
 $actor   = requireApiRole(['OFFICER', 'CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN']);
 $actorId = (int) $actor['id'];
+$role = strtoupper((string) $actor['role']);
+if (!caseWorkflowCan($role, 'priority')) {
+    fail(403, 'Your role is not authorized to change case priority.');
+}
 session_write_close();
 
 $input = json_decode(file_get_contents('php://input'), true);
@@ -100,6 +105,10 @@ try {
         fail(409, 'This case was changed by someone else. Reload and try again.');
     }
     $status      = $locked['status'];
+    if (in_array($status, ['RESOLVED', 'CLOSED'], true)) {
+        $pdo->rollBack();
+        fail(409, 'This case is closed and its severity cannot be changed.');
+    }
     $finalStatus = $status;
 
     if ($isRaise) {
