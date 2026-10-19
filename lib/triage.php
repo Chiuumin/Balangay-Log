@@ -28,7 +28,7 @@ function triage_lexicon_base(): array {
         'threat_kill' => '/\b(papatayin|patayin\s+(?:kita|ka|ko|natin|sila)|babarilin|sasaksakin|susunugin|kill\s+you|ipapapatay|ipapatay|ambush|babalikan\s+kita)\b/u',
         'threat'      => '/\b(banta|binantaan|pinagbantaan|nagbabanta|pagbabanta|threat\w*|threaten\w*|tinakot|tinatakot|nananakot|intimidat\w*|blackmail\w*)\b/u',
         'sexual'      => '/\b(rape\w*|ginahasa|gahasa|panggagahasa|molest\w*|hinipuan|hinalay|sexual\s+(?:assault|abuse)|sekswal\w*)\b/u',
-        'harass'      => '/\b(binastos|nambastos|bastos|catcall\w*|harass\w*|nanghaharas|stalk\w*|sinusundan)\b/u',
+        'harass'      => '/\b(binastos|nambastos|bastos|catcall\w*|harass\w*|nanghaharas|stalk\w*|sinusundan|hinahabol|pinag-?hahabol|nag-?hahabol)\b/u',
         'kidnap'      => '/\b(kidnap\w*|dinukot|binihag|hostage)\b/u',
         'missing_child' => '/\b(nawawalang\s+bata|nawawala\s+ang\s+bata|missing\s+child|nawawala\s+ang\s+anak|nawawalang\s+anak)\b/u',
         'missing'     => '/\b(nawawala\s+si|nawawala\s+ang\s+(?:asawa|tatay|nanay|lola|lolo|kapatid)|missing\s+person|nawawalang\s+(?:tao|matanda|lola|lolo))\b/u',
@@ -38,8 +38,8 @@ function triage_lexicon_base(): array {
         'selfharm'    => '/\b(magpapakamatay|nagpakamatay|magbibigti|nagbigti|nagbibigti|suicid\w*|self\s?harm|uminom\s+ng\s+lason|hiniwa\s+ang\s+pulso|ayaw\s+nang\s+mabuhay)\b/u',
         'physical'    => '/\b(suntok|sinuntok|sumuntok|suntukan|pinagsusuntok|bugbog|binugbog|pambubugbog|sampal|sinampal|sipa|sinipa|tadyak|tinadyakan|sabunot|sinabunot|ginulpi|gulpi|nanakit|pananakit|sinaktan|saktan|nananakit|inatake|assault\w*|punch\w*|slap\w*|kick\w*|beaten|attacked|nagsuntukan|nagbugbugan|bugbugan|rambol|rumble|riot|kaguluhan|pagkakagulo)\b/u',
         'verbal'      => '/\b(sigawan|nagsigawan|sinigawan|minura|pinagmumura|murahan|sumbatan|nag\s?away|pag\s?aaway|awayan|away|pagtatalo|nagtalo|argument|quarrel\w*|slander|libel|paninirang\s+puri|siraan|sinisiraan|oral\s+defamation)\b/u',
-        'relation'    => '/\b(asawa|mister|misis|kinakasama|live\s?in|partner|nobyo|nobya|boyfriend|girlfriend|ex\s?(?:wife|husband|bf|gf|partner|asawa|nobyo|nobya)|dating\s+(?:asawa|nobyo|nobya|kinakasama)|mag\s?asawa|mag\s?partner|ama\s+ng\s+anak|ina\s+ng\s+anak|tatay\s+ng\s+anak|nanay\s+ng\s+anak|husband|wife|spouse)\b/u',
-        'dom_abuse'   => '/\b(pinagbubuhatan\s+ng\s+kamay|sinasaktan|pinahihirapan|pinagbabawalan|ayaw\s+magsustento|walang\s+sustento|hindi\s+nagsusustento|ikinulong|pinipilit\s+na\s+makipag\s?sex|pang\s?aabuso|abusive|domestic\s+violence|vawc|ra\s?9262|battered|nambubugbog)\b/u',
+        'relation'    => '/\b(asawa|mister|misis|kinakasama|live\s?in|partner|nobyo|nobya|boyfriend|girlfriend|ex|ex\s?(?:wife|husband|bf|gf|partner|asawa|nobyo|nobya)|dating\s+(?:asawa|nobyo|nobya|kinakasama)|mag\s?asawa|mag\s?partner|ama\s+ng\s+anak|ina\s+ng\s+anak|tatay\s+ng\s+anak|nanay\s+ng\s+anak|husband|wife|spouse)\b/u',
+        'dom_abuse'   => '/\b(pinagbubuhatan(?:\s+ng\s+kamay)?|sinasaktan|pinahihirapan|pinagbabawalan|ayaw\s+magsustento|walang\s+sustento|hindi\s+nagsusustento|ikinulong|pinipilit\s+na\s+makipag\s?sex|pang\s?aabuso|abusive|domestic\s+violence|vawc|ra\s?9262|battered|nambubugbog)\b/u',
         'minor'       => '/\b(menor\s+de\s+edad|minor|bata|batang|paslit|sanggol|baby|teen\w*|binatilyo|dalagita|grade\s?\d+)\b/u',
         'intox'       => '/\b(lasing|nakainom|nag\s?iinuman|inuman|amoy\s+alak|lambanog|tuba|drunk|intoxicat\w*|nagwawala|bangag|nakashabu|nakadroga|lango)\b/u',
         'drugs'       => '/\b(shabu|droga|marijuana|damo|pot\s?session|nagtutulak|tulak|illegal\s+drugs|drug\s+den|cocaine|ecstasy|ketamine)\b/u',
@@ -69,15 +69,20 @@ function triage_normalize(string $s): string {
 function triage_signals(string $text): array {
     $hits = [];
     $ignored = [];
+    
+    // Global check: does the entire narrative explicitly indicate a toy/replica weapon?
+    $hasToyMarker = (bool) preg_match('/\b(laruan|toy|peke|fake|airsoft|replica)\b/u', $text);
+
     foreach (triage_lexicon() as $group => $re) {
         if (!preg_match_all($re, $text, $m, PREG_OFFSET_CAPTURE)) continue;
         foreach ($m[0] as [$term, $byte]) {
             $pos    = mb_strlen(substr($text, 0, $byte));
             $before = mb_substr($text, max(0, $pos - 60), min(60, $pos));
-            $after  = mb_substr($text, $pos + mb_strlen($term), 22);
-            $neg    = triage_is_negated($before, $after);
-            $toy    = in_array($group, ['firearm', 'bladed', 'stab'], true)
-                && (bool) preg_match('/(laruan|toy|peke|fake|airsoft|replica)/u', mb_substr($before, -28) . ' ' . $after);
+            $after  = mb_substr($text, $pos + mb_strlen($term), 60);
+            
+            $neg = triage_is_negated($before, $after);
+            $toy = in_array($group, ['firearm', 'bladed', 'stab'], true) && $hasToyMarker;
+
             $row = ['group' => $group, 'term' => $term, 'excerpt' => trim(mb_substr($text, max(0, $pos - 24), mb_strlen($term) + 48))];
             if ($neg || $toy) {
                 $row['reason'] = $toy ? 'toy or replica' : 'negated';
@@ -134,11 +139,15 @@ function analyze_narrative(string $narrative, string $hintType = ''): array {
     $text = triage_normalize($orig);
     [$hits, $ignored] = triage_signals($text);
 
+    // Group ONLY confirmed (non-negated, non-toy) hits
     $g = [];
-    foreach ($hits as $h) $g[$h['group']][] = $h['term'];
-    $has = fn(string ...$names) => (bool) array_intersect(array_keys($g), $names);
+    foreach ($hits as $h) {
+        $g[$h['group']][] = $h['term'];
+    }
 
+    $has = fn(string ...$names) => (bool) array_intersect(array_keys($g), $names);
     $minorAge = false;
+    
     if (preg_match_all('/\b(\d{1,2})\s*(?:taong\s*gulang|taon\s*gulang|years?\s*old|yo|y\/o|anyos)\b/u', $text, $am)) {
         foreach ($am[1] as $age) if ((int) $age < 18) $minorAge = true;
     }
@@ -194,7 +203,7 @@ function analyze_narrative(string $narrative, string $hintType = ''): array {
     if ($has('multi') && $violence) $add('High', 'several people are involved in violence');
     if ($physical) $add('Moderate', 'a physical altercation is reported');
     if ($threat)   $add('Moderate', 'threats or intimidation are reported');
-    if ($has('theft'))  $add('Moderate', 'a theft is reported');
+    if ($has('theft'))   $add('Moderate', 'a theft is reported');
     if ($has('harass')) $add('Moderate', 'harassment is reported');
     if ($has('damage')) $add('Moderate', 'property damage is reported');
     if ($has('gambling')) $add('Moderate', 'illegal gambling is reported');
@@ -217,7 +226,7 @@ function analyze_narrative(string $narrative, string $hintType = ''): array {
         'Kidnapping / Missing Person'     => ($kidnap || $has('missing_child') || $has('missing')) ? 8 : 0,
         'Medical Emergency'               => (($acute || $selfharm) && !$violence) ? 7 : 0,
         'Domestic Altercation'            => $domestic ? 7 : 0,
-        'Illegal Drugs'                   => $has('drugs') ? 6 : 0,
+        'Illegal Drugs'                    => $has('drugs') ? 6 : 0,
         'Physical Altercation'            => ($violence || $bladed || $improv || $injury) ? 6 : 0,
         'Theft & Burglary'                => ($has('theft') || $has('robbery')) ? 5 : 0,
         'Threats & Intimidation'          => ($threat || $threatK) ? 4 : 0,
