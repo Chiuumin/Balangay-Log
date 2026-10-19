@@ -64,6 +64,20 @@ function officerTableExists(PDO $pdo, string $table): bool
     return (bool) $stmt->fetchColumn();
 }
 
+function officerIncidentStatusSupports(PDO $pdo, string $status): bool
+{
+    $stmt = $pdo->query("
+        SELECT COLUMN_TYPE
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'incident_reports'
+          AND COLUMN_NAME = 'status'
+        LIMIT 1
+    ");
+    $columnType = $stmt->fetchColumn();
+    return is_string($columnType) && str_contains($columnType, "'" . $status . "'");
+}
+
 function officerReleaseDispatchResponders(PDO $pdo, int $incidentId, int $actorId, string $actorName): void
 {
     if (!officerTableExists($pdo, 'tanod_dispatch_records')
@@ -268,7 +282,7 @@ try {
                 SELECT reference_number, complainant_name, incident_type, purok, narrative_description 
                 FROM incident_reports 
                 WHERE (priority_level = 'Critical' OR status = 'CRITICAL') 
-                  AND status NOT IN ('RESOLVED', 'CLOSED')
+                  AND status NOT IN ('RESOLVED', 'CLOSED', 'REJECTED')
                   AND (deployed_unit IS NULL OR deployed_unit = '') 
                 ORDER BY created_at DESC 
                 LIMIT 1
@@ -291,7 +305,7 @@ try {
         try {
             $urgentStmt = $pdo->query("
                 SELECT * FROM incident_reports 
-                WHERE priority_level IN ('Critical', 'High') AND status NOT IN ('RESOLVED', 'CLOSED') 
+                WHERE priority_level IN ('Critical', 'High') AND status NOT IN ('RESOLVED', 'CLOSED', 'REJECTED')
                 ORDER BY (priority_level = 'Critical') DESC, created_at DESC
             ");
             $urgentCases = $urgentStmt ? $urgentStmt->fetchAll(PDO::FETCH_ASSOC) : [];
@@ -379,7 +393,7 @@ try {
                     ) latest ON latest.incident_id = ir.id
                     LEFT JOIN tanod_dispatch_record_responders dr ON dr.dispatch_id = latest.id
                     LEFT JOIN tanod_personnel tp ON tp.id = dr.tanod_id
-                    WHERE ir.status IN ('PENDING', 'UNDER_REVIEW', 'CRITICAL', 'IN_PROGRESS', 'DISPATCHED')
+                    WHERE ir.status IN ('IN_PROGRESS', 'DISPATCHED')
                     GROUP BY ir.id, ir.reference_number, ir.incident_type, ir.complainant_name,
                         ir.purok, ir.priority_level, ir.status, ir.created_at, ir.deployed_unit,
                         latest.id, latest.status, latest.unit, latest.directive_notes, latest.dispatched_at,
@@ -403,7 +417,7 @@ try {
                         NULL AS findings, NULL AS action_taken, NULL AS updated_by_name,
                         NULL AS updated_at, NULL AS responders
                     FROM incident_reports
-                    WHERE status IN ('PENDING', 'UNDER_REVIEW', 'CRITICAL', 'IN_PROGRESS', 'DISPATCHED')
+                    WHERE status IN ('IN_PROGRESS', 'DISPATCHED')
                         AND (status = 'DISPATCHED' OR deployed_unit IS NULL OR deployed_unit = '')
                     ORDER BY (status = 'DISPATCHED') DESC, created_at ASC
                 ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -479,6 +493,12 @@ try {
             'message' => 'Case workflow storage is not installed. Apply case_workflow_migration.sql, then try again.',
         ], 503);
     }
+    if ($action === 'flag_reject' && !officerIncidentStatusSupports($pdo, 'REJECTED')) {
+        officerRespond([
+            'success' => false,
+            'message' => 'Report rejection is not enabled in this database. Apply case_rejection_migration.sql, then try again.',
+        ], 503);
+    }
     $actionPermissions = [
         'accept_blotter' => 'triage',
         'dispatch_tanod' => 'assign',
@@ -492,7 +512,7 @@ try {
         'reschedule_lupon' => 'refer',
         'request_captain_endorsement' => 'refer',
         'resolve_case' => 'resolve',
-        'flag_reject' => 'close',
+        'flag_reject' => 'triage',
         'close_case' => 'close',
         'reopen_case' => 'reopen',
         'encode_case' => 'triage',
@@ -713,7 +733,7 @@ try {
                 }
                 $currentStatus = (string) $case['status'];
                 $eligibleStatuses = $closeRequested
-                    ? ['PENDING', 'UNDER_REVIEW', 'CRITICAL', 'IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION', 'RESOLVED']
+                    ? ['IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION', 'RESOLVED']
                     : ['IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION'];
                 if (!in_array($currentStatus, $eligibleStatuses, true)) {
                     $pdo->rollBack();
@@ -1042,12 +1062,31 @@ try {
 
             officerTransition($pdo, $refNumber, [
                 'status'           => 'IN_PROGRESS',
+                'allowed_from'     => ['PENDING', 'UNDER_REVIEW', 'CRITICAL'],
                 'milestone_status' => 'IN_PROGRESS',
                 'milestone_stage'  => 'DESK_REVIEW',
                 'officer'          => $actorName,
                 'note'             => $note,
             ]);
             officerRespond(['success' => true, 'message' => "Case #{$refNumber} accepted into active blotter."]);
+
+        case 'flag_reject':
+            $needRef();
+            $reason = trim((string) ($input['reason'] ?? ''));
+            if ($reason === '') {
+                officerRespond(['success' => false, 'message' => 'Provide a reason for rejecting this report.'], 422);
+            }
+            $tooLong($reason, 1000, 'Rejection reason');
+
+            officerTransition($pdo, $refNumber, [
+                'status' => 'REJECTED',
+                'allowed_from' => ['PENDING', 'UNDER_REVIEW', 'CRITICAL'],
+                'milestone_status' => 'REJECTED',
+                'milestone_stage' => 'REPORT_REJECTED',
+                'officer' => $actorName,
+                'note' => "Report rejected during triage. Reason: {$reason}",
+            ]);
+            officerRespond(['success' => true, 'message' => "Report #{$refNumber} rejected and removed from triage."]);
 
         case 'dispatch_tanod':
             $needRef();
@@ -1066,6 +1105,7 @@ try {
 
             officerTransition($pdo, $refNumber, [
                 'status'           => 'DISPATCHED',
+                'allowed_from'     => ['IN_PROGRESS', 'DISPATCHED'],
                 'milestone_status' => 'DISPATCHED',
                 'milestone_stage'  => 'UNIT_DISPATCHED',
                 'officer'          => $actorName,
@@ -1191,9 +1231,6 @@ try {
 
         case 'settle_lupon':
             officerRespond(['success' => false, 'message' => 'Use the findings review and resolution workflow to record a mediation settlement.'], 422);
-
-        case 'flag_reject':
-            officerRespond(['success' => false, 'message' => 'Cases must be finalized through the findings review and resolution workflow.'], 422);
 
         case 'reopen_case':
             $needRef();

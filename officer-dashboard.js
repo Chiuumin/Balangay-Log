@@ -71,7 +71,8 @@ function statusPill(status) {
         FOR_RESOLUTION: ['resolution', 'Awaiting Resolution'],
         LUPON: ['resolution', 'Awaiting Resolution'],
         RESOLVED: ['resolved', 'Resolved'],
-        CLOSED: ['resolved', 'Resolved']
+        CLOSED: ['resolved', 'Resolved'],
+        REJECTED: ['rejected', 'Report Rejected']
     };
     const [className, label] = statuses[s] || ['unknown', s.replace(/_/g, ' ') || 'Unknown'];
     return `<span class="status-badge status-badge--${className}">${escapeHtml(label)}</span>`;
@@ -89,6 +90,7 @@ function caseStatusLabel(status) {
         LUPON: 'Awaiting Resolution',
         RESOLVED: 'Resolved',
         CLOSED: 'Resolved',
+        REJECTED: 'Report Rejected',
         TRIAGE: 'Triage Assessment',
         PRIORITY_UPDATED: 'Priority Updated',
         REFERRAL: 'Referral',
@@ -185,7 +187,7 @@ function renderTriageQueue() {
             </div>
             <div class="queue-action-group">
                 <button class="btn-action-primary" data-action="accept" data-ref="${escapeHtml(item.reference_number)}">Accept &amp; Blotter</button>
-                <button class="btn-action-quiet" data-action="dispatch" data-ref="${escapeHtml(item.reference_number)}">Dispatch</button>
+                <button class="btn-action-quiet" data-action="reject" data-ref="${escapeHtml(item.reference_number)}">Reject / Mark as Spam</button>
             </div>
         </div>
     `).join('');
@@ -471,6 +473,7 @@ function renderCaseDetail(data) {
     const status = String(c.status || '').toUpperCase().replace(/\s+/g, '_');
     const isResolved = status === 'RESOLVED';
     const isAdministrativelyClosed = status === 'CLOSED';
+    const isRejected = status === 'REJECTED';
     const isDispatched = status === 'DISPATCHED';
     const role = String(state.currentUserRole).toUpperCase();
     const canAct = ['OFFICER', 'CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN'].includes(role);
@@ -551,9 +554,9 @@ function renderCaseDetail(data) {
     const findingEntries = Array.isArray(data.findings) ? data.findings : [];
     state.currentCaseFindings = findingEntries;
     const findingsSection = document.getElementById('caseFindingsSection');
-    const canRecordFindings = canAct && !isAdministrativelyClosed && !isResolved
+    const canRecordFindings = canAct && !isAdministrativelyClosed && !isResolved && !isRejected
         && workflowReady
-        && ['PENDING', 'UNDER_REVIEW', 'CRITICAL', 'IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION'].includes(status);
+        && ['IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION'].includes(status);
     findingsSection.hidden = !findingEntries.length && !canRecordFindings;
     document.getElementById('caseFindingsList').innerHTML = findingEntries.length
         ? `<ul class="case-findings-list">${findingEntries.map(item => `<li><strong>${escapeHtml(formatDateTime(item.created_at))}</strong><p><b>Observations:</b> ${escapeHtml(item.observations)}${item.persons_contacted ? `<br><b>Persons contacted:</b> ${escapeHtml(item.persons_contacted)}` : ''}<br><b>Action taken:</b> ${escapeHtml(item.action_taken)}<br><b>Findings:</b> ${escapeHtml(item.findings)}${item.recommended_next_steps ? `<br><b>Recommended next steps:</b> ${escapeHtml(item.recommended_next_steps)}` : ''}</p><small>By ${escapeHtml(item.submitted_by_name || 'System')}</small></li>`).join('')}</ul>`
@@ -569,8 +572,7 @@ function renderCaseDetail(data) {
         && workflowReady
         && ['IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION'].includes(status)
         && findingEntries.length > 0;
-    const canClosePending = workflowReady && canClose && ['PENDING', 'UNDER_REVIEW', 'CRITICAL'].includes(status) && findingEntries.length > 0;
-    const canFinalize = canClose && (isResolved || canClosePending);
+    const canFinalize = canClose && isResolved;
     resolutionSection.hidden = workflowReady
         ? !resolutionEntries.length && !closureEntries.length && !canResolve && !canFinalize
         : false;
@@ -614,7 +616,9 @@ function renderCaseDetail(data) {
             : 'Submit Resolution'
     ));
 
-    const nextStep = status === 'PENDING' || status === 'CRITICAL' || status === 'UNDER_REVIEW'
+    const nextStep = isRejected
+        ? 'This report was rejected during triage and is read-only.'
+        : status === 'PENDING' || status === 'CRITICAL' || status === 'UNDER_REVIEW'
         ? assignedOfficer ? 'Complete triage, then move the case into active handling or dispatch.' : 'Assign an officer and review the report.'
         : status === 'IN_PROGRESS'
             ? assignedUnit ? 'Record field findings after dispatch, or refer the case for mediation.' : 'Assign / dispatch responding personnel.'
@@ -634,7 +638,7 @@ function renderCaseDetail(data) {
         if (!isAdministrativelyClosed) {
             if (['PENDING', 'UNDER_REVIEW', 'CRITICAL'].includes(status)) {
                 actionButtons.push(['accept', 'Accept into Blotter', 'btn-action-primary']);
-                actionButtons.push(['dispatch', 'Assign / Dispatch', 'btn-action-quiet']);
+                actionButtons.push(['reject', 'Reject / Mark as Spam', 'btn-action-quiet']);
             } else if (status === 'IN_PROGRESS') {
                 actionButtons.push(['dispatch', assignedUnit ? 'Update / Dispatch Unit' : 'Assign / Dispatch', 'btn-action-primary']);
                 actionButtons.push(['refer', 'Refer / Escalate', 'btn-action-quiet']);
@@ -658,6 +662,7 @@ function renderCaseDetail(data) {
         ? 'Your account does not have permission to change this case.'
         : !workflowReady ? 'Case details remain viewable. Apply the case workflow database migration to enable findings, resolution, and finalization actions.'
         : isAdministrativelyClosed ? canReopen ? 'Reopening is available only to an authorized Captain or administrator and requires a reason.' : 'This finalized resolution can only be viewed.'
+        : isRejected ? 'This report was rejected during triage. No further case actions are available.'
         : isResolved ? canClose ? 'This resolved case can be finalized by an authorized Captain or administrator.' : 'This case is resolved and read-only.'
         : isDispatched ? 'Record findings below, or continue the case workflow.'
         : 'Actions are shown based on the current case status and your role.';
@@ -1010,9 +1015,9 @@ document.addEventListener('click', async (e) => {
             await refreshOperationsData();
             if (state.currentCaseReference === ref) await openCaseDetails(ref);
         } else if (action === 'reject') {
-            document.getElementById('caseReviewModal')?.close();
-            await openCaseDetails(ref);
-            showNotice('Record findings and a written conclusion before closing this case.');
+            document.getElementById('rejectReportReference').value = ref;
+            document.getElementById('rejectReportReason').value = '';
+            document.getElementById('rejectReportDialog').showModal();
         } else if (action === 'resolve_case') {
             document.getElementById('caseResolutionForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } else if (action === 'close_case') {
@@ -1083,6 +1088,37 @@ document.getElementById('criticalDispatchBtn')?.addEventListener('click', (e) =>
         document.getElementById('dispatchRefInput').value = ref;
         populateDispatchDropdown();
         document.getElementById('dispatchModal').showModal();
+    }
+});
+
+document.getElementById('rejectReportForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const referenceNumber = document.getElementById('rejectReportReference').value;
+    const reason = document.getElementById('rejectReportReason').value.trim();
+    if (!referenceNumber || reason.length < 5) {
+        showNotice('Enter a rejection reason of at least 5 characters.', true);
+        return;
+    }
+
+    const submitButton = form.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    try {
+        const result = await requestOfficer('flag_reject', {
+            reference_number: referenceNumber,
+            reason
+        });
+        document.getElementById('rejectReportDialog').close();
+        document.getElementById('caseReviewModal')?.close();
+        showNotice(result.message);
+        await refreshOperationsData();
+        if (state.currentCaseReference === referenceNumber) {
+            await openCaseDetails(referenceNumber);
+        }
+    } catch (error) {
+        showNotice(error.message, true);
+    } finally {
+        submitButton.disabled = false;
     }
 });
 

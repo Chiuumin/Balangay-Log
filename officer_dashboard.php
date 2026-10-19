@@ -1075,6 +1075,28 @@ if (!$initials) $initials = 'OF';
         </div>
     </dialog>
 
+    <dialog class="admin-dialog" id="rejectReportDialog" style="width: min(480px, calc(100vw - 32px));">
+        <form id="rejectReportForm" method="dialog">
+            <div class="dialog-heading">
+                <div>
+                    <p class="eyebrow">TRIAGE DECISION</p>
+                    <h2>Reject Report / Mark as Spam</h2>
+                </div>
+                <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
+            </div>
+            <input type="hidden" name="reference_number" id="rejectReportReference">
+            <p style="margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.5;">
+                Rejected reports will not proceed to the case workflow. The resident will be able to see this decision and its reason.
+            </p>
+            <label for="rejectReportReason">Reason for rejection</label>
+            <textarea id="rejectReportReason" name="reason" rows="4" maxlength="1000" minlength="5" required placeholder="For example: spam, duplicate report, or outside barangay jurisdiction."></textarea>
+            <div class="dialog-actions" style="margin-top: 14px;">
+                <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
+                <button class="button button-danger" type="submit">Confirm Rejection</button>
+            </div>
+        </form>
+    </dialog>
+
     <!-- MODAL: DISPATCH TANOD -->
     <dialog class="admin-dialog" id="dispatchModal" style="width: min(480px, calc(100vw - 32px));">
         <form id="dispatchForm" method="dialog">

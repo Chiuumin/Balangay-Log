@@ -610,7 +610,7 @@ CREATE TABLE `incident_reports` (
   `legal_routing` varchar(100) DEFAULT NULL,
   `weapon_detected` varchar(50) DEFAULT 'NONE',
   `vawc_minor_flag` tinyint(1) DEFAULT 0,
-  `status` enum('PENDING','IN_PROGRESS','DISPATCHED','FOR_RESOLUTION','RESOLVED','CLOSED','CRITICAL') DEFAULT 'PENDING',
+  `status` enum('PENDING','IN_PROGRESS','DISPATCHED','FOR_RESOLUTION','RESOLVED','CLOSED','CRITICAL','REJECTED') DEFAULT 'PENDING',
   `assigned_officer_id` int(11) DEFAULT NULL,
   `assigned_officer_name` varchar(120) DEFAULT NULL,
   `deployed_unit` varchar(100) DEFAULT NULL,

@@ -19,10 +19,11 @@
 }
 
 .registration-page-body .register-card {
+    position: relative;
     width: 100%;
     max-width: 680px;
     margin: 0;
-    padding: 28px 36px 20px;
+    padding: 62px 36px 20px;
     border: 1px solid #dce7e5;
     border-radius: 16px;
     color: #172b35;
@@ -33,6 +34,44 @@
 .registration-page-body .register-brand {
     justify-content: center;
     margin-bottom: 23px;
+}
+
+.registration-page-body .register-close {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 6px;
+    color: #526b65;
+    background: transparent;
+    font: 600 12px/1 'Plus Jakarta Sans', sans-serif;
+    text-decoration: none;
+    transition: color .18s ease, background .18s ease;
+}
+
+.registration-page-body .register-close:hover {
+    color: #145d55;
+    background: #edf5f2;
+}
+
+.registration-page-body .register-close:focus-visible {
+    outline: 2px solid #19766c;
+    outline-offset: 2px;
+}
+
+.registration-page-body .register-close svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
 }
 
 .registration-page-body .register-brand .brand-logo {
@@ -140,7 +179,8 @@
 @media (max-width: 600px) {
     .registration-page-body { align-items: flex-start; padding: 16px 12px; }
     .registration-page-body .register-page { min-height: calc(100vh - 32px); }
-    .registration-page-body .register-card { padding: 22px 19px 17px; border-radius: 12px; }
+    .registration-page-body .register-card { padding: 58px 19px 17px; border-radius: 12px; }
+    .registration-page-body .register-close { top: 12px; right: 13px; font-size: 11px; }
     .registration-page-body .register-brand { margin-bottom: 20px; }
     .registration-progress { margin-bottom: 22px; }
     .step-list { display: none; }
