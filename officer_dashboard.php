@@ -45,7 +45,6 @@ if (!$initials) $initials = 'OF';
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="admin-dashboard.css?v=<?= time() ?>" />
     <style>
-        /* Red Critical Banner */
         .critical-alert-banner {
             display: flex;
             align-items: center;
@@ -100,8 +99,6 @@ if (!$initials) $initials = 'OF';
             background: #fdf2f2;
             transform: translateX(2px);
         }
-
-        /* Queue List & Interactive Cards */
         .queue-card-list {
             display: flex;
             flex-direction: column;
@@ -142,18 +139,25 @@ if (!$initials) $initials = 'OF';
             text-decoration: underline;
             color: var(--teal);
         }
-        .queue-title {
-            margin: 0;
-            font-size: 14.5px;
-            font-weight: 800;
-            color: var(--ink);
-            cursor: pointer;
+       .queue-title {
+             margin: 0;
+             font-size: 14.5px;
+             font-weight: 800;
+             color: var(--ink);
+             cursor: default;
+             user-select: text;
         }
         .queue-id {
              font-family: monospace;
              font-size: 12.5px;
             font-weight: 800;
             color: var(--teal);
+             cursor: pointer;
+             text-decoration: underline;
+             transition: opacity 0.15s ease;
+        }
+        .queue-id:hover {
+             opacity: 0.8;
         }
         .queue-details {
             font-size: 11.5px;
@@ -205,8 +209,6 @@ if (!$initials) $initials = 'OF';
         .btn-action-danger:hover {
             background: #fff3f1;
         }
-
-        /* Tanod Roster Cards */
         .tanod-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -331,8 +333,6 @@ if (!$initials) $initials = 'OF';
         .notif-item-title { font-size: 12px; font-weight: 800; color: var(--ink); }
         .notif-item-time { font-size: 10px; color: var(--muted); }
         .notif-item-desc { font-size: 11px; color: var(--muted); margin: 0; }
-
-        /* Dark Mode Overrides */
         [data-theme="dark"] .queue-item-card,
         [data-theme="dark"] .tanod-card {
             background: #112222;
@@ -371,7 +371,6 @@ if (!$initials) $initials = 'OF';
     <div class="admin-shell">
         <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
-        <!-- Sticky Mobile Top Bar -->
         <header class="mobile-top-header">
             <button class="mobile-hamburger-btn" id="mobileMenuBtn" type="button" aria-label="Open Navigation">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
@@ -386,7 +385,6 @@ if (!$initials) $initials = 'OF';
             </a>
         </header>
 
-        <!-- Sidebar Drawer -->
         <aside class="admin-sidebar" id="adminSidebar">
             <div class="sidebar-header-row">
                 <a class="admin-brand" href="officer_dashboard.php" aria-label="BalangayLog Officer Portal">
@@ -455,9 +453,7 @@ if (!$initials) $initials = 'OF';
             </div>
         </aside>
 
-        <!-- Main Workspace -->
         <main class="admin-main">
-            <!-- Top Navigation & Desk Controls -->
             <header class="admin-topbar">
                 <div>
                     <h1 id="viewTitle" style="font-size: 22px; font-weight: 800; margin: 0; font-family: 'Manrope', sans-serif;">Desk Operations</h1>
@@ -491,7 +487,6 @@ if (!$initials) $initials = 'OF';
 
             <div class="notice" id="pageNotice" role="status" hidden></div>
 
-            <!-- VIEW 1: DASHBOARD -->
             <section class="admin-view" id="view-dashboard">
                 <div class="critical-alert-banner" id="criticalBanner" hidden>
                     <div class="critical-alert-content">
@@ -543,7 +538,6 @@ if (!$initials) $initials = 'OF';
                 </div>
             </section>
 
-            <!-- VIEW 2: ALL CASES / BLOTTER -->
             <section class="admin-view" id="view-blotter" hidden>
                 <div class="section-heading">
                     <div>
@@ -737,7 +731,6 @@ if (!$initials) $initials = 'OF';
                 </div>
             </section>
 
-            <!-- VIEW 4: URGENT / EMERGENCY -->
             <section class="admin-view" id="view-emergency" hidden>
                 <div class="section-heading">
                     <div>
@@ -750,7 +743,6 @@ if (!$initials) $initials = 'OF';
                 </div>
             </section>
 
-            <!-- VIEW 5: LUPON / MEDIATION -->
             <section class="admin-view" id="view-lupon" hidden>
                 <div class="section-heading">
                     <div>
@@ -763,7 +755,6 @@ if (!$initials) $initials = 'OF';
                 </div>
             </section>
 
-            <!-- VIEW 6: TANOD DISPATCH BOARD -->
             <section class="admin-view" id="view-dispatch" hidden>
                 <div class="section-heading">
                     <div>
@@ -795,7 +786,6 @@ if (!$initials) $initials = 'OF';
                 </div>
             </section>
 
-            <!-- VIEW 7: PROFILE & SETTINGS -->
             <section class="admin-view" id="view-settings" hidden>
                 <div class="section-heading">
                     <div>
@@ -857,7 +847,6 @@ if (!$initials) $initials = 'OF';
                         </form>
                     </div>
 
-                    <!-- Change Password Card -->
                     <div class="content-panel password-card">
                         <div class="panel-heading">
                             <div>
@@ -938,64 +927,53 @@ if (!$initials) $initials = 'OF';
                     </div>
                 </div>
 
-            <!-- SECTION 2: INCIDENT NARRATIVE & AI CLASSIFICATION -->
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-                <p class="eyebrow" style="color: #19766c; font-weight: 800; font-size: 11px; margin: 0; letter-spacing: 0.5px;">INCIDENT NARRATIVE &amp; AI CLASSIFICATION</p>
-                
-                <div style="display: flex; flex-direction: column; gap: 5px; width: 100%;">
-                    <label for="narrativeDescriptionInput" style="font-size: 12.5px; font-weight: 700; color: #172b35;">Blotter Narrative &amp; Facts *</label>
-                    <textarea id="narrativeDescriptionInput" 
-                              name="narrative_description" 
-                              rows="4" 
-                              required 
-                              placeholder="Enter full narrative facts as stated by complainant..." 
-                              style="width: 100%; min-height: 105px; padding: 10px 12px; border: 1px solid #19766c; border-radius: 6px; background: #ffffff; font-size: 13px; color: #172b35; font-family: inherit; line-height: 1.5; resize: vertical; box-sizing: border-box; outline: none;"></textarea>
-                </div>
-
-                <!-- Hidden inputs for AI values -->
-                <input type="hidden" name="incident_type" id="aiGeneratedCategoryInput" value="General Incident">
-                <input type="hidden" name="priority_level" id="aiGeneratedPriorityInput" value="Low">
-
-                <!-- AI Inspection Card -->
-                <div class="ai-inspection-panel" style="background: #ffffff; border: 1px solid #dce5e6; border-radius: 8px; padding: 14px; margin-top: 4px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
-                        <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #687b83;" id="aiTriageStatus">
-                             AI AUTOMATED TRIAGE &amp; CATEGORIZATION
-                        </span>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <span id="aiAssessedCategoryBadge" class="pill pill-blue" style="font-weight: 700; font-size: 11.5px; padding: 4px 10px; border-radius: 4px; background: #e0f2fe; color: #0369a1;">Category: Pending</span>
-                            <span id="aiUrgencyScoreBadge" class="pill" style="font-weight: 700; font-size: 11.5px; padding: 4px 10px; border-radius: 4px; background: #f1f5f9; color: #475569;">Priority: Low (0%)</span>
-                        </div>
+                <div>
+                    <p class="eyebrow" style="color: var(--teal); font-weight: 800; margin-bottom: 8px;">INCIDENT NARRATIVE &amp; AI CLASSIFICATION</p>
+                    <div>
+                        <label for="narrativeDescriptionInput">Blotter Narrative &amp; Facts *</label>
+                        <textarea id="narrativeDescriptionInput" name="narrative_description" rows="5" required placeholder="Type the incident narrative facts here. The AI will evaluate the details to automatically categorize and assign priority..."></textarea>
                     </div>
 
-                    <div style="margin-bottom: 10px;">
-                        <span style="font-size: 12px; font-weight: 700; display: block; margin-bottom: 4px; color: #172b35;">
-                            Identified Threat &amp; Disturbance Keywords:
-                        </span>
-                        <div id="detectedKeywordsContainer" style="display: flex; flex-wrap: wrap; gap: 4px;">
-                            <span style="font-size: 12px; color: #687b83;">Type narrative details above to start AI classification...</span>
-                        </div>
-                    </div>
+                    <input type="hidden" name="incident_type" id="aiGeneratedCategoryInput" value="General Incident">
+                    <input type="hidden" name="priority_level" id="aiGeneratedPriorityInput" value="Low">
 
-                    <div style="border-top: 1px dashed #dce5e6; padding-top: 10px;">
-                        <span style="font-size: 12px; font-weight: 700; display: block; margin-bottom: 4px; color: #172b35;">
-                            AI Assessment &amp; Action Recommendation:
-                        </span>
-                        <div id="aiReasoningBox" style="font-size: 12.5px; color: #687b83; background: #e2e8f0; padding: 10px 14px; border-radius: 6px; line-height: 1.5;">
-                            Waiting for narrative facts to evaluate jurisdiction and emergency level...
+                    <div class="ai-inspection-panel" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line, rgba(255, 255, 255, 0.08)); border-radius: 8px; padding: 14px; margin-top: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--muted);" id="aiTriageStatus">
+                                🤖 AI Automated Triage &amp; Categorization[cite: 17]
+                            </span>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <span id="aiAssessedCategoryBadge" class="pill pill-blue" style="font-weight: 700; font-size: 11px;">Category: Pending</span>
+                                <span id="aiUrgencyScoreBadge" class="pill" style="font-weight: 800; font-size: 11px;">Priority: Low (0%)</span>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 10px;">
+                            <label style="font-size: 11.5px; font-weight: 700; display: block; margin-bottom: 4px; color: var(--ink);">
+                                Identified Threat &amp; Disturbance Keywords:
+                            </label>
+                            <div id="detectedKeywordsContainer" style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                <span style="font-size: 11.5px; color: var(--muted);">Type narrative details above to start AI classification...</span>
+                            </div>
+                        </div>
+
+                        <div style="border-top: 1px dashed var(--line, rgba(255, 255, 255, 0.15)); padding-top: 10px;">
+                            <label style="font-size: 11.5px; font-weight: 700; display: block; margin-bottom: 3px; color: var(--ink);">
+                                AI Assessment &amp; Action Recommendation:
+                            </label>
+                            <div id="aiReasoningBox" style="font-size: 12.5px; color: var(--muted); background: rgba(0, 0, 0, 0.15); padding: 10px; border-radius: 6px; line-height: 1.5;">
+                                Waiting for narrative facts to evaluate jurisdiction and emergency level...
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- Footer Actions -->
-        <div class="dialog-actions" style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 10px;">
-            <button class="button button-quiet" type="button" data-close-dialog style="min-height: 36px; padding: 0 16px; font-weight: 700; border-radius: 4px; border: 1px solid #dce5e6; background: #fff; color: #40575f; cursor: pointer;">Cancel</button>
-            <button class="button button-primary" type="submit" style="min-height: 36px; padding: 0 18px; font-weight: 700; border-radius: 4px; background: #173d3b; border: 1px solid #173d3b; color: #fff; cursor: pointer;">Encode &amp; Log Case</button>
-        </div>
-    </form>
-</dialog>
+            <div class="dialog-actions" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line);">
+                <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
+                <button class="button button-primary" type="submit" style="background: #173d3b; border-color: #173d3b;">Encode &amp; Log Case</button>
+            </div>
+        </form>
+    </dialog>
 
     <!-- MODAL: DEEP CASE REVIEW & MULTI-AGENT DECISION SUPPORT -->
     <dialog class="admin-dialog" id="caseReviewModal" style="width: min(760px, calc(100vw - 32px)); max-height: 92vh;">
@@ -1095,6 +1073,28 @@ if (!$initials) $initials = 'OF';
         <div class="dialog-actions" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
             <button class="button button-quiet" type="button" data-close-dialog>Close</button>
         </div>
+    </dialog>
+
+    <dialog class="admin-dialog" id="rejectReportDialog" style="width: min(480px, calc(100vw - 32px));">
+        <form id="rejectReportForm" method="dialog">
+            <div class="dialog-heading">
+                <div>
+                    <p class="eyebrow">TRIAGE DECISION</p>
+                    <h2>Reject Report / Mark as Spam</h2>
+                </div>
+                <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
+            </div>
+            <input type="hidden" name="reference_number" id="rejectReportReference">
+            <p style="margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.5;">
+                Rejected reports will not proceed to the case workflow. The resident will be able to see this decision and its reason.
+            </p>
+            <label for="rejectReportReason">Reason for rejection</label>
+            <textarea id="rejectReportReason" name="reason" rows="4" maxlength="1000" minlength="5" required placeholder="For example: spam, duplicate report, or outside barangay jurisdiction."></textarea>
+            <div class="dialog-actions" style="margin-top: 14px;">
+                <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
+                <button class="button button-danger" type="submit">Confirm Rejection</button>
+            </div>
+        </form>
     </dialog>
 
     <!-- MODAL: DISPATCH TANOD -->

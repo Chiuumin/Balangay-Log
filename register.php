@@ -22,6 +22,12 @@ if (isLoggedIn()) {
                 <img class="brand-logo" src="assets/balangaylog-logo.png" alt="" />
                 <span class="register-brand-name">BalangayLog</span>
             </div>
+            <a class="register-close" href="index.html" aria-label="Back to homepage" title="Back to homepage">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M19 12H5m7 7-7-7 7-7"></path>
+                </svg>
+                <span>Back to Home</span>
+            </a>
 
             <form id="registerForm" enctype="multipart/form-data" novalidate>
                 <div class="registration-progress" aria-label="Registration progress">
