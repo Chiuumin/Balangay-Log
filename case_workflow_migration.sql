@@ -1,6 +1,6 @@
--- Apply once to databases created before DISPATCHED and CLOSED became workflow statuses.
+-- Apply to databases created before the current case workflow statuses.
 ALTER TABLE `incident_reports`
-  MODIFY `status` enum('PENDING','IN_PROGRESS','DISPATCHED','FOR_RESOLUTION','RESOLVED','CLOSED','CRITICAL') DEFAULT 'PENDING';
+  MODIFY `status` enum('PENDING','IN_PROGRESS','DISPATCHED','FOR_RESOLUTION','RESOLVED','CLOSED','CRITICAL','REJECTED') DEFAULT 'PENDING';
 
 UPDATE incident_reports ir
 JOIN (
@@ -11,7 +11,7 @@ JOIN (
 JOIN lupon_cases lc ON lc.id = latest.latest_id
 SET ir.status = 'RESOLVED'
 WHERE UPPER(COALESCE(lc.status, '')) = 'RESOLVED'
-  AND ir.status <> 'CLOSED';
+  AND ir.status NOT IN ('CLOSED', 'REJECTED');
 
 UPDATE incident_reports ir
 JOIN (
@@ -22,7 +22,7 @@ JOIN (
 JOIN lupon_cases lc ON lc.id = latest.latest_id
 SET ir.status = 'FOR_RESOLUTION'
 WHERE UPPER(COALESCE(lc.status, '')) NOT IN ('RESOLVED', 'CLOSED', 'CANCELLED')
-  AND ir.status NOT IN ('RESOLVED', 'CLOSED');
+  AND ir.status NOT IN ('RESOLVED', 'CLOSED', 'REJECTED');
 
 CREATE TABLE IF NOT EXISTS `case_findings` (
   `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,

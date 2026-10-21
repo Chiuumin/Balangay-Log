@@ -78,7 +78,6 @@ function officerIncidentStatusSupports(PDO $pdo, string $status): bool
     return is_string($columnType) && str_contains($columnType, "'" . $status . "'");
 }
 
-
 function officerReleaseDispatchResponders(PDO $pdo, int $incidentId, int $actorId, string $actorName): void
 {
     if (!officerTableExists($pdo, 'tanod_dispatch_records')
@@ -283,7 +282,7 @@ try {
                 SELECT reference_number, complainant_name, incident_type, purok, narrative_description 
                 FROM incident_reports 
                 WHERE (priority_level = 'Critical' OR status = 'CRITICAL') 
-                  AND status NOT IN ('RESOLVED', 'CLOSED')
+                  AND status NOT IN ('RESOLVED', 'CLOSED', 'REJECTED')
                   AND (deployed_unit IS NULL OR deployed_unit = '') 
                 ORDER BY created_at DESC 
                 LIMIT 1
@@ -306,7 +305,7 @@ try {
         try {
             $urgentStmt = $pdo->query("
                 SELECT * FROM incident_reports 
-                WHERE priority_level IN ('Critical', 'High') AND status NOT IN ('RESOLVED', 'CLOSED') 
+                WHERE priority_level IN ('Critical', 'High') AND status NOT IN ('RESOLVED', 'CLOSED', 'REJECTED')
                 ORDER BY (priority_level = 'Critical') DESC, created_at DESC
             ");
             $urgentCases = $urgentStmt ? $urgentStmt->fetchAll(PDO::FETCH_ASSOC) : [];
@@ -392,7 +391,7 @@ try {
                     ) latest ON latest.incident_id = ir.id
                     LEFT JOIN tanod_dispatch_record_responders dr ON dr.dispatch_id = latest.id
                     LEFT JOIN tanod_personnel tp ON tp.id = dr.tanod_id
-                    WHERE ir.status IN ('PENDING', 'UNDER_REVIEW', 'CRITICAL', 'IN_PROGRESS', 'DISPATCHED')
+                    WHERE ir.status IN ('IN_PROGRESS', 'DISPATCHED')
                     GROUP BY ir.id, ir.reference_number, ir.incident_type, ir.complainant_name,
                         ir.purok, ir.priority_level, ir.status, ir.created_at, ir.deployed_unit,
                         latest.id, latest.status, latest.unit, latest.directive_notes, latest.dispatched_at,
@@ -416,7 +415,7 @@ try {
                         NULL AS findings, NULL AS action_taken, NULL AS updated_by_name,
                         NULL AS updated_at, NULL AS responders
                     FROM incident_reports
-                    WHERE status IN ('PENDING', 'UNDER_REVIEW', 'CRITICAL', 'IN_PROGRESS', 'DISPATCHED')
+                    WHERE status IN ('IN_PROGRESS', 'DISPATCHED')
                         AND (status = 'DISPATCHED' OR deployed_unit IS NULL OR deployed_unit = '')
                     ORDER BY (status = 'DISPATCHED') DESC, created_at ASC
                 ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -490,6 +489,12 @@ try {
             'message' => 'Case workflow storage is not installed. Apply case_workflow_migration.sql, then try again.',
         ], 503);
     }
+    if ($action === 'flag_reject' && !officerIncidentStatusSupports($pdo, 'REJECTED')) {
+        officerRespond([
+            'success' => false,
+            'message' => 'Report rejection is not enabled in this database. Apply case_rejection_migration.sql, then try again.',
+        ], 503);
+    }
     $actionPermissions = [
         'accept_blotter' => 'triage',
         'dispatch_tanod' => 'assign',
@@ -503,7 +508,7 @@ try {
         'reschedule_lupon' => 'refer',
         'request_captain_endorsement' => 'refer',
         'resolve_case' => 'resolve',
-        'flag_reject' => 'close',
+        'flag_reject' => 'triage',
         'close_case' => 'close',
         'reopen_case' => 'reopen',
         'encode_case' => 'triage',
@@ -524,8 +529,315 @@ try {
     };
 
     switch ($action) {
-        case 'accept_blotter':
-        case 'dispatch_tanod':
+        case 'record_case_findings':
+            $needRef();
+            $observations = trim((string) ($input['observations'] ?? ''));
+            $personsContacted = trim((string) ($input['persons_contacted'] ?? ''));
+            $actionTaken = trim((string) ($input['action_taken'] ?? ''));
+            $findings = trim((string) ($input['findings'] ?? ''));
+            $recommendedNextSteps = trim((string) ($input['recommended_next_steps'] ?? ''));
+            foreach ([
+                'Observations' => $observations,
+                'Persons contacted' => $personsContacted,
+                'Action taken' => $actionTaken,
+                'Findings' => $findings,
+                'Recommended next steps' => $recommendedNextSteps,
+            ] as $label => $value) {
+                $tooLong($value, 4000, $label);
+            }
+            if ($observations === '' || $actionTaken === '' || $findings === '') {
+                officerRespond(['success' => false, 'message' => 'Observations, action taken, and findings are required.'], 422);
+            }
+
+            $pdo->beginTransaction();
+            try {
+                $caseStmt = $pdo->prepare('SELECT id, status FROM incident_reports WHERE reference_number = ? LIMIT 1 FOR UPDATE');
+                $caseStmt->execute([$refNumber]);
+                $case = $caseStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$case) {
+                    $pdo->rollBack();
+                    officerRespond(['success' => false, 'message' => 'Incident record not found.'], 404);
+                }
+                if (in_array($case['status'], ['RESOLVED', 'CLOSED'], true)) {
+                    $pdo->rollBack();
+                    officerRespond(['success' => false, 'message' => 'Findings cannot be added after resolution or closure.'], 409);
+                }
+                $incidentId = (int) $case['id'];
+                $pdo->prepare('INSERT INTO case_findings
+                        (incident_id, observations, persons_contacted, action_taken, findings, recommended_next_steps,
+                         submitted_by_user_id, submitted_by_name, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())')
+                    ->execute([
+                        $incidentId,
+                        $observations,
+                        $personsContacted !== '' ? $personsContacted : null,
+                        $actionTaken,
+                        $findings,
+                        $recommendedNextSteps !== '' ? $recommendedNextSteps : null,
+                        $actorId,
+                        $actorName,
+                    ]);
+                $findingId = (int) $pdo->lastInsertId();
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+            officerRespond(['success' => true, 'message' => "Findings #{$findingId} recorded by {$actorName}."]);
+
+        case 'resolve_case':
+        case 'close_case':
+            $needRef();
+            if ($action === 'close_case') {
+                $pdo->beginTransaction();
+                try {
+                    $closeCaseStmt = $pdo->prepare('SELECT id, status FROM incident_reports WHERE reference_number = ? LIMIT 1 FOR UPDATE');
+                    $closeCaseStmt->execute([$refNumber]);
+                    $closeCase = $closeCaseStmt->fetch(PDO::FETCH_ASSOC);
+                    if (!$closeCase) {
+                        $pdo->rollBack();
+                        officerRespond(['success' => false, 'message' => 'Incident record not found.'], 404);
+                    }
+                    $latestResolutionStmt = $pdo->prepare('SELECT id, outcome, findings_reviewed_summary, conclusion,
+                            remaining_obligations, follow_up_at, resulting_status
+                        FROM case_resolutions WHERE incident_id = ? ORDER BY id DESC LIMIT 1 FOR UPDATE');
+                    $latestResolutionStmt->execute([(int) $closeCase['id']]);
+                    $savedResolution = $latestResolutionStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($closeCase['status'] === 'RESOLVED'
+                        && $savedResolution
+                        && $savedResolution['resulting_status'] === 'RESOLVED') {
+                        if ($savedResolution['remaining_obligations'] !== null && trim($savedResolution['remaining_obligations']) !== '') {
+                            $pdo->rollBack();
+                            officerRespond(['success' => false, 'message' => 'Complete outstanding obligations before finalizing this resolution.'], 409);
+                        }
+                        if ($savedResolution['follow_up_at'] !== null) {
+                            $pdo->rollBack();
+                            officerRespond(['success' => false, 'message' => 'Complete the scheduled follow-up before finalizing this resolution.'], 409);
+                        }
+                        if (!caseWorkflowAllowsTransition('RESOLVED', 'CLOSED')) {
+                            $pdo->rollBack();
+                            officerRespond(['success' => false, 'message' => 'This resolved case cannot be finalized from its current status.'], 409);
+                        }
+                        $incidentId = (int) $closeCase['id'];
+                        $pdo->prepare('UPDATE incident_reports SET status = ? WHERE id = ?')
+                            ->execute(['CLOSED', $incidentId]);
+                        $pdo->prepare('INSERT INTO case_workflow_closures
+                                (incident_id, resolution_id, outcome, findings_reviewed_summary, conclusion,
+                                 closed_by_user_id, closed_by_name, closed_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())')
+                            ->execute([
+                                $incidentId,
+                                (int) $savedResolution['id'],
+                                $savedResolution['outcome'],
+                                $savedResolution['findings_reviewed_summary'],
+                                $savedResolution['conclusion'],
+                                $actorId,
+                                $actorName,
+                            ]);
+                        officerReleaseDispatchResponders($pdo, $incidentId, $actorId, $actorName);
+                        $pdo->prepare('UPDATE incident_reports SET deployed_unit = NULL WHERE id = ?')
+                            ->execute([$incidentId]);
+                        $pdo->prepare('INSERT INTO case_milestones
+                                (incident_id, tracking_id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, NOW())')
+                            ->execute([
+                                $incidentId,
+                                $refNumber,
+                                'CLOSED',
+                                $actorName,
+                                null,
+                                'Resolution finalized after confirming the saved resolution and findings.',
+                            ]);
+                        $pdo->commit();
+                        officerRespond([
+                            'success' => true,
+                            'message' => "Case #{$refNumber} marked Resolved and locked for editing.",
+                            'status' => 'CLOSED',
+                        ]);
+                    }
+                    $pdo->rollBack();
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    throw $e;
+                }
+            }
+            $outcome = strtoupper(trim((string) ($input['outcome'] ?? '')));
+            $conclusion = trim((string) ($input['conclusion'] ?? ''));
+            $settlementTerms = trim((string) ($input['settlement_terms'] ?? ''));
+            $remainingObligations = trim((string) ($input['remaining_obligations'] ?? ''));
+            $followUpInput = trim((string) ($input['follow_up_at'] ?? ''));
+            $closeRequested = $action === 'close_case' || !empty($input['close_case']);
+            $allowedOutcomes = [
+                'RESOLVED_THROUGH_INTERVENTION',
+                'SETTLED_THROUGH_MEDIATION',
+                'REFERRED_TO_ANOTHER_AUTHORITY',
+                'WITHDRAWN',
+                'OTHER',
+            ];
+            if (!in_array($outcome, $allowedOutcomes, true)) {
+                officerRespond(['success' => false, 'message' => 'Choose a valid resolution outcome.'], 422);
+            }
+            if (mb_strlen($conclusion) < 30) {
+                officerRespond(['success' => false, 'message' => 'Enter a clear conclusion of at least 30 characters, covering what happened and why this outcome is appropriate.'], 422);
+            }
+            foreach ([
+                'Conclusion' => $conclusion,
+                'Settlement terms' => $settlementTerms,
+                'Remaining obligations' => $remainingObligations,
+            ] as $label => $value) {
+                $tooLong($value, 4000, $label);
+            }
+            if ($outcome === 'SETTLED_THROUGH_MEDIATION' && $settlementTerms === '') {
+                officerRespond(['success' => false, 'message' => 'Record the agreed settlement terms before finalizing mediation.'], 422);
+            }
+            $followUpAt = null;
+            if ($followUpInput !== '') {
+                $followUp = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $followUpInput);
+                if (!$followUp || $followUp->format('Y-m-d\TH:i') !== $followUpInput) {
+                    officerRespond(['success' => false, 'message' => 'Enter a valid follow-up date and time.'], 422);
+                }
+                $followUpAt = $followUp->format('Y-m-d H:i:s');
+            }
+            if ($outcome === 'REFERRED_TO_ANOTHER_AUTHORITY' && $followUpAt === null && $remainingObligations === '') {
+                officerRespond(['success' => false, 'message' => 'Record a follow-up date or remaining obligation for an external referral.'], 422);
+            }
+            if ($closeRequested && !caseWorkflowCan($userType, 'close')) {
+                officerRespond(['success' => false, 'message' => 'Your role may record a resolution, but cannot close the case.'], 403);
+            }
+            if ($closeRequested && ($remainingObligations !== '' || $followUpAt !== null)) {
+                officerRespond(['success' => false, 'message' => 'Complete outstanding obligations and follow-up before closing this case.'], 409);
+            }
+            if (empty($input['findings_reviewed'])) {
+                officerRespond(['success' => false, 'message' => 'Review and confirm the case findings before finalizing.'], 422);
+            }
+
+            $pdo->beginTransaction();
+            try {
+                $caseStmt = $pdo->prepare('SELECT id, status FROM incident_reports WHERE reference_number = ? LIMIT 1 FOR UPDATE');
+                $caseStmt->execute([$refNumber]);
+                $case = $caseStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$case) {
+                    $pdo->rollBack();
+                    officerRespond(['success' => false, 'message' => 'Incident record not found.'], 404);
+                }
+                $currentStatus = (string) $case['status'];
+                $eligibleStatuses = $closeRequested
+                    ? ['IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION', 'RESOLVED']
+                    : ['IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION'];
+                if (!in_array($currentStatus, $eligibleStatuses, true)) {
+                    $pdo->rollBack();
+                    officerRespond(['success' => false, 'message' => 'This case status is not eligible for this resolution action.'], 409);
+                }
+                if ($closeRequested && !caseWorkflowAllowsTransition($currentStatus, 'CLOSED')) {
+                    $pdo->rollBack();
+                    officerRespond(['success' => false, 'message' => 'This case cannot be finalized from its current status.'], 409);
+                }
+
+                $findingStmt = $pdo->prepare('SELECT observations, persons_contacted, action_taken, findings, recommended_next_steps,
+                        submitted_by_name, created_at
+                    FROM case_findings WHERE incident_id = ? ORDER BY created_at DESC, id DESC');
+                $findingStmt->execute([(int) $case['id']]);
+                $findingRows = $findingStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                if (!$findingRows) {
+                    $pdo->rollBack();
+                    officerRespond(['success' => false, 'message' => 'Record findings before resolving or closing this case.'], 409);
+                }
+                $findingsSummary = implode("\n\n", array_map(static function (array $finding): string {
+                    return implode("\n", array_filter([
+                        'Observations: ' . $finding['observations'],
+                        $finding['persons_contacted'] ? 'Persons contacted: ' . $finding['persons_contacted'] : '',
+                        'Action taken: ' . $finding['action_taken'],
+                        'Findings: ' . $finding['findings'],
+                        $finding['recommended_next_steps'] ? 'Recommended next steps: ' . $finding['recommended_next_steps'] : '',
+                        'Recorded by: ' . $finding['submitted_by_name'] . ' on ' . $finding['created_at'],
+                    ]));
+                }, $findingRows));
+
+                if ($outcome === 'SETTLED_THROUGH_MEDIATION' && $currentStatus !== 'FOR_RESOLUTION') {
+                    $luponStmt = $pdo->prepare("SELECT id FROM lupon_cases WHERE case_id = ? AND status <> 'RESOLVED' LIMIT 1 FOR UPDATE");
+                    $luponStmt->execute([(int) $case['id']]);
+                    if (!$luponStmt->fetchColumn()) {
+                        $pdo->rollBack();
+                        officerRespond(['success' => false, 'message' => 'A mediation settlement requires an active Lupon referral.'], 409);
+                    }
+                }
+
+                $resultingStatus = $closeRequested ? 'CLOSED' : 'RESOLVED';
+                if (!caseWorkflowAllowsTransition($currentStatus, $resultingStatus)) {
+                    $pdo->rollBack();
+                    officerRespond(['success' => false, 'message' => 'That resolution status transition is not allowed for this case.'], 409);
+                }
+                $incidentId = (int) $case['id'];
+                $pdo->prepare('INSERT INTO case_resolutions
+                        (incident_id, outcome, findings_reviewed_summary, conclusion, settlement_terms, remaining_obligations,
+                         follow_up_at, resulting_status, resolved_by_user_id, resolved_by_name, resolved_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())')
+                    ->execute([
+                        $incidentId,
+                        $outcome,
+                        $findingsSummary,
+                        $conclusion,
+                        $settlementTerms !== '' ? $settlementTerms : null,
+                        $remainingObligations !== '' ? $remainingObligations : null,
+                        $followUpAt,
+                        $resultingStatus,
+                        $actorId,
+                        $actorName,
+                    ]);
+                $resolutionId = (int) $pdo->lastInsertId();
+                $pdo->prepare('UPDATE incident_reports SET status = ? WHERE id = ?')
+                    ->execute([$resultingStatus, $incidentId]);
+                if ($outcome === 'SETTLED_THROUGH_MEDIATION' || $resultingStatus === 'RESOLVED' || $resultingStatus === 'CLOSED') {
+                    $latestLuponStmt = $pdo->prepare('SELECT id FROM lupon_cases WHERE case_id = ? ORDER BY id DESC LIMIT 1 FOR UPDATE');
+                    $latestLuponStmt->execute([$incidentId]);
+                    $latestLuponId = $latestLuponStmt->fetchColumn();
+                    if ($latestLuponId) {
+                        $pdo->prepare("UPDATE lupon_cases SET stage = 'RESOLVED', next_hearing = NULL, status = 'RESOLVED' WHERE id = ?")
+                            ->execute([(int) $latestLuponId]);
+                    }
+                }
+                officerReleaseDispatchResponders($pdo, $incidentId, $actorId, $actorName);
+                $pdo->prepare('UPDATE incident_reports SET deployed_unit = NULL WHERE id = ?')
+                    ->execute([$incidentId]);
+                $resolutionStatus = 'RESOLVED';
+                $resolutionNote = $outcome === 'SETTLED_THROUGH_MEDIATION'
+                    ? 'Mediation settlement documented. Outcome: Settled Through Mediation.'
+                    : 'Case resolution documented. Outcome: ' . str_replace('_', ' ', $outcome) . '.';
+                $pdo->prepare('INSERT INTO case_milestones
+                        (incident_id, tracking_id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, NOW())')
+                    ->execute([
+                        $incidentId,
+                        $refNumber,
+                        $resolutionStatus,
+                        $actorName,
+                        null,
+                        $resolutionNote . ' ' . $conclusion,
+                    ]);
+                if ($closeRequested) {
+                    $pdo->prepare('INSERT INTO case_workflow_closures
+                                (incident_id, resolution_id, outcome, findings_reviewed_summary, conclusion,
+                                 closed_by_user_id, closed_by_name, closed_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())')
+                            ->execute([$incidentId, $resolutionId, $outcome, $findingsSummary, $conclusion, $actorId, $actorName]);
+                }
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+            $resolutionMessage = $resultingStatus === 'CLOSED'
+                ? "Case #{$refNumber} marked Resolved and finalized."
+                : ($resultingStatus === 'RESOLVED' && $outcome === 'SETTLED_THROUGH_MEDIATION'
+                    ? "Case #{$refNumber} marked Resolved — Settled Through Mediation."
+                    : "Case #{$refNumber} resolved.");
+            officerRespond([
+                'success' => true,
+                'message' => $resolutionMessage,
+                'status' => $resultingStatus,
+                'resolution_id' => $resolutionId,
+            ]);
+
         case 'create_responder':
         case 'update_responder':
         case 'update_responder_availability':
@@ -558,12 +870,31 @@ try {
 
             officerTransition($pdo, $refNumber, [
                 'status'           => 'IN_PROGRESS',
+                'allowed_from'     => ['PENDING', 'UNDER_REVIEW', 'CRITICAL'],
                 'milestone_status' => 'IN_PROGRESS',
                 'milestone_stage'  => 'DESK_REVIEW',
                 'officer'          => $actorName,
                 'note'             => $note,
             ]);
             officerRespond(['success' => true, 'message' => "Case #{$refNumber} accepted into active blotter."]);
+
+        case 'flag_reject':
+            $needRef();
+            $reason = trim((string) ($input['reason'] ?? ''));
+            if ($reason === '') {
+                officerRespond(['success' => false, 'message' => 'Provide a reason for rejecting this report.'], 422);
+            }
+            $tooLong($reason, 1000, 'Rejection reason');
+
+            officerTransition($pdo, $refNumber, [
+                'status' => 'REJECTED',
+                'allowed_from' => ['PENDING', 'UNDER_REVIEW', 'CRITICAL'],
+                'milestone_status' => 'REJECTED',
+                'milestone_stage' => 'REPORT_REJECTED',
+                'officer' => $actorName,
+                'note' => "Report rejected during triage. Reason: {$reason}",
+            ]);
+            officerRespond(['success' => true, 'message' => "Report #{$refNumber} rejected and removed from triage."]);
 
         case 'dispatch_tanod':
             $needRef();
@@ -578,6 +909,7 @@ try {
 
             officerTransition($pdo, $refNumber, [
                 'status'           => 'DISPATCHED',
+                'allowed_from'     => ['IN_PROGRESS', 'DISPATCHED'],
                 'milestone_status' => 'DISPATCHED',
                 'milestone_stage'  => 'UNIT_DISPATCHED',
                 'officer'          => $actorName,
@@ -594,6 +926,131 @@ try {
             ]);
 
             officerRespond(['success' => true, 'message' => "Tanod unit successfully dispatched for #{$refNumber}."]);
+
+        case 'endorse_lupon':
+        case 'refer_case':
+        case 'request_captain_endorsement':
+            $needRef();
+            $defaultDestination = $action === 'endorse_lupon' ? 'LUPON' : ($action === 'request_captain_endorsement' ? 'CAPTAIN' : '');
+            $destination = strtoupper(trim((string) ($input['destination'] ?? $defaultDestination)));
+            $reason = trim((string) ($input['reason'] ?? ($input['remarks'] ?? '')));
+            if (!in_array($destination, ['LUPON', 'CAPTAIN'], true)) {
+                officerRespond(['success' => false, 'message' => 'Choose Lupon or Captain as the referral destination.'], 422);
+            }
+            if ($reason === '') {
+                officerRespond(['success' => false, 'message' => 'A referral reason is required.'], 422);
+            }
+            $tooLong($reason, 1000, 'Referral reason');
+
+            if ($destination === 'CAPTAIN') {
+                $pdo->beginTransaction();
+                try {
+                    $caseStmt = $pdo->prepare('SELECT id, status FROM incident_reports WHERE reference_number = ? LIMIT 1 FOR UPDATE');
+                    $caseStmt->execute([$refNumber]);
+                    $case = $caseStmt->fetch(PDO::FETCH_ASSOC);
+                    if (!$case) {
+                        $pdo->rollBack();
+                        officerRespond(['success' => false, 'message' => 'Incident record not found.'], 404);
+                    }
+                    if (!in_array($case['status'], ['IN_PROGRESS', 'DISPATCHED', 'FOR_RESOLUTION'], true)) {
+                        $pdo->rollBack();
+                        officerRespond(['success' => false, 'message' => 'Refer the case after triage or dispatch.'], 409);
+                    }
+                    $existingCaptainReferralStmt = $pdo->prepare("
+                        SELECT status
+                        FROM endorsements
+                        WHERE case_id = ? AND type = 'CAPTAIN_ENDORSEMENT'
+                        ORDER BY id ASC
+                        LIMIT 1
+                    ");
+                    $existingCaptainReferralStmt->execute([(int) $case['id']]);
+                    $existingCaptainReferral = $existingCaptainReferralStmt->fetchColumn();
+                    if ($existingCaptainReferral !== false) {
+                        $pdo->rollBack();
+                        officerRespond([
+                            'success' => false,
+                            'message' => $existingCaptainReferral === 'ENDORSED'
+                                ? 'This case has already been referred to and endorsed by the Captain.'
+                                : 'This case has already been referred to the Captain.',
+                        ], 409);
+                    }
+                    $pdo->prepare("
+                        INSERT INTO endorsements (case_id, type, status, referred_by_user_id, referred_at, remarks)
+                        VALUES (?, 'CAPTAIN_ENDORSEMENT', 'PENDING', ?, NOW(), ?)
+                    ")->execute([(int) $case['id'], $actorId, $reason]);
+                    $pdo->prepare('INSERT INTO case_milestones
+                            (incident_id, tracking_id, status_snapshot, officer_in_charge, action_note, created_at)
+                            VALUES (?, ?, ?, ?, ?, NOW())')
+                        ->execute([(int) $case['id'], $refNumber, $case['status'], $actorName, "Referred to Captain. Reason: {$reason}"]);
+                    $pdo->commit();
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    throw $e;
+                }
+                officerRespond(['success' => true, 'message' => "Case #{$refNumber} referred to the Captain."]);
+            }
+
+            $mediator = trim((string) ($input['mediator'] ?? ''));
+            $schedule = trim((string) ($input['schedule'] ?? ''));
+            if ($mediator === '') {
+                officerRespond(['success' => false, 'message' => 'A Lupon mediator is required.'], 422);
+            }
+            $tooLong($mediator, 120, 'Mediator name');
+            $schedule = $parseSchedule($schedule);
+
+            officerTransition($pdo, $refNumber, [
+                'status'           => 'FOR_RESOLUTION',
+                'allowed_from'     => ['IN_PROGRESS', 'DISPATCHED'],
+                'milestone_status' => 'FOR_RESOLUTION',
+                'milestone_stage'  => 'MEDIATION',
+                'officer'          => $mediator,
+                'unit'             => $mediator,
+                'note'             => "Referred to Katarungang Pambarangay. Reason: {$reason} Mediation scheduled on {$schedule} with {$mediator}.",
+                'lupon_case'       => ['stage' => 'MEDIATION', 'next_hearing' => $schedule, 'status' => 'ONGOING'],
+            ]);
+            officerRespond(['success' => true, 'message' => "Case #{$refNumber} endorsed to Lupon mediation."]);
+
+        case 'reschedule_lupon':
+            $needRef();
+            $mediator = trim((string) ($input['mediator'] ?? ''));
+            $schedule = $parseSchedule(trim((string) ($input['schedule'] ?? '')));
+            if ($mediator !== '') {
+                $tooLong($mediator, 120, 'Mediator name');
+            }
+
+            $transition = [
+                'status'           => 'FOR_RESOLUTION',
+                'expected_status'  => 'FOR_RESOLUTION',
+                'milestone_status' => 'FOR_RESOLUTION',
+                'milestone_stage'  => 'MEDIATION_RESCHEDULED',
+                'officer'          => $actorName,
+                'note'             => "Lupon mediation hearing rescheduled to {$schedule}.",
+                'lupon_case'       => ['stage' => 'MEDIATION', 'next_hearing' => $schedule, 'status' => 'ONGOING'],
+            ];
+            if ($mediator !== '') {
+                $transition['unit'] = $mediator;
+            }
+            officerTransition($pdo, $refNumber, $transition);
+            officerRespond(['success' => true, 'message' => "Hearing for case #{$refNumber} rescheduled."]);
+
+        case 'settle_lupon':
+            officerRespond(['success' => false, 'message' => 'Use the findings review and resolution workflow to record a mediation settlement.'], 422);
+
+        case 'reopen_case':
+            $needRef();
+            $reason = trim((string) ($input['reason'] ?? ''));
+            if ($reason === '') {
+                officerRespond(['success' => false, 'message' => 'A reason is required to reopen this case.'], 422);
+            }
+            $tooLong($reason, 1000, 'Reopening reason');
+            officerTransition($pdo, $refNumber, [
+                'status' => 'IN_PROGRESS',
+                'expected_status' => 'CLOSED',
+                'milestone_status' => 'IN_PROGRESS',
+                'officer' => $actorName,
+                'note' => "Case reopened by authorized review. Reason: {$reason}",
+            ]);
+            officerRespond(['success' => true, 'message' => "Case #{$refNumber} reopened for authorized review."]);
 
         case 'get_case_review_details':
             $needRef();
