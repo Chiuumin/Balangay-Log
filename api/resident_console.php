@@ -126,9 +126,7 @@ try {
         $reports = array_map(function ($row) use ($residentVisibleRec) {
             $row['status'] = $row['true_status'] ?: 'PENDING';
 
-            $rec = $row['status'] === 'REJECTED'
-                ? (string) ($row['latest_note'] ?? '')
-                : (string) ($row['ai_recommendation'] ?? '');
+            $rec = (string) ($row['ai_recommendation'] ?? '');
             if ($rec !== '' && preg_match($residentVisibleRec, $rec) !== 1) {
                 $rec = '';
             }
