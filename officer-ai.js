@@ -114,6 +114,7 @@
     ];
     if (typeof ai.confidence === 'number') rows.push(['AI confidence', Math.round(ai.confidence * 100) + '%']);
     if (ai.rationale) rows.push(['Reason', ai.rationale]);
+    if (typeof ai.summary === 'string' && ai.summary.trim()) rows.push(['Summary', ai.summary]);
     if (ai.triggers && ai.triggers.length) {
       const trigs = Array.isArray(ai.triggers) ? ai.triggers.join(', ') : ai.triggers;
       rows.push(['Safety keywords', trigs]);
@@ -131,11 +132,32 @@
       }
     });
 
+    // Officer guidance: safety actions from the rules always apply; the AI's steps are extra suggestions to check.
+    const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim() !== '') : []);
+    const addBlock = (label, items, ordered) => {
+      const clean = strings(items);
+      if (!clean.length) return;
+      list.append(el('strong', { text: label }));
+      list.append(el(ordered ? 'ol' : 'ul', { style: 'margin:0;padding-left:18px;' }, clean.map((x) => el('li', { text: x }))));
+    };
+    const aiSteps = strings(ai.next_steps);
+    addBlock(aiSteps.length ? 'Safety steps (rules)' : 'Next steps', (data.recommended_actions || []).slice(0, 4), true);
+    addBlock('AI suggestions (check before acting)', aiSteps, true);
+    addBlock('Ask the resident', ai.questions, false);
+
+    const dis = ai.disagreement && ai.disagreement.any ? ai.disagreement : null;
+    const warn = dis
+      ? el('div', { class: 'notice', style: 'margin-top:12px;background:#fef3c7;color:#92400e;font-weight:700;font-size:12.5px;',
+          text: '⚠️ The rules and the AI disagree. ' + (dis.message || '') })
+      : [];
+
     const form = el('form', { method: 'dialog' },
       el('div', { class: 'dialog-heading' },
         el('div', {}, el('p', { class: 'eyebrow', text: 'AGENT 1 TRIAGE' }), el('h2', { text: 'Case filed: triage result' })),
         el('button', { class: 'icon-button', type: 'button', 'data-close': '', 'aria-label': 'Close', text: '×' })),
+      warn,
       list,
+      el('p', { class: 'empty-message', style: 'margin:10px 0 0;font-size:11px;', text: 'Suggestions only. The desk officer makes the final decision.' }),
       el('div', { class: 'dialog-actions', style: 'margin-top:14px;' },
         el('button', { class: 'button button-primary', type: 'submit', text: 'OK' })));
 

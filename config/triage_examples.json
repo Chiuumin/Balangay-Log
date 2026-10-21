@@ -1,0 +1,10 @@
+[
+  {"narrative": "Binaril ng lasing na kapitbahay ang tindero sa tapat ng tindahan, duguan at isinugod sa ospital.", "category": "Physical Altercation", "priority": "Critical"},
+  {"narrative": "Sinasaktan ng mister ang misis niya gabi-gabi, may pasa sa braso at mukha.", "category": "Domestic Altercation", "priority": "High"},
+  {"narrative": "Pinagbantaan ako ng kapitbahay na papatayin daw ako kapag hindi ako umalis sa bahay, walang hawak na armas.", "category": "Threats & Intimidation", "priority": "High"},
+  {"narrative": "Ninakaw ang cellphone ko sa jeep kanina, hindi ko nakita ang magnanakaw.", "category": "Theft & Burglary", "priority": "Moderate"},
+  {"narrative": "Maingay ang videoke ng kapitbahay hanggang alas dos ng madaling araw, hindi na kami makatulog.", "category": "Noise Disturbance", "priority": "Low"},
+  {"narrative": "Pinagtatalunan ng magkapitbahay ang bakod sa pagitan ng kanilang lote, nagsisigawan lang sila.", "category": "Property Dispute", "priority": "Low"},
+  {"narrative": "Nagsusunog ng basura ang kapitbahay at pumapasok ang usok sa bahay namin.", "category": "Animal / Environmental Nuisance", "priority": "Low"},
+  {"narrative": "Nawawala ang 6 na taong gulang kong anak mula kaninang hapon, last seen sa palaruan.", "category": "Kidnapping / Missing Person", "priority": "Critical"}
+]

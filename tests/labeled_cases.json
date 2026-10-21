@@ -1,0 +1,16 @@
+[
+  {"narrative": "Binabaril ng lasing ang bahay ng kapitbahay namin ngayon, nagtatago ang mga bata.", "category": "Physical Altercation", "priority": "Critical"},
+  {"narrative": "Kagabi, sinaksak ni Mang Tonyo ang kanyang kapatid sa tiyan sa inuman.", "category": "Physical Altercation", "priority": "Critical"},
+  {"narrative": "Sabi ni Berto babalikan niya kami at susunugin ang bahay namin.", "category": "Threats & Intimidation", "priority": "High"},
+  {"narrative": "Hinahabol ako ng ex ko at pinagbubuhatan niya ako ng kamay tuwing nalalasing.", "category": "Domestic Altercation", "priority": "High"},
+  {"narrative": "He kept hitting his wife again last night, she has bruises on her face.", "category": "Domestic Altercation", "priority": "High"},
+  {"narrative": "Hinoldap kami ng dalawang lalaki sa kanto, kinuha ang bag at pera ko.", "category": "Theft & Burglary", "priority": "High"},
+  {"narrative": "Nanuntok ang lalaki sa tindahan matapos silang magtalo sa utang.", "category": "Physical Altercation", "priority": "Moderate"},
+  {"narrative": "Someone stole our bicycle from the gate this morning.", "category": "Theft & Burglary", "priority": "Moderate"},
+  {"narrative": "Nagbebenta ng shabu sa may eskinita ayon sa mga residente.", "category": "Illegal Drugs", "priority": "High"},
+  {"narrative": "Hindi niya binaril ang aso, laruan lang ang hawak niyang baril ng anak niya.", "category": "Others", "priority": "Low"},
+  {"narrative": "Nakaharang ang tricycle sa bangketa at hindi makadaan ang mga tao.", "category": "Public Disturbance / Obstruction", "priority": "Low"},
+  {"narrative": "Ang tahol ng aso ng kapitbahay ay maingay buong gabi.", "category": "Animal / Environmental Nuisance", "priority": "Low"},
+  {"narrative": "Hindi humihinga ang lolo ko, walang malay sa sala.", "category": "Medical Emergency", "priority": "Critical"},
+  {"narrative": "Ginahasa daw ang dalagita ng tiyuhin niya, nagsumbong siya sa nanay niya kanina.", "category": "Sexual Violence", "priority": "Critical"}
+]

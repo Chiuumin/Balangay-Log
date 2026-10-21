@@ -87,7 +87,7 @@ function residentTableExists(PDO $pdo, string $tableName): bool
 if (!isLoggedIn() || getUserRole() !== 'RESIDENT') {
     residentRespond(['success' => false, 'message' => 'Resident authentication required.'], 403);
 }
-session_write_close();   
+session_write_close();
 
 try {
     $pdo = getDatabaseConnection();
@@ -130,7 +130,7 @@ try {
                 ? (string) ($row['latest_note'] ?? '')
                 : (string) ($row['ai_recommendation'] ?? '');
             if ($rec !== '' && preg_match($residentVisibleRec, $rec) !== 1) {
-                $rec = '';   
+                $rec = '';
             }
             if ($rec === '' && !empty($row['latest_note'])) {
                 $rec = (string) $row['latest_note'];
@@ -169,28 +169,30 @@ try {
     $action = trim((string) ($input['action'] ?? ''));
 
     switch ($action) {
-       case 'get_milestones':
+        case 'get_milestones':
             $refNumber = trim((string) ($input['reference_number'] ?? ''));
             if (!$refNumber) {
                 residentRespond(['success' => false, 'message' => 'Tracking number required.'], 422);
             }
 
-            $caseStmt = $pdo->prepare('
-                SELECT * FROM incident_reports
-                WHERE reference_number = ?
-                  AND (complainant_name = ? OR complainant_phone = ?)
+            // Verify resident ownership and get complete incident row
+            $cStmt = $pdo->prepare('
+                SELECT id, reference_number, incident_type, narrative_description, incident_datetime,
+                       purok, priority_level, status, ai_recommendation, deployed_unit, created_at
+                FROM incident_reports
+                WHERE reference_number = ? AND (complainant_name = ? OR complainant_phone = ?)
                 LIMIT 1
             ');
-            $caseStmt->execute([$refNumber, $residentName, $residentPhone]);
-            $case = $caseStmt->fetch(PDO::FETCH_ASSOC);
+            $cStmt->execute([$refNumber, $residentName, $residentPhone]);
+            $case = $cStmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$case) {
-                residentRespond(['success' => false, 'message' => 'Case not found or access denied.'], 404);
+                residentRespond(['success' => false, 'message' => 'Case not found or unauthorized.'], 404);
             }
 
-            // Fetch milestones including officer_in_charge for officer transparency
+            // Fetch all milestones including milestone_stage
             $mStmt = $pdo->prepare('
-                SELECT id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at
+                SELECT id, status_snapshot, milestone_stage, officer_in_charge, deployed_unit, action_note, created_at
                 FROM case_milestones
                 WHERE incident_id = ? OR tracking_id = ?
                 ORDER BY id ASC
@@ -198,78 +200,25 @@ try {
             $mStmt->execute([(int) $case['id'], $refNumber]);
             $milestones = $mStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            $endorsements = [];
-            if (residentTableExists($pdo, 'endorsements')) {
-                $eStmt = $pdo->prepare('
-                    SELECT type, status, referred_at, endorsed_at, remarks
-                    FROM endorsements
-                    WHERE case_id = ?
-                    ORDER BY id ASC
-                ');
-                $eStmt->execute([(int) $case['id']]);
-                $endorsements = $eStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-            }
+            // Fetch endorsements (PNP or Lupon)
+            $eStmt = $pdo->prepare('
+                SELECT type, status, referred_at, endorsed_at, remarks
+                FROM endorsements
+                WHERE case_id = ?
+                ORDER BY id DESC
+            ');
+            $eStmt->execute([(int)$case['id']]);
+            $endorsements = $eStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            $dispatchLogs = [];
-            if (residentTableExists($pdo, 'tanod_dispatch_records')) {
-                $dStmt = $pdo->prepare('
-                    SELECT unit, status, dispatched_at, dispatched_by_name,
-                           acknowledged_at, acknowledged_by_name, arrived_at, arrived_by_name,
-                           findings, action_taken, updated_by_name, updated_at
-                    FROM tanod_dispatch_records
-                    WHERE incident_id = ?
-                    ORDER BY id ASC
-                ');
-                $dStmt->execute([(int) $case['id']]);
-                $dispatchLogs = $dStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-            } elseif (residentTableExists($pdo, 'tanod_dispatch_logs')) {
-                $dStmt = $pdo->prepare('
-                    SELECT unit, status, dispatched_at, arrived_at
-                    FROM tanod_dispatch_logs
-                    WHERE incident_id = ?
-                    ORDER BY id ASC
-                ');
-                $dStmt->execute([(int) $case['id']]);
-                $dispatchLogs = $dStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-            }
-
-            $findings = [];
-            if (residentTableExists($pdo, 'case_findings')) {
-                $findingStmt = $pdo->prepare('
-                    SELECT observations, action_taken, findings, recommended_next_steps,
-                           submitted_by_name, created_at
-                    FROM case_findings
-                    WHERE incident_id = ?
-                    ORDER BY created_at ASC, id ASC
-                ');
-                $findingStmt->execute([(int) $case['id']]);
-                $findings = $findingStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-            }
-
-            $resolutions = [];
-            if (residentTableExists($pdo, 'case_resolutions')) {
-                $resolutionStmt = $pdo->prepare('
-                    SELECT outcome, conclusion, follow_up_at, resulting_status,
-                           resolved_by_name, resolved_at
-                    FROM case_resolutions
-                    WHERE incident_id = ?
-                    ORDER BY resolved_at ASC, id ASC
-                ');
-                $resolutionStmt->execute([(int) $case['id']]);
-                $resolutions = $resolutionStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-            }
-
-            $closures = [];
-            if (residentTableExists($pdo, 'case_workflow_closures')) {
-                $closureStmt = $pdo->prepare('
-                    SELECT outcome, conclusion, closed_by_name, closed_at
-                    FROM case_workflow_closures
-                    WHERE incident_id = ?
-                    ORDER BY closed_at ASC, id ASC
-                ');
-                $closureStmt->execute([(int) $case['id']]);
-                $closures = $closureStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-            }
+            // Fetch dispatch logs
+            $dStmt = $pdo->prepare('
+                SELECT unit, status, dispatched_at, arrived_at
+                FROM tanod_dispatch_logs
+                WHERE incident_id = ?
+                ORDER BY id ASC
+            ');
+            $dStmt->execute([(int)$case['id']]);
+            $dispatchLogs = $dStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             residentRespond([
                 'success' => true,
@@ -298,51 +247,20 @@ case 'incident_create':
 
             $locationDetails = trim("{$houseNo} {$street}");
             $fullNarrative = $narrative . ($locationDetails ? "\n[Location: {$locationDetails}]" : '');
-            $refNumber = 'IR-' . date('Ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 5));
 
-            $pdo->beginTransaction();
-            try {
-                $stmt = $pdo->prepare("
-                    INSERT INTO incident_reports (
-                        reference_number, complainant_name, complainant_phone, incident_type,
-                        narrative_description, incident_datetime, purok, priority_level,
-                        ai_urgency_score, ai_recommendation, status, assigned_officer_id, assigned_officer_name
-                    ) VALUES (
-                        ?, ?, ?, ?, ?, NOW(), ?, ?, 0.10, 'Pending desk review', 'PENDING', ?, ?
-                    )
-                ");
-                $stmt->execute([
-                    $refNumber,
-                    $complainant,
-                    $phone,
-                    $category,
-                    $fullNarrative,
-                    $purok,
-                    $priority,
-                    $userId,
-                    $complainant
-                ]);
+            $r = online_case_run([
+                'complainant' => $complainant,
+                'phone'       => $phone,
+                'purok'       => $purok,
+                'category'    => $category,
+                'narrative'   => $fullNarrative,
+                'priority'    => $priority,
+            ], $userId);
 
-                $incidentId = (int) $pdo->lastInsertId();
-
-                $pdo->prepare("
-                    INSERT INTO case_milestones (
-                        incident_id, tracking_id, status_snapshot, officer_in_charge, action_note
-                    ) VALUES (?, ?, 'PENDING', ?, ?)
-                ")->execute([
-                    $incidentId,
-                    $refNumber,
-                    $complainant,
-                    "Incident encoded by resident. Assessed priority: {$priority}."
-                ]);
-
-                $pdo->commit();
-                residentRespond(['success' => true, 'message' => "Incident reported successfully. Tracking code: {$refNumber}"]);
-            } catch (Throwable $e) {
-                if ($pdo->inTransaction()) $pdo->rollBack();
-                error_log('[resident_console] incident_create failed: ' . $e->getMessage());
-                residentRespond(['success' => false, 'message' => 'Database error: ' . $e->getMessage()], 500);
+            if ($r['status'] === 200) {
+                residentRespond(['success' => true, 'message' => "Incident reported successfully. Tracking code: {$r['body']['reference_number']}"]);
             }
+            residentRespond($r['body'], $r['status']);
 
         case 'profile_update':
             $fullName = trim((string) ($input['full_name'] ?? ''));

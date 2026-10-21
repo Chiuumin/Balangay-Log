@@ -8,17 +8,17 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<meta name="csrf-token" content="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
-	<title>Executive Overview | BalangayLog</title>
-	<script>
-		if (localStorage.getItem('balangay_theme') === 'dark') {
-			document.documentElement.setAttribute('data-theme', 'dark');
-		}
-	</script>
-	<link rel="stylesheet" href="admin-dashboard.css?v=<?= time() ?>">
-	<link rel="stylesheet" href="captain-dashboard.css?v=<?= time() ?>">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+    <title>Executive Overview | BalangayLog</title>
+    <script>
+        if (localStorage.getItem('balangay_theme') === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        }
+    </script>
+    <link rel="stylesheet" href="admin-dashboard.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="captain-dashboard.css?v=<?= time() ?>">
 </head>
 <body>
 	<div class="admin-shell">
@@ -70,84 +70,251 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 			</div>
 		</aside>
 
-		<main class="admin-main">
-			<header class="admin-topbar">
-				<div><p class="eyebrow">EXECUTIVE OFFICE</p><h1 id="viewTitle">Executive Overview</h1></div>
-				<div class="topbar-right">
-					<div class="captain-badge"><strong id="captainName">Capt. <?= $captainName ?></strong><span class="role-badge">Punong Barangay</span></div>
-					<button type="button" class="button button-primary" data-open-advisory>+ Issue Barangay Advisory</button>
-				</div>
-			</header>
+        <!-- Main Workspace -->
+        <main class="admin-main">
+            <header class="admin-topbar">
+                <div>
+                    <p class="eyebrow">EXECUTIVE OFFICE</p>
+                    <h1 id="viewTitle">Executive Overview</h1>
+                </div>
+                <div class="topbar-right">
+                    <div class="captain-badge">
+                        <strong id="captainName">Capt. <?= $captainName ?></strong>
+                        <span class="role-badge">Punong Barangay</span>
+                    </div>
+                    <button type="button" class="button button-primary" data-open-advisory>+ Issue Barangay Advisory</button>
+                </div>
+            </header>
 
-			<div class="alert-banner" id="criticalBanner" role="alert" hidden>
-				<span><strong id="criticalCount">0</strong> Critical Incidents Requiring Executive Notice</span>
-				<button type="button" class="small-button" id="criticalReview">Review incidents</button>
-			</div>
-			<div class="notice" id="pageNotice" role="status" hidden></div>
+            <div class="alert-banner" id="criticalBanner" role="alert" hidden>
+                <span><strong id="criticalCount">0</strong> Critical Incidents Requiring Executive Notice</span>
+                <button type="button" class="small-button" id="criticalReview">Review incidents</button>
+            </div>
 
-			<section class="admin-view" id="view-overview">
-				<div class="section-heading"><div><h2>Peace and order at a glance</h2><p>This month's incidents, mediation, and items waiting for your signature.</p></div><button type="button" class="button button-quiet" data-refresh>Refresh data</button></div>
-				<div class="metric-grid metric-grid-4">
-					<article class="metric-tile metric-blue"><span>Monthly incidents</span><strong id="metricIncidents">—</strong><small>Cases logged this month</small></article>
-					<article class="metric-tile metric-gold"><span>Cases under mediation</span><strong id="metricMediation">—</strong><small>Active Lupon proceedings</small></article>
-					<article class="metric-tile metric-coral"><span>Endorsements needed</span><strong id="metricEndorse">—</strong><small>Waiting for your signature</small></article>
-					<article class="metric-tile metric-green"><span>Resolution rate</span><strong id="metricRate">—</strong><small>Resolved vs. filed this month</small></article>
-				</div>
+            <div class="notice" id="pageNotice" role="status" hidden></div>
 
-				<div class="content-panel">
-					<div class="panel-heading"><div><h2>Cases awaiting endorsement</h2><p>Lupon certifications and PNP transmittals that need your formal approval.</p></div><button class="text-button" type="button" data-open-view="endorsements">View all →</button></div>
-					<div class="table-scroll"><table><thead><tr><th>Case</th><th>Type</th><th>Purok</th><th>Referred by</th><th>Date referred</th><th></th></tr></thead><tbody id="overviewEndorseRows"></tbody></table></div>
-					<p class="empty-message" id="overviewEndorseEmpty" hidden>Nothing is waiting for your signature.</p>
-				</div>
+            <!-- VIEW 1: EXECUTIVE OVERVIEW -->
+            <section class="admin-view" id="view-overview">
+                <div class="section-heading">
+                    <div>
+                        <h2>Peace and order at a glance</h2>
+                        <p>This month's incidents, mediation, and items waiting for your signature.</p>
+                    </div>
+                    <button type="button" class="button button-quiet" data-refresh>Refresh data</button>
+                </div>
 
-				<div class="analytics-grid">
-					<section class="content-panel"><div class="panel-heading"><div><h2>Incident trend</h2><p>Cases filed per month.</p></div></div><div id="trendChart" class="chart-box"></div></section>
-					<section class="content-panel"><div class="panel-heading"><div><h2>Incidents by purok</h2><p>This month, highest first.</p></div></div><div id="purokBars" class="bar-list"></div></section>
-					<section class="content-panel"><div class="panel-heading"><div><h2>Resolution rate</h2><p>Resolved cases this month.</p></div></div><div id="rateRing" class="rate-ring"></div></section>
-				</div>
+                <div class="metric-grid metric-grid-4">
+                    <article class="metric-tile metric-blue">
+                        <span>Monthly incidents</span>
+                        <strong id="metricIncidents">—</strong>
+                        <small>Cases logged this month</small>
+                    </article>
+                    <article class="metric-tile metric-gold">
+                        <span>Cases under mediation</span>
+                        <strong id="metricMediation">—</strong>
+                        <small>Active Lupon proceedings</small>
+                    </article>
+                    <article class="metric-tile metric-coral">
+                        <span>Endorsements needed</span>
+                        <strong id="metricEndorse">—</strong>
+                        <small>Waiting for your signature</small>
+                    </article>
+                    <article class="metric-tile metric-green">
+                        <span>Resolution rate</span>
+                        <strong id="metricRate">—</strong>
+                        <small>Resolved vs. filed this month</small>
+                    </article>
+                </div>
 
-				<div class="content-panel">
-					<div class="panel-heading"><div><h2>Quick actions</h2></div></div>
-					<div class="quick-actions">
-						<button type="button" class="button button-primary" data-open-advisory>Issue Barangay Advisory</button>
-						<button type="button" class="button button-quiet" data-generate-report>Generate Monthly DILG Report</button>
-						<button type="button" class="button button-quiet" data-open-view="lupon">Review Lupon Referrals</button>
-					</div>
-				</div>
-			</section>
+                <div class="content-panel">
+                    <div class="panel-heading">
+                        <div>
+                            <h2>Cases awaiting endorsement</h2>
+                            <p>Lupon certifications and PNP transmittals that need your formal approval.</p>
+                        </div>
+                        <button class="text-button" type="button" data-open-view="endorsements">View all →</button>
+                    </div>
+                    <div class="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Case</th>
+                                    <th>Type</th>
+                                    <th>Purok</th>
+                                    <th>Referred by</th>
+                                    <th>Date referred</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="overviewEndorseRows"></tbody>
+                        </table>
+                    </div>
+                    <p class="empty-message" id="overviewEndorseEmpty" hidden>Nothing is waiting for your signature.</p>
+                </div>
 
-			<section class="admin-view" id="view-registry" hidden>
-				<div class="section-heading"><div><h2>Master blotter registry</h2><p>Read-only list of every case in the barangay.</p></div></div>
-				<div class="content-panel">
-					<div class="toolbar">
-						<label class="search-field"><span class="sr-only">Search cases</span><input id="caseSearch" type="search" placeholder="Search reference no., incident, purok, priority"></label>
-						<label class="select-field"><span class="sr-only">Filter by status</span><select id="caseStatusFilter"><option value="">All statuses</option></select></label>
-					</div>
-					<div class="table-scroll"><table><thead><tr><th>Case no.</th><th>Incident</th><th>Purok</th><th>Priority</th><th>Status</th><th>Reported</th><th></th></tr></thead><tbody id="caseRows"></tbody></table></div>
-					<p class="empty-message" id="caseEmpty" hidden>No cases match this view.</p>
-				</div>
-			</section>
+                <div class="analytics-grid">
+                    <section class="content-panel">
+                        <div class="panel-heading">
+                            <div>
+                                <h2>Incident trend</h2>
+                                <p>Cases filed per month.</p>
+                            </div>
+                        </div>
+                        <div id="trendChart" class="chart-box"></div>
+                    </section>
 
-			<section class="admin-view" id="view-endorsements" hidden>
-				<div class="section-heading"><div><h2>Awaiting captain endorsement</h2><p>Pending Lupon certifications and PNP referrals.</p></div></div>
-				<div class="content-panel">
-					<div class="table-scroll"><table><thead><tr><th>Case</th><th>Type</th><th>Purok</th><th>Referred by</th><th>Date referred</th><th></th></tr></thead><tbody id="endorseRows"></tbody></table></div>
-					<p class="empty-message" id="endorseEmpty" hidden>Nothing is waiting for your signature.</p>
-				</div>
-			</section>
+                    <section class="content-panel">
+                        <div class="panel-heading">
+                            <div>
+                                <h2>Incidents by purok</h2>
+                                <p>This month, highest first.</p>
+                            </div>
+                        </div>
+                        <div id="purokBars" class="bar-list"></div>
+                    </section>
 
-			<section class="admin-view" id="view-lupon" hidden>
-				<div class="section-heading"><div><h2>Lupon / mediation registry</h2><p>Cases referred to the Lupong Tagapamayapa and their outcomes.</p></div></div>
-				<div class="content-panel">
-					<div class="table-scroll"><table><thead><tr><th>Case</th><th>Parties</th><th>Purok</th><th>Stage</th><th>Next hearing</th><th>Status</th></tr></thead><tbody id="luponRows"></tbody></table></div>
-					<p class="empty-message" id="luponEmpty" hidden>No cases are in mediation.</p>
-				</div>
-			</section>
+                    <section class="content-panel">
+                        <div class="panel-heading">
+                            <div>
+                                <h2>Resolution rate</h2>
+                                <p>Resolved cases this month.</p>
+                            </div>
+                        </div>
+                        <div id="rateRing" class="rate-ring"></div>
+                    </section>
+                </div>
 
-			<section class="admin-view" id="view-heatmap" hidden>
-				<div class="section-heading"><div><h2>Purok incident heatmap</h2><p>Darker tiles mean more incidents in the selected period.</p></div><label class="select-field"><span class="sr-only">Period</span><select id="heatPeriod"><option value="month">This month</option><option value="all">All time</option></select></label></div>
-				<div class="content-panel"><div id="heatGrid" class="heat-grid"></div><p class="empty-message" id="heatEmpty" hidden>No incidents recorded for this period.</p></div>
-			</section>
+                <div class="content-panel">
+                    <div class="panel-heading">
+                        <div>
+                            <h2>Quick actions</h2>
+                        </div>
+                    </div>
+                    <div class="quick-actions">
+                        <button type="button" class="button button-primary" data-open-advisory>Issue Barangay Advisory</button>
+                        <button type="button" class="button button-quiet" data-generate-report>Generate Monthly DILG Report</button>
+                        <button type="button" class="button button-quiet" data-open-view="lupon">Review Lupon Referrals</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 2: MASTER BLOTTER REGISTRY -->
+            <section class="admin-view" id="view-registry" hidden>
+                <div class="section-heading">
+                    <div>
+                        <h2>Master blotter registry</h2>
+                        <p>Read-only list of every case in the barangay.</p>
+                    </div>
+                </div>
+                <div class="content-panel">
+                    <div class="toolbar">
+                        <label class="search-field">
+                            <span class="sr-only">Search cases</span>
+                            <input id="caseSearch" type="search" placeholder="Search reference no., incident, purok, priority">
+                        </label>
+                        <label class="select-field">
+                            <span class="sr-only">Filter by status</span>
+                            <select id="caseStatusFilter">
+                                <option value="">All statuses</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Case no.</th>
+                                    <th>Incident</th>
+                                    <th>Purok</th>
+                                    <th>Priority</th>
+                                    <th>Status</th>
+                                    <th>Reported</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="caseRows"></tbody>
+                        </table>
+                    </div>
+                    <p class="empty-message" id="caseEmpty" hidden>No cases match this view.</p>
+                </div>
+            </section>
+
+            <!-- VIEW 3: AWAITING CAPTAIN ENDORSEMENT -->
+            <section class="admin-view" id="view-endorsements" hidden>
+                <div class="section-heading">
+                    <div>
+                        <h2>Awaiting captain endorsement</h2>
+                        <p>Pending Lupon certifications and PNP referrals.</p>
+                    </div>
+                </div>
+                <div class="content-panel">
+                    <div class="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Case</th>
+                                    <th>Type</th>
+                                    <th>Purok</th>
+                                    <th>Referred by</th>
+                                    <th>Date referred</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="endorseRows"></tbody>
+                        </table>
+                    </div>
+                    <p class="empty-message" id="endorseEmpty" hidden>Nothing is waiting for your signature.</p>
+                </div>
+            </section>
+
+            <!-- VIEW 4: LUPON / MEDIATION REGISTRY -->
+            <section class="admin-view" id="view-lupon" hidden>
+                <div class="section-heading">
+                    <div>
+                        <h2>Lupon / mediation registry</h2>
+                        <p>Cases referred to the Lupong Tagapamayapa and their outcomes.</p>
+                    </div>
+                </div>
+                <div class="content-panel">
+                    <div class="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Case</th>
+                                    <th>Parties</th>
+                                    <th>Purok</th>
+                                    <th>Stage</th>
+                                    <th>Next hearing</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="luponRows"></tbody>
+                        </table>
+                    </div>
+                    <p class="empty-message" id="luponEmpty" hidden>No cases are in mediation.</p>
+                </div>
+            </section>
+
+            <!-- VIEW 5: PUROK INCIDENT HEATMAP -->
+            <section class="admin-view" id="view-heatmap" hidden>
+                <div class="section-heading">
+                    <div>
+                        <h2>Purok incident heatmap</h2>
+                        <p>Darker tiles mean more incidents in the selected period.</p>
+                    </div>
+                    <label class="select-field">
+                        <span class="sr-only">Period</span>
+                        <select id="heatPeriod">
+                            <option value="month">This month</option>
+                            <option value="all">All time</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="content-panel">
+                    <div id="heatGrid" class="heat-grid"></div>
+                    <p class="empty-message" id="heatEmpty" hidden>No incidents recorded for this period.</p>
+                </div>
+            </section>
 
 			<section class="admin-view" id="view-analytics" hidden>
 				<div class="section-heading"><div><h2>Analytics &amp; Official Reports</h2><p>Explore incident patterns and prepare clear, system-generated reports from available case records.</p></div><button type="button" class="button button-primary" data-generate-report>Generate Report</button></div>
@@ -223,107 +390,164 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 				</div>
 			</section>
 
-			<!-- Profile & Settings View -->
-			<section class="admin-view" id="view-settings" hidden>
-				<div class="section-heading">
-					<div>
-						<h2>Profile &amp; Settings</h2>
-						<p>Review executive details and manage account security.</p>
-					</div>
-				</div>
+            <!-- VIEW 7: PROFILE & SETTINGS -->
+            <section class="admin-view" id="view-settings" hidden>
+                <div class="section-heading">
+                    <div>
+                        <h2>Profile &amp; Settings</h2>
+                        <p>Review executive details and manage account security.</p>
+                    </div>
+                </div>
 
-				<div class="settings-stack">
-					<div class="content-panel profile-card">
-						<form id="profileForm" enctype="multipart/form-data">
-							<div class="profile-header-group">
-								<div class="profile-avatar-wrap">
-									<div class="profile-avatar-lg" id="settingsAvatarBadge">
-										<span id="settingsAvatarInitials"><?= strtoupper(substr($captainName, 0, 2)) ?></span>
-										<img id="settingsAvatarPreview" alt="Profile Preview" style="display: none;">
-									</div>
-									<label class="avatar-upload-trigger" for="settingsPhotoInput" title="Upload new photo" aria-label="Upload photo">
-										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-											<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-											<circle cx="12" cy="13" r="4"/>
-										</svg>
-									</label>
-									<input type="file" name="profile_picture" id="settingsPhotoInput" accept="image/png,image/jpeg,image/webp" class="sr-only">
-								</div>
-								
-								<div class="profile-title-block">
-									<h2 id="settingsProfileName">Capt. <?= $captainName ?></h2>
-									<span class="role-badge">Punong Barangay</span>
-								</div>
+                <div class="settings-stack">
+                    <div class="content-panel profile-card">
+                        <form id="profileForm" enctype="multipart/form-data">
+                            <div class="profile-header-group">
+                                <div class="profile-avatar-wrap">
+                                    <div class="profile-avatar-lg" id="settingsAvatarBadge">
+                                        <span id="settingsAvatarInitials"><?= strtoupper(substr($captainName, 0, 2)) ?></span>
+                                        <img id="settingsAvatarPreview" alt="Profile Preview" style="display: none;">
+                                    </div>
+                                    <label class="avatar-upload-trigger" for="settingsPhotoInput" title="Upload new photo" aria-label="Upload photo">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                                            <circle cx="12" cy="13" r="4"/>
+                                        </svg>
+                                    </label>
+                                    <input type="file" name="profile_picture" id="settingsPhotoInput" accept="image/png,image/jpeg,image/webp" class="sr-only">
+                                </div>
+                                
+                                <div class="profile-title-block">
+                                    <h2 id="settingsProfileName">Capt. <?= $captainName ?></h2>
+                                    <span class="role-badge">Punong Barangay</span>
+                                </div>
 
-								<div class="profile-save-action">
-									<button class="button button-quiet" type="submit" id="saveProfileBtn">Save Profile Details</button>
-								</div>
-							</div>
+                                <div class="profile-save-action">
+                                    <button class="button button-quiet" type="submit" id="saveProfileBtn">Save Profile Details</button>
+                                </div>
+                            </div>
 
-							<div class="profile-meta-grid">
-								<div class="meta-item">
-									<label class="meta-label" for="settingsName">FULL NAME</label>
-									<input class="meta-input" name="full_name" id="settingsName" value="<?= $captainName ?>" required>
-								</div>
+                            <div class="profile-meta-grid">
+                                <div class="meta-item">
+                                    <label class="meta-label" for="settingsName">FULL NAME</label>
+                                    <input class="meta-input" name="full_name" id="settingsName" value="<?= $captainName ?>" required>
+                                </div>
 
-								<div class="meta-item">
-									<span class="meta-label">USERNAME / LOGIN</span>
-									<strong class="meta-value"><?= htmlspecialchars((string)($currentUser['username'] ?? $currentUser['email_or_phone'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></strong>
-								</div>
+                                <div class="meta-item">
+                                    <span class="meta-label">USERNAME / LOGIN</span>
+                                    <strong class="meta-value"><?= htmlspecialchars((string)($currentUser['username'] ?? $currentUser['email_or_phone'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></strong>
+                                </div>
 
-								<div class="meta-item">
-									<span class="meta-label">ROLE TYPE</span>
-									<strong class="meta-value"><?= htmlspecialchars((string)($currentUser['user_type'] ?? 'Barangay Captain'), ENT_QUOTES, 'UTF-8') ?></strong>
-								</div>
+                                <div class="meta-item">
+                                    <span class="meta-label">ROLE TYPE</span>
+                                    <strong class="meta-value"><?= htmlspecialchars((string)($currentUser['user_type'] ?? 'Barangay Captain'), ENT_QUOTES, 'UTF-8') ?></strong>
+                                </div>
 
-								<div class="meta-item">
-									<label class="meta-label" for="settingsContact">CONTACT NUMBER</label>
-									<input class="meta-input" name="contact_number" id="settingsContact" value="<?= htmlspecialchars((string)($currentUser['contact_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="e.g. 09171234567">
-								</div>
-							</div>
-						</form>
-					</div>
+                                <div class="meta-item">
+                                    <label class="meta-label" for="settingsContact">CONTACT NUMBER</label>
+                                    <input class="meta-input" name="contact_number" id="settingsContact" value="<?= htmlspecialchars((string)($currentUser['contact_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="e.g. 09171234567">
+                                </div>
+                            </div>
+                        </form>
+                    </div>
 
-					<!-- Change Password Card -->
-					<div class="content-panel password-card">
-						<div class="panel-heading">
-							<div>
-								<h2>Change Password</h2>
-								<p>Ensure your account uses a secure password.</p>
-							</div>
-						</div>
+                    <!-- Change Password Card -->
+                    <div class="content-panel password-card">
+                        <div class="panel-heading">
+                            <div>
+                                <h2>Change Password</h2>
+                                <p>Ensure your account uses a secure password.</p>
+                            </div>
+                        </div>
 
-						<form class="settings-password-form" id="passwordForm">
-							<div class="form-group">
-								<label for="current_password">Current Password</label>
-								<input name="current_password" id="current_password" type="password" autocomplete="current-password" placeholder="••••••••" required>
-							</div>
+                        <form class="settings-password-form" id="passwordForm">
+                            <div class="form-group">
+                                <label for="current_password">Current Password</label>
+                                <input name="current_password" id="current_password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+                            </div>
 
-							<div class="form-group">
-								<label for="new_password">New Password</label>
-								<input name="new_password" id="new_password" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" required>
-							</div>
+                            <div class="form-group">
+                                <label for="new_password">New Password</label>
+                                <input name="new_password" id="new_password" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" required>
+                            </div>
 
-							<div class="form-group">
-								<label for="confirm_password">Confirm New Password</label>
-								<input name="confirm_password" id="confirm_password" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" required>
-							</div>
+                            <div class="form-group">
+                                <label for="confirm_password">Confirm New Password</label>
+                                <input name="confirm_password" id="confirm_password" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" required>
+                            </div>
 
-							<div class="form-actions">
-								<button class="button button-primary" type="submit">Update Password</button>
-							</div>
-						</form>
-					</div>
-				</div>
-			</section>
-		</main>
-	</div>
+                            <div class="form-actions">
+                                <button class="button button-primary" type="submit">Update Password</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
 
-	<dialog class="admin-dialog" id="advisoryDialog"><form id="advisoryForm" method="dialog"><div class="dialog-heading"><div><p class="eyebrow">BARANGAY ADVISORY</p><h2>Issue advisory</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div><label>Title<input name="title" maxlength="120" required></label><label>Applies to<select name="purok_id" id="advisoryPurok"><option value="">Whole barangay</option></select></label><label>Message<textarea name="body" rows="5" required></textarea></label><div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog>Cancel</button><button class="button button-primary" type="submit">Publish advisory</button></div></form></dialog>
+    <!-- MODALS & DIALOGS -->
+    <dialog class="admin-dialog" id="advisoryDialog">
+        <form id="advisoryForm" method="dialog">
+            <div class="dialog-heading">
+                <div>
+                    <p class="eyebrow">BARANGAY ADVISORY</p>
+                    <h2>Issue advisory</h2>
+                </div>
+                <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
+            </div>
+            <label>Title
+                <input name="title" maxlength="120" required>
+            </label>
+            <label>Applies to
+                <select name="purok_id" id="advisoryPurok">
+                    <option value="">Whole barangay</option>
+                </select>
+            </label>
+            <label>Message
+                <textarea name="body" rows="5" required></textarea>
+            </label>
+            <div class="dialog-actions">
+                <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
+                <button class="button button-primary" type="submit">Publish advisory</button>
+            </div>
+        </form>
+    </dialog>
 
-	<dialog class="admin-dialog" id="endorseDialog"><form id="endorseForm" method="dialog"><div class="dialog-heading"><div><p class="eyebrow">FORMAL ENDORSEMENT</p><h2 id="endorseTitle">Endorse case</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div><div id="endorseDetails" class="detail-content"></div><input type="hidden" name="id"><label>Remarks (optional)<textarea name="remarks" rows="3"></textarea></label><div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog>Cancel</button><button class="button button-primary" type="submit" id="endorseSubmit">Endorse / Sign</button></div></form></dialog>
+    <dialog class="admin-dialog" id="endorseDialog">
+        <form id="endorseForm" method="dialog">
+            <div class="dialog-heading">
+                <div>
+                    <p class="eyebrow">FORMAL ENDORSEMENT</p>
+                    <h2 id="endorseTitle">Endorse case</h2>
+                </div>
+                <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
+            </div>
+            <div id="endorseDetails" class="detail-content"></div>
+            <input type="hidden" name="id">
+            <label>Remarks (optional)
+                <textarea name="remarks" rows="3"></textarea>
+            </label>
+            <div class="dialog-actions">
+                <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
+                <button class="button button-primary" type="submit" id="endorseSubmit">Endorse / Sign</button>
+            </div>
+        </form>
+    </dialog>
 
-	<dialog class="admin-dialog" id="caseDialog"><div class="dialog-heading"><div><p class="eyebrow">CASE RECORD (READ-ONLY)</p><h2 id="caseDialogTitle">Case details</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div><div id="caseDetails" class="detail-content"></div><div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog>Close</button></div></dialog>
+    <dialog class="admin-dialog" id="caseDialog">
+        <div class="dialog-heading">
+            <div>
+                <p class="eyebrow">CASE RECORD (READ-ONLY)</p>
+                <h2 id="caseDialogTitle">Case details</h2>
+            </div>
+            <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
+        </div>
+        <div id="caseDetails" class="detail-content"></div>
+        <div class="dialog-actions">
+            <button class="button button-quiet" type="button" data-close-dialog>Close</button>
+        </div>
+    </dialog>
 
 	<script src="sidebar.js?v=<?= time() ?>" defer></script>
 	<script src="captain-dashboard.js?v=<?= time() ?>" defer></script>
