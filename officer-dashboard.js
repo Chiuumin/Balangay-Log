@@ -54,10 +54,10 @@ function timeAgo(dateString) {
 
 function priorityPill(priority) {
     const p = String(priority || 'Low').toLowerCase();
-    if (p === 'critical' || p === 'urgent') return `<span class="pill pill-rejected" style="font-weight: 800;">Critical</span>`;
-    if (p === 'high') return `<span class="pill" style="background: #fdf0ed; color: #d63c22; font-weight: 800;">High</span>`;
-    if (p === 'moderate' || p === 'medium') return `<span class="pill pill-pending">Moderate</span>`;
-    return `<span class="pill" style="background: #eef2f2; color: #52676f;">Low</span>`;
+    if (p === 'critical' || p === 'urgent') return `<span class="pill pill-priority-critical">Critical</span>`;
+    if (p === 'high') return `<span class="pill pill-priority-high">High</span>`;
+    if (p === 'moderate' || p === 'medium') return `<span class="pill pill-priority-moderate">Moderate</span>`;
+    return `<span class="pill pill-priority-low">Low</span>`;
 }
 
 function statusPill(status) {
