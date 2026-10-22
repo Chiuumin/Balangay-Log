@@ -5,6 +5,12 @@ ini_set('display_errors', '0');
 
 require_once __DIR__ . '/../auth.php';
 
+if (file_exists(__DIR__ . '/../sms_helper.php')) {
+    require_once __DIR__ . '/../sms_helper.php';
+} elseif (file_exists(__DIR__ . '/sms_helper.php')) {
+    require_once __DIR__ . '/sms_helper.php';
+}
+
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
@@ -103,7 +109,7 @@ try {
             LEFT JOIN incident_reports ir ON ir.purok = sp.name %s
             {$activeClause} GROUP BY sp.id, sp.name ORDER BY `count` DESC, sp.name";
 
-        $byPurok = dbRows($db, sprintf($purokSql, "AND ir.{$dateCol} >= ?"), [$monthStart]);$byPurokAll = dbRows($db, sprintf($purokSql, ''));
+        $byPurok = dbRows($db, sprintf($purokSql, "AND ir.{$dateCol} >= ?"), [$monthStart]);$byPurokAll = dbRows($db, sprintf($purokSql, ''), []);
 
         $byCategory = dbRows($db, "SELECT incident_type AS category, COUNT(*) AS `count` FROM incident_reports WHERE {$dateCol} >= ? GROUP BY incident_type ORDER BY `count` DESC LIMIT 10", [$monthStart]);
 
@@ -136,7 +142,8 @@ try {
                 'monthly_incidents' => $monthly,
                 'under_mediation' => $mediation,
                 'endorsements_needed' => $needed,
-                'resolution_rate' => $monthly > 0 ? (int) round($resolved / $monthly * 100) : 0,                 'critical_incidents' =>$critical,
+                'resolution_rate' => $monthly > 0 ? (int) round($resolved / $monthly * 100) : 0,
+                'critical_incidents' => $critical,
             ],
             'cases' => $cases,
             'endorsements' => $endorsements,
@@ -153,17 +160,18 @@ try {
         sendFail('Method not allowed.', 405);
     }
 
-    $token =$_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
-    if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'],$token)) {
+    $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $token)) {
         sendFail('Security token expired. Refresh the page.', 403);
     }
 
-    $isMultipart = str_contains($_SERVER['CONTENT_TYPE'] ?? '', 'multipart/form-data');$input = $isMultipart ? $_POST : json_decode((string) file_get_contents('php://input'), true);
+    $isMultipart = str_contains($_SERVER['CONTENT_TYPE'] ?? '', 'multipart/form-data');
+    $input = $isMultipart ? $_POST : json_decode((string) file_get_contents('php://input'), true);
     if (!is_array($input)) {
         sendFail('Invalid payload format.');
     }
 
-    $action =$input['action'] ?? '';
+    $action = $input['action'] ?? '';
 
     if ($action === 'analytics_data') {
         $filters = is_array($input['filters'] ?? null) ? $input['filters'] : [];
@@ -248,106 +256,88 @@ try {
             }
             if ($status !== '') {
                 $where[] = 'ir.status = ?';
-                $params[] = $status;
+                $params[] =$status;
             }
 
             $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
             $hasMilestones = (bool) dbRows($db, "SHOW TABLES LIKE 'case_milestones'");
-            $milestoneJoin = $hasMilestones
+            $milestoneJoin =$hasMilestones
                 ? "LEFT JOIN (SELECT incident_id, MAX(created_at) AS resolved_at FROM case_milestones
                     WHERE status_snapshot = 'RESOLVED' GROUP BY incident_id) cm ON cm.incident_id = ir.id"
                 : '';
-            $resolvedAtSql = $hasMilestones ? 'cm.resolved_at' : 'NULL';
+            $resolvedAtSql =$hasMilestones ? 'cm.resolved_at' : 'NULL';
 
             $hasEndorsements = (bool) dbRows($db, "SHOW TABLES LIKE 'endorsements'");
             $endorsementJoin = '';
-            $endorsementDateSql = 'NULL';
-            $endorsementTypeSql = 'NULL';
-            $receivingOfficeSql = 'NULL';
-            $endorsementColumns = [];
+            $endorsementDateSql = 'NULL';$endorsementTypeSql = 'NULL';
+            $receivingOfficeSql = 'NULL';$endorsementColumns = [];
             if ($hasEndorsements) {
                 $endorsementColumns = array_column(dbRows($db, "SHOW COLUMNS FROM endorsements"), 'Field');
-                if (in_array('case_id', $endorsementColumns, true) && in_array('status', $endorsementColumns, true)) {
-                    $aggregateColumns = [];
-                    if (in_array('endorsed_at', $endorsementColumns, true)) {
-                        $aggregateColumns[] = "MAX(CASE WHEN status = 'ENDORSED' THEN endorsed_at END) AS endorsed_at";
+                if (in_array('case_id', $endorsementColumns, true) && in_array('status', $endorsementColumns, true)) {$aggregateColumns = [];
+                    if (in_array('endorsed_at', $endorsementColumns, true)) {$aggregateColumns[] = "MAX(CASE WHEN status = 'ENDORSED' THEN endorsed_at END) AS endorsed_at";
                         $endorsementDateSql = 'e.endorsed_at';
                     }
-                    if (in_array('type', $endorsementColumns, true)) {
-                        $aggregateColumns[] = "MAX(CASE WHEN status = 'ENDORSED' THEN type END) AS endorsement_type";
+                    if (in_array('type', $endorsementColumns, true)) {$aggregateColumns[] = "MAX(CASE WHEN status = 'ENDORSED' THEN type END) AS endorsement_type";
                         $endorsementTypeSql = 'e.endorsement_type';
                     }
                     foreach (['receiving_agency', 'receiving_office', 'referred_to', 'agency_name'] as $officeColumn) {
-                        if (in_array($officeColumn, $endorsementColumns, true)) {
-                            $aggregateColumns[] = "MAX(CASE WHEN status = 'ENDORSED' THEN {$officeColumn} END) AS receiving_office";
+                        if (in_array($officeColumn, $endorsementColumns, true)) {$aggregateColumns[] = "MAX(CASE WHEN status = 'ENDORSED' THEN {$officeColumn} END) AS receiving_office";
                             $receivingOfficeSql = 'e.receiving_office';
                             break;
                         }
                     }
-                    if ($aggregateColumns) {
-                        $endorsementJoin = 'LEFT JOIN (SELECT case_id, ' . implode(', ', $aggregateColumns) .
+                    if ($aggregateColumns) {$endorsementJoin = 'LEFT JOIN (SELECT case_id, ' . implode(', ', $aggregateColumns) .
                             ' FROM endorsements GROUP BY case_id) e ON e.case_id = ir.id';
                     }
                 }
             }
 
-            $stmt = $db->prepare("SELECT ir.reference_number AS case_no, ir.incident_datetime AS reported_at,
+            $stmt =$db->prepare("SELECT ir.reference_number AS case_no, ir.incident_datetime AS reported_at,
                     ir.incident_type AS category, ir.purok, ir.priority_level AS priority, ir.status,
                     {$resolvedAtSql} AS resolved_at, {$endorsementDateSql} AS endorsed_at,
                     {$endorsementTypeSql} AS endorsement_type, {$receivingOfficeSql} AS receiving_office
                 FROM incident_reports ir {$milestoneJoin} {$endorsementJoin}{$whereSql}
                 ORDER BY ir.incident_datetime DESC, ir.id DESC");
             $stmt->execute($params);
-            $records = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $records =$stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-            $currentYear = (int) date('Y');
-            $observedYears = array_map('intval', array_column(
+            $currentYear = (int) date('Y');$observedYears = array_map('intval', array_column(
                 dbRows($db, 'SELECT YEAR(incident_datetime) AS year FROM incident_reports
                     WHERE YEAR(incident_datetime) BETWEEN 2000 AND ?
                     GROUP BY YEAR(incident_datetime) ORDER BY year', [$currentYear]),
                 'year'
             ));
-            $firstYear = max(2000, min($observedYears ?: [$currentYear - 5], $currentYear - 5));
-            $years = range($currentYear, $firstYear);
-            $categories = $knownCategories;
-            $puroks = $knownPuroks;
+            $firstYear = max(2000, min($observedYears ?: [$currentYear - 5], $currentYear - 5));$years = range($currentYear,$firstYear);
+            $categories =$knownCategories;
+            $puroks =$knownPuroks;
             $comparisonWhere = [];
-            $comparisonParams = [];
-            $comparisonWhere[] = 'YEAR(incident_datetime) BETWEEN 2000 AND YEAR(CURDATE())';
-            if ($category !== '') {
-                $comparisonWhere[] = 'incident_type = ?';
-                $comparisonParams[] = $category;
+            $comparisonParams = [];$comparisonWhere[] = 'YEAR(incident_datetime) BETWEEN 2000 AND YEAR(CURDATE())';
+            if ($category !== '') {$comparisonWhere[] = 'incident_type = ?';
+                $comparisonParams[] =$category;
             }
-            if ($purok !== '') {
-                $comparisonWhere[] = 'purok = ?';
-                $comparisonParams[] = $purok;
+            if ($purok !== '') {$comparisonWhere[] = 'purok = ?';
+                $comparisonParams[] =$purok;
             }
-            if ($status !== '') {
-                $comparisonWhere[] = 'status = ?';
-                $comparisonParams[] = $status;
+            if ($status !== '') {$comparisonWhere[] = 'status = ?';
+                $comparisonParams[] =$status;
             }
-            if ($monthValue !== '') {
-                $comparisonWhere[] = 'MONTH(incident_datetime) = ?';
-                $comparisonParams[] = (int) $monthValue;
+            if ($monthValue !== '') {$comparisonWhere[] = 'MONTH(incident_datetime) = ?';
+                $comparisonParams[] = (int)$monthValue;
             }
-            $fromMonthDay = $fromValue !== '' ? date('m-d', strtotime($fromValue)) : '';
-            $toMonthDay = $toValue !== '' ? date('m-d', strtotime($toValue)) : '';
-            if ($fromMonthDay !== '' && $toMonthDay !== '') {
-                if ($fromMonthDay <= $toMonthDay) {
-                    $comparisonWhere[] = "DATE_FORMAT(incident_datetime, '%m-%d') BETWEEN ? AND ?";
-                    $comparisonParams[] = $fromMonthDay;
-                    $comparisonParams[] = $toMonthDay;
+            $fromMonthDay =$fromValue !== '' ? date('m-d', strtotime($fromValue)) : '';$toMonthDay = $toValue !== '' ? date('m-d', strtotime($toValue)) : '';
+            if ($fromMonthDay !== '' &&$toMonthDay !== '') {
+                if ($fromMonthDay <= $toMonthDay) {$comparisonWhere[] = "DATE_FORMAT(incident_datetime, '%m-%d') BETWEEN ? AND ?";
+                    $comparisonParams[] =$fromMonthDay;
+                    $comparisonParams[] =$toMonthDay;
                 } else {
                     $comparisonWhere[] = "(DATE_FORMAT(incident_datetime, '%m-%d') >= ? OR DATE_FORMAT(incident_datetime, '%m-%d') <= ?)";
-                    $comparisonParams[] = $fromMonthDay;
-                    $comparisonParams[] = $toMonthDay;
+                    $comparisonParams[] =$fromMonthDay;
+                    $comparisonParams[] =$toMonthDay;
                 }
-            } elseif ($fromMonthDay !== '') {
-                $comparisonWhere[] = "DATE_FORMAT(incident_datetime, '%m-%d') >= ?";
-                $comparisonParams[] = $fromMonthDay;
-            } elseif ($toMonthDay !== '') {
-                $comparisonWhere[] = "DATE_FORMAT(incident_datetime, '%m-%d') <= ?";
-                $comparisonParams[] = $toMonthDay;
+            } elseif ($fromMonthDay !== '') {$comparisonWhere[] = "DATE_FORMAT(incident_datetime, '%m-%d') >= ?";
+                $comparisonParams[] =$fromMonthDay;
+            } elseif ($toMonthDay !== '') {$comparisonWhere[] = "DATE_FORMAT(incident_datetime, '%m-%d') <= ?";
+                $comparisonParams[] =$toMonthDay;
             }
             $comparisonSql = $comparisonWhere ? ' WHERE ' . implode(' AND ', $comparisonWhere) : '';
             $yearlyComparison = dbRows($db, "SELECT YEAR(incident_datetime) AS year, COUNT(*) AS total
@@ -355,12 +345,12 @@ try {
                 GROUP BY YEAR(incident_datetime) ORDER BY year", $comparisonParams);
 
             $pendingEndorsements = 0;
-            if ($hasEndorsements && in_array('case_id', $endorsementColumns, true) && in_array('status', $endorsementColumns, true)) {
-                $pendingStmt = $db->prepare("SELECT COUNT(DISTINCT e.case_id) FROM endorsements e
+            if ($hasEndorsements && in_array('case_id', $endorsementColumns, true) && in_array('status',$endorsementColumns, true)) {
+                $pendingStmt =$db->prepare("SELECT COUNT(DISTINCT e.case_id) FROM endorsements e
                     JOIN incident_reports ir ON ir.id = e.case_id
                     WHERE e.status = 'PENDING'" . ($where ? ' AND ' . implode(' AND ', $where) : ''));
                 $pendingStmt->execute($params);
-                $pendingEndorsements = (int) $pendingStmt->fetchColumn();
+                $pendingEndorsements = (int)$pendingStmt->fetchColumn();
             }
 
             sendJson([
@@ -384,19 +374,58 @@ try {
     } elseif ($action === 'case_endorse') {
         $id = (int) ($input['id'] ?? 0);
         $remarks = trim((string) ($input['remarks'] ?? ''));
-        $eRows = dbRows($db, "SELECT e.id, e.case_id, e.type, ir.reference_number, ir.status AS case_status
-            FROM endorsements e JOIN incident_reports ir ON ir.id = e.case_id
-            WHERE e.id = ? AND e.status = 'PENDING'", [$id]);
-        $e =$eRows[0] ?? null;
 
-        if (!$e) {
-            sendFail('Endorsement record not found or already signed.', 404);
+        $db->beginTransaction();
+        try {
+            $eRows = dbRows($db, "SELECT e.id, e.case_id, e.type, ir.reference_number, ir.status AS case_status,
+                    ir.complainant_name, ir.complainant_phone
+                FROM endorsements e 
+                JOIN incident_reports ir ON ir.id = e.case_id
+                WHERE e.id = ? AND e.status = 'PENDING'", [$id]);
+            $e =$eRows[0] ?? null;
+
+            if (!$e) {$db->rollBack();
+                sendFail('Endorsement record not found or already signed.', 404);
+            }
+
+            //  Update endorsement status
+            $db->prepare("UPDATE endorsements SET status = 'ENDORSED', endorsed_by_user_id = ?, endorsed_at = NOW(), remarks = ? WHERE id = ?")
+               ->execute([$captainId, $remarks ?: null, $id]);
+
+            $db->prepare("UPDATE incident_reports SET status = 'IN_PROGRESS' WHERE id = ?")
+               ->execute([$e['case_id']]);
+
+            $milestoneNote = "Captain endorsement signed and approved." . ($remarks ? " Remarks: {$remarks}" : "");
+            $db->prepare("INSERT INTO case_milestones (incident_id, tracking_id, status_snapshot, officer_in_charge, action_note, created_at)
+                VALUES (?, ?, 'IN_PROGRESS', ?, ?, NOW())")
+               ->execute([$e['case_id'],$e['reference_number'], $captain['full_name'] ?? 'Barangay Captain',$milestoneNote]);
+
+            $db->commit();
+
+            //  Trigger SMS notification to resident including the reference/tracking ID
+            if (!empty($e['complainant_phone']) && function_exists('sendIprogSms')) {
+                $phone = trim($e['complainant_phone']);
+                $cleanPhone = preg_replace('/[^0-9]/', '',$phone);
+                if (strpos($cleanPhone, '0') === 0) {
+                    $cleanPhone = '63' . substr($cleanPhone, 1);
+                } elseif (strlen($cleanPhone) === 10 && strpos($cleanPhone, '9') === 0) {
+                    $cleanPhone = '63' .$cleanPhone;
+                }
+
+                $name = trim($e['complainant_name'] ?? 'Resident');$ref = $e['reference_number'];$smsMsg = "BalangayLog Update: Hi {$name}, your case [Ref: {$ref}] has been officially endorsed/signed by the Barangay Captain.";
+                if ($remarks !== '') {
+                    $smsMsg .= " Remarks: {$remarks}";
+                }
+
+                @sendIprogSms($cleanPhone,$smsMsg);
+            }
+
+            sendJson(['success' => true, 'message' => "Case #{$e['reference_number']} endorsed successfully."]);
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {$db->rollBack();
+            }
+            throw $e;
         }
-
-        $db->prepare("UPDATE endorsements SET status = 'ENDORSED', endorsed_by_user_id = ?, endorsed_at = NOW(), remarks = ? WHERE id = ?")
-           ->execute([$captainId, $remarks ?: null, $id]);
-
-        sendJson(['success' => true, 'message' => "Case #{$e['reference_number']} endorsed successfully."]);
     } elseif ($action === 'advisory_create') {$title = trim((string) ($input['title'] ?? ''));$body = trim((string) ($input['body'] ?? ''));$purokId = !empty($input['purok_id']) ? (int)$input['purok_id'] : null;
 
         if (empty($title) || empty($body)) {

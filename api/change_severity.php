@@ -105,9 +105,9 @@ try {
         fail(409, 'This case was changed by someone else. Reload and try again.');
     }
     $status      = $locked['status'];
-    if (in_array($status, ['RESOLVED', 'CLOSED', 'REJECTED'], true)) {
+    if (in_array($status, ['RESOLVED', 'CLOSED'], true)) {
         $pdo->rollBack();
-        fail(409, 'This case is resolved or rejected and its severity cannot be changed.');
+        fail(409, 'This case is closed and its severity cannot be changed.');
     }
     $finalStatus = $status;
 

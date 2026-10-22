@@ -133,7 +133,6 @@ td strong { color: var(--ink); font-size: 11px; }
 .status-badge--dispatched { color: #075e68; background: #e2f5f5; }
 .status-badge--resolution { color: #6941a5; background: #f1eafe; }
 .status-badge--resolved { color: #21643c; background: #e7f5eb; }
-.status-badge--rejected { color: #8f2b20; background: #fff0ed; }
 .status-badge--unknown { color: #46545a; background: #f3f4f4; }
 
 /* Clean table-secondary without lines or decorative artifacts */
@@ -1934,6 +1933,30 @@ html[data-theme="dark"] textarea,
 }
 
 /* ==========================================================================
+   Definitive Dark Mode Priority Badge Styles
+   ========================================================================== */
+   
+[data-theme="dark"] .pill-priority-low {
+    background-color: #283233 !important;
+    color: #c3cecf !important;
+    border: 1px solid #46545a !important;
+}
+
+[data-theme="dark"] .pill-priority-moderate {
+    background-color: rgba(180, 133, 46, 0.25) !important;
+    color: #ffd077 !important;
+    border: 1px solid rgba(180, 133, 46, 0.45) !important;
+}
+
+[data-theme="dark"] .pill-priority-high,
+[data-theme="dark"] .pill-priority-critical {
+    background-color: rgba(209, 92, 73, 0.25) !important;
+    color: #ff9182 !important;
+    border: 1px solid rgba(209, 92, 73, 0.45) !important;
+}
+
+
+/* ==========================================================================
    ELEVATED TRACKING STEPPER & TIMELINE (Institutional Minimalist)
    ========================================================================== */
 
@@ -2492,8 +2515,7 @@ html[data-theme="dark"] textarea,
 [data-theme="dark"] .status-badge--dispatched { color: #8ce1e5; background: #173538; }
 [data-theme="dark"] .status-badge--resolution { color: #d4b9ff; background: #302342; }
 [data-theme="dark"] .status-badge--resolved { color: #83dfa2; background: #1a3525; }
-[data-theme="dark"] [data-theme="dark"] .status-badge--rejected { color: #ffaaa0; background: #402522; }
-.status-badge--unknown { color: #c3cecf; background: #283233; }
+[data-theme="dark"] .status-badge--unknown { color: #c3cecf; background: #283233; }
 
 @media (max-width: 760px) {
     .blotter-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2790,25 +2812,7 @@ html[data-theme="dark"] textarea,
 }
 
 .resident-status-stepper::before {
-    display: block;
-    top: 21px;
-    right: 7.14%;
-    left: 7.14%;
-    height: 2px;
-    background: var(--line);
-}
-
-.resident-status-stepper::after {
-    content: '';
-    position: absolute;
-    z-index: 1;
-    top: 21px;
-    left: 7.14%;
-    width: calc(var(--tracking-progress, 7.14%) - 7.14%);
-    height: 2px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, #38a169, var(--teal));
-    transition: width 900ms cubic-bezier(0.22, 1, 0.36, 1);
+    display: none;
 }
 
 .resident-status-stepper .stepper-step {
@@ -2817,8 +2821,6 @@ html[data-theme="dark"] textarea,
 }
 
 .resident-status-stepper .stepper-node {
-    position: relative;
-    z-index: 2;
     width: 27px;
     height: 27px;
     border-width: 1px;
@@ -2849,12 +2851,6 @@ html[data-theme="dark"] textarea,
     border-color: var(--teal) !important;
     color: #fff !important;
     box-shadow: 0 0 0 2px rgba(25, 118, 108, 0.12) !important;
-    animation: resident-step-pulse 2s ease-out infinite;
-}
-
-@keyframes resident-step-pulse {
-    0%, 100% { box-shadow: 0 0 0 2px rgba(25, 118, 108, 0.12); }
-    50% { box-shadow: 0 0 0 5px rgba(25, 118, 108, 0.06); }
 }
 
 .resident-status-scroll {
@@ -2917,34 +2913,21 @@ html[data-theme="dark"] textarea,
     }
 
     .resident-status-stepper {
-        grid-template-columns: repeat(7, minmax(0, 1fr));
-        gap: 6px 2px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px 4px;
         padding: 6px 0 12px;
         margin-bottom: 10px;
     }
 
-    .resident-status-stepper::before,
-    .resident-status-stepper::after {
-        top: 18px;
-    }
-
     .resident-status-stepper .stepper-node {
-        width: 23px;
-        height: 23px;
+        width: 25px;
+        height: 25px;
     }
 
     .resident-status-stepper .stepper-label {
-        max-width: 100%;
-        font-size: 7px;
+        max-width: 76px;
+        font-size: 8px;
         line-height: 1.2;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .resident-status-stepper::after,
-    .resident-status-stepper .stepper-step.is-active .stepper-node {
-        animation: none;
-        transition: none;
     }
 
     .resident-status-scroll {
@@ -3017,4 +3000,73 @@ html[data-theme="dark"] textarea,
         padding: 8px 7px;
         font-size: 10.5px;
     }
+}
+
+/* ==========================================================================
+   Dark Mode Fix for Dispatch Case Progress Box
+   ========================================================================== */
+[data-theme="dark"] .dispatch-case-card__progress {
+    background-color: #152b2b !important;
+    border: 1px solid #24413f !important;
+    color: #d1dedc !important;
+}
+
+[data-theme="dark"] .dispatch-case-card__progress strong {
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .dispatch-case-card__progress span,
+[data-theme="dark"] .dispatch-case-card__progress small {
+    color: #94a7a5 !important;
+}
+
+/* ==========================================================================
+   Match Priority Pill Layout to Status Pill (Bordered Style)
+   ========================================================================== */
+.pill-priority-low,
+.pill-priority-moderate,
+.pill-priority-high,
+.pill-priority-critical {
+    border: 1px solid currentColor !important;
+    font-weight: 700 !important;
+}
+
+/* Light mode border & text tones matching priority variants */
+.pill-priority-low {
+    border-color: #cbd5e1 !important;
+    color: #475569 !important;
+    background-color: #f8fafc !important;
+}
+
+.pill-priority-moderate {
+    border-color: #d97706 !important;
+    color: #b45309 !important;
+    background-color: #fffbeb !important;
+}
+
+.pill-priority-high,
+.pill-priority-critical {
+    border-color: #dc2626 !important;
+    color: #b91c1c !important;
+    background-color: #fef2f2 !important;
+}
+
+/* Dark mode border & text tones */
+[data-theme="dark"] .pill-priority-low {
+    background-color: #283233 !important;
+    color: #c3cecf !important;
+    border: 1px solid #46545a !important;
+}
+
+[data-theme="dark"] .pill-priority-moderate {
+    border-color: #f59e0b !important;
+    color: #fbbf24 !important;
+    background-color: rgba(245, 158, 11, 0.15) !important;
+}
+
+[data-theme="dark"] .pill-priority-high,
+[data-theme="dark"] .pill-priority-critical {
+    border-color: #ef4444 !important;
+    color: #f87171 !important;
+    background-color: rgba(239, 68, 68, 0.15) !important;
 }

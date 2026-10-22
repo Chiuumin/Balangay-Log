@@ -16,6 +16,7 @@ function officerRespond(array $payload, int $status = 200): void
 try {
     require_once __DIR__ . '/../auth.php';
     require_once __DIR__ . '/../lib/case_workflow.php';
+    require_once __DIR__ . '/sms_helper.php';
     if (file_exists(__DIR__ . '/../lib/triage.php')) {
         require_once __DIR__ . '/../lib/triage.php';
     }
@@ -25,6 +26,42 @@ try {
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
+}
+
+
+function sendCaseUpdateSms(PDO $pdo, int $incidentId, string $newStatus, string $remarks = ''): void {
+    try {
+        $stmt = $pdo->prepare('SELECT reference_number, complainant_name, complainant_phone, assigned_officer_name, deployed_unit FROM incident_reports WHERE id = ? LIMIT 1');
+        $stmt->execute([$incidentId]);
+        $case = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$case || empty($case['complainant_phone'])) {
+            return;
+        }
+
+        $phone = trim($case['complainant_phone']);
+        $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
+        if (strpos($cleanPhone, '0') === 0) {
+            $cleanPhone = '63' . substr($cleanPhone, 1);
+        } elseif (strlen($cleanPhone) === 10 && strpos($cleanPhone, '9') === 0) {
+            $cleanPhone = '63' . $cleanPhone;
+        }
+
+        $name = trim($case['complainant_name'] ?? 'Resident');
+        $ref = $case['reference_number']; 
+        $handler = !empty($case['deployed_unit']) ? $case['deployed_unit'] : (!empty($case['assigned_officer_name']) ? $case['assigned_officer_name'] : '');
+        $handlerText = $handler !== '' ? " Assigned: {$handler}." : '';
+
+        $smsMsg = "BalangayLog Update: Hi {$name}, your case [Ref: {$ref}] status is now '{$newStatus}'.{$handlerText}";
+        if ($remarks !== '') {
+            $smsMsg .= " Remarks: {$remarks}";
+        }
+
+        $response = sendIprogSms($cleanPhone, $smsMsg);
+        error_log("[SMS] Sent update for {$ref} to {$cleanPhone}: " . $response);
+    } catch (Throwable $e) {
+        error_log("[SMS] Failed to send update: " . $e->getMessage());
+    }
 }
 
 $allowedRoles = ['OFFICER', 'CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN'];
@@ -249,6 +286,9 @@ function officerTransition(PDO $pdo, string $ref, array $t): void
         }
 
         $pdo->commit();
+
+        sendCaseUpdateSms($pdo, $incidentId, $t['status'], $t['note'] ?? '');
+
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
@@ -365,7 +405,9 @@ try {
                 if ($status === 'DEPLOYED') $dispatchMetrics['assigned']++;
                 if ($status === 'OFF_DUTY') $dispatchMetrics['off_duty']++;
             }
-        } catch (Throwable $e) {}
+        } catch (Throwable $e) {
+            throw $e;
+        }
 
         try {
             if ($dispatchTrackingReady) {
@@ -420,7 +462,9 @@ try {
                     ORDER BY (status = 'DISPATCHED') DESC, created_at ASC
                 ")->fetchAll(PDO::FETCH_ASSOC) ?: [];
             }
-        } catch (Throwable $e) {}
+        } catch (Throwable $e) {
+            throw $e;
+        }
 
         $allCases = [];
         try {
@@ -526,6 +570,13 @@ try {
         if (mb_strlen($value) > $max) {
             officerRespond(['success' => false, 'message' => "{$label} is too long (max {$max} characters)."], 422);
         }
+    };
+    $parseSchedule = function (string $schedule): string {
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $schedule);
+        if (!$date || $date->format('Y-m-d\TH:i') !== $schedule) {
+            officerRespond(['success' => false, 'message' => 'Enter a valid mediation hearing date and time.'], 422);
+        }
+        return $date->format('Y-m-d H:i:s');
     };
 
     switch ($action) {
@@ -839,29 +890,210 @@ try {
             ]);
 
         case 'create_responder':
-        case 'update_responder':
-        case 'update_responder_availability':
-        case 'dispatch_response_update':
-        case 'record_case_findings':
-        case 'resolve_case':
-        case 'close_case':
-        case 'endorse_lupon':
-        case 'refer_case':
-        case 'reschedule_lupon':
-        case 'request_captain_endorsement':
-        case 'reopen_case':
-        case 'get_case_review_details':
-        case 'encode_case':
-        case 'profile_update':
-        case 'password_update':
-            // Handled below in switch body
-            break;
-        default:
-            officerRespond(['success' => false, 'message' => 'Unknown officer action.'], 422);
-    }
+            $name = trim((string) ($input['name'] ?? ''));
+            $station = trim((string) ($input['station'] ?? ''));
+            $contact = trim((string) ($input['contact_number'] ?? ''));
+            if ($name === '') officerRespond(['success' => false, 'message' => 'Responder name is required.'], 422);
+            $tooLong($name, 150, 'Responder name');
+            $tooLong($station, 120, 'Station');
+            $tooLong($contact, 30, 'Contact number');
+            $duplicateResponder = $pdo->prepare('SELECT id FROM tanod_personnel WHERE LOWER(TRIM(full_name)) = LOWER(TRIM(?)) LIMIT 1');
+            $duplicateResponder->execute([$name]);
+            if ($duplicateResponder->fetchColumn()) {
+                officerRespond(['success' => false, 'message' => 'A responder with that name already exists.'], 409);
+            }
+            $pdo->prepare("
+                INSERT INTO tanod_personnel (full_name, station, status, contact_number)
+                VALUES (?, ?, 'AVAILABLE', ?)
+            ")->execute([$name, $station !== '' ? $station : 'Barangay Base', $contact !== '' ? $contact : null]);
+            officerRespond(['success' => true, 'message' => 'Responder added to the roster.']);
 
-    // Full action implementation block for officer console
-    switch ($action) {
+        case 'update_responder':
+            $tanodId = (int) ($input['tanod_id'] ?? 0);
+            $name = trim((string) ($input['name'] ?? ''));
+            $station = trim((string) ($input['station'] ?? ''));
+            $contact = trim((string) ($input['contact_number'] ?? ''));
+            if ($tanodId < 1 || $name === '') {
+                officerRespond(['success' => false, 'message' => 'Select a responder and provide a name.'], 422);
+            }
+            $tooLong($name, 150, 'Responder name');
+            $tooLong($station, 120, 'Station');
+            $tooLong($contact, 30, 'Contact number');
+            $duplicateResponder = $pdo->prepare('SELECT id FROM tanod_personnel WHERE LOWER(TRIM(full_name)) = LOWER(TRIM(?)) AND id <> ? LIMIT 1');
+            $duplicateResponder->execute([$name, $tanodId]);
+            if ($duplicateResponder->fetchColumn()) {
+                officerRespond(['success' => false, 'message' => 'Another responder already uses that name.'], 409);
+            }
+            $updateResponder = $pdo->prepare("
+                UPDATE tanod_personnel
+                SET full_name = ?, station = ?, contact_number = ?
+                WHERE id = ?
+            ");
+            $updateResponder->execute([$name, $station !== '' ? $station : 'Barangay Base', $contact !== '' ? $contact : null, $tanodId]);
+            if ($updateResponder->rowCount() === 0) {
+                $existsResponder = $pdo->prepare('SELECT 1 FROM tanod_personnel WHERE id = ?');
+                $existsResponder->execute([$tanodId]);
+                if (!$existsResponder->fetchColumn()) {
+                    officerRespond(['success' => false, 'message' => 'Responder not found.'], 404);
+                }
+            }
+            officerRespond(['success' => true, 'message' => 'Responder profile updated.']);
+
+        case 'update_responder_availability':
+            $tanodId = (int) ($input['tanod_id'] ?? 0);
+            $availability = strtoupper(trim((string) ($input['status'] ?? '')));
+            if ($tanodId < 1 || !in_array($availability, ['AVAILABLE', 'OFF_DUTY'], true)) {
+                officerRespond(['success' => false, 'message' => 'Choose Available or Off Duty for a valid responder.'], 422);
+            }
+            $pdo->beginTransaction();
+            try {
+                $responderStmt = $pdo->prepare('SELECT status FROM tanod_personnel WHERE id = ? LIMIT 1 FOR UPDATE');
+                $responderStmt->execute([$tanodId]);
+                $currentStatus = $responderStmt->fetchColumn();
+                if ($currentStatus === false) {
+                    $pdo->rollBack();
+                    officerRespond(['success' => false, 'message' => 'Responder not found.'], 404);
+                }
+                if ($currentStatus === 'DEPLOYED') {
+                    $pdo->rollBack();
+                    officerRespond(['success' => false, 'message' => "Complete the active dispatch before changing this responder's availability."], 409);
+                }
+                $pdo->prepare('UPDATE tanod_personnel SET status = ? WHERE id = ?')->execute([$availability, $tanodId]);
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+            officerRespond(['success' => true, 'message' => 'Responder availability updated.']);
+
+        case 'dispatch_response_update':
+            $needRef();
+            if (!$dispatchTrackingReady) {
+                officerRespond([
+                    'success' => false,
+                    'message' => 'Dispatch response tracking is not installed. Apply tanod_dispatch_migration.sql before recording field updates.',
+                ], 503);
+            }
+            $step = strtoupper(trim((string) ($input['step'] ?? '')));
+            if (!in_array($step, ['ACKNOWLEDGE', 'ARRIVE', 'SUBMIT'], true)) {
+                officerRespond(['success' => false, 'message' => 'Choose acknowledge, arrival, or response submission.'], 422);
+            }
+            if ($step === 'SUBMIT' && !officerWorkflowTablesAvailable($pdo)) {
+                officerRespond([
+                    'success' => false,
+                    'message' => 'Apply case_workflow_migration.sql before submitting field findings so the desk can continue the case toward resolution.',
+                ], 503);
+            }
+            $findings = trim((string) ($input['findings'] ?? ''));
+            $actionTaken = trim((string) ($input['action_taken'] ?? ''));
+            if ($step === 'SUBMIT' && ($findings === '' || $actionTaken === '')) {
+                officerRespond(['success' => false, 'message' => 'Enter both field findings and action taken before submitting the response.'], 422);
+            }
+            $tooLong($findings, 5000, 'Field findings');
+            $tooLong($actionTaken, 5000, 'Action taken');
+
+            $pdo->beginTransaction();
+            try {
+                $caseStmt = $pdo->prepare('SELECT id, status FROM incident_reports WHERE reference_number = ? LIMIT 1 FOR UPDATE');
+                $caseStmt->execute([$refNumber]);
+                $case = $caseStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$case) {
+                    $pdo->rollBack();
+                    officerRespond(['success' => false, 'message' => 'Incident record not found.'], 404);
+                }
+                $dispatchStmt = $pdo->prepare("
+                    SELECT id, status, unit
+                    FROM tanod_dispatch_records
+                    WHERE incident_id = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    FOR UPDATE
+                ");
+                $dispatchStmt->execute([(int) $case['id']]);
+                $dispatch = $dispatchStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$dispatch) {
+                    $pdo->rollBack();
+                    officerRespond(['success' => false, 'message' => 'This case has no tracked responder assignment. Assign responders first.'], 409);
+                }
+                $currentStep = strtoupper((string) $dispatch['status']);
+                $nextStep = match ($step) {
+                    'ACKNOWLEDGE' => ['from' => ['DISPATCHED'], 'to' => 'ACKNOWLEDGED', 'stamp' => 'acknowledged_at', 'actor' => 'acknowledged_by_name', 'note' => 'Responder acknowledged the dispatch assignment.'],
+                    'ARRIVE' => ['from' => ['ACKNOWLEDGED'], 'to' => 'ON_SCENE', 'stamp' => 'arrived_at', 'actor' => 'arrived_by_name', 'note' => 'Responder arrived on scene.'],
+                    default => ['from' => ['ON_SCENE'], 'to' => 'RESPONSE_SUBMITTED', 'stamp' => null, 'note' => ''],
+                };
+                if (!in_array($currentStep, $nextStep['from'], true)) {
+                    $pdo->rollBack();
+                    officerRespond(['success' => false, 'message' => 'That response step is not available for the current dispatch progress.'], 409);
+                }
+                if ($step === 'SUBMIT' && !caseWorkflowAllowsTransition((string) $case['status'], 'IN_PROGRESS')) {
+                    $pdo->rollBack();
+                    officerRespond(['success' => false, 'message' => 'The case cannot continue to active handling from its current status.'], 409);
+                }
+
+                if ($step === 'SUBMIT') {
+                    $pdo->prepare("
+                        INSERT INTO case_findings
+                            (incident_id, observations, action_taken, findings,
+                             submitted_by_user_id, submitted_by_name, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, NOW())
+                    ")->execute([
+                        (int) $case['id'],
+                        "Field response recorded by {$actorName} on behalf of {$dispatch['unit']}.",
+                        $actionTaken,
+                        $findings,
+                        $actorId,
+                        $actorName,
+                    ]);
+                    $pdo->prepare("
+                        UPDATE tanod_dispatch_records
+                        SET status = 'RESPONSE_SUBMITTED', findings = ?, action_taken = ?,
+                            updated_by_user_id = ?, updated_by_name = ?, updated_at = NOW()
+                        WHERE id = ?
+                    ")->execute([$findings, $actionTaken, $actorId, $actorName, (int) $dispatch['id']]);
+                    $pdo->prepare("UPDATE incident_reports SET status = 'IN_PROGRESS', deployed_unit = NULL WHERE id = ?")
+                        ->execute([(int) $case['id']]);
+                    $pdo->prepare("
+                        UPDATE tanod_personnel tp
+                        JOIN tanod_dispatch_record_responders dr ON dr.tanod_id = tp.id
+                        SET tp.status = 'AVAILABLE'
+                        WHERE dr.dispatch_id = ?
+                    ")->execute([(int) $dispatch['id']]);
+                    $note = "Field response submitted by {$actorName} on behalf of {$dispatch['unit']}. Findings: {$findings} Action taken: {$actionTaken}";
+                    $milestoneStatus = 'IN_PROGRESS';
+                } else {
+                    $pdo->prepare("
+                        UPDATE tanod_dispatch_records
+                        SET status = ?, {$nextStep['stamp']} = NOW(), {$nextStep['actor']} = ?,
+                            updated_by_user_id = ?, updated_by_name = ?, updated_at = NOW()
+                        WHERE id = ?
+                    ")->execute([$nextStep['to'], $actorName, $actorId, $actorName, (int) $dispatch['id']]);
+                    $note = $nextStep['note'] . " Recorded by desk officer {$actorName} on behalf of {$dispatch['unit']}.";
+                    $milestoneStatus = (string) $case['status'];
+                }
+                $pdo->prepare("
+                    INSERT INTO case_milestones
+                        (incident_id, tracking_id, status_snapshot, officer_in_charge, deployed_unit, action_note, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, NOW())
+                ")->execute([
+                    (int) $case['id'],
+                    $refNumber,
+                    $milestoneStatus,
+                    $actorName,
+                    $dispatch['unit'],
+                    $note,
+                ]);
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+            officerRespond([
+                'success' => true,
+                'message' => $step === 'SUBMIT'
+                    ? 'Field response recorded. The case is back in active handling for desk follow-up.'
+                    : ($step === 'ARRIVE' ? 'Responder arrival recorded.' : 'Responder acknowledgement recorded.'),
+            ]);
+
         case 'accept_blotter':
             $needRef();
             $customNote = trim((string) ($input['note'] ?? ''));
@@ -894,6 +1126,14 @@ try {
                 'officer' => $actorName,
                 'note' => "Report rejected during triage. Reason: {$reason}",
             ]);
+
+            $idStmt = $pdo->prepare('SELECT id FROM incident_reports WHERE reference_number = ? LIMIT 1');
+            $idStmt->execute([$refNumber]);
+            $rejId = (int) $idStmt->fetchColumn();
+            if ($rejId > 0) {
+                sendCaseUpdateSms($pdo, $rejId, 'REJECTED', $reason);
+            }
+
             officerRespond(['success' => true, 'message' => "Report #{$refNumber} rejected and removed from triage."]);
 
         case 'dispatch_tanod':
@@ -903,9 +1143,13 @@ try {
             $tooLong($notes, 1000, 'Dispatch notes');
             $responderIds = $input['responder_ids'] ?? [];
             if (!is_array($responderIds)) {
-                $responderIds = [];
+                officerRespond(['success' => false, 'message' => 'Select one or more responders for this dispatch.'], 422);
             }
             $responderIds = array_values(array_unique(array_filter(array_map('intval', $responderIds), static fn (int $id): bool => $id > 0)));
+            if (!$responderIds) {
+                officerRespond(['success' => false, 'message' => 'Select one or more available responders for this dispatch.'], 422);
+            }
+            $tooLong(implode(',', $responderIds), 1000, 'Responder selection');
 
             officerTransition($pdo, $refNumber, [
                 'status'           => 'DISPATCHED',
@@ -919,9 +1163,9 @@ try {
                 'note'             => $notes,
                 'dispatch'         => [
                     'responder_ids' => $responderIds,
-                    'notes'         => $notes,
-                    'user_id'       => $actorId,
-                    'user_name'     => $actorName,
+                    'notes' => $notes,
+                    'user_id' => $actorId,
+                    'user_name' => $actorName,
                 ],
             ]);
 
@@ -1062,22 +1306,230 @@ try {
                 officerRespond(['success' => false, 'message' => 'Case not found.'], 404);
             }
 
+            $milestoneStmt = $pdo->prepare("
+                SELECT status_snapshot, officer_in_charge, deployed_unit, action_note, created_at
+                FROM case_milestones
+                WHERE incident_id = ?
+                ORDER BY created_at ASC, id ASC
+            ");
+            $milestoneStmt->execute([(int) $case['id']]);
+            $timeline = array_map(static function (array $entry): array {
+                return [
+                    'action' => $entry['action_note'],
+                    'status' => $entry['status_snapshot'],
+                    'user' => $entry['officer_in_charge'] ?: 'System',
+                    'assigned_to' => $entry['deployed_unit'],
+                    'created_at' => $entry['created_at'],
+                    'type' => 'case_activity',
+                ];
+            }, $milestoneStmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+
+            $workflowReady = officerWorkflowTablesAvailable($pdo);
+            $caseFindings = [];
+            $caseResolutions = [];
+            $caseClosures = [];
+            if ($workflowReady) {
+                $findingsStmt = $pdo->prepare('SELECT observations, persons_contacted, action_taken, findings,
+                        recommended_next_steps, submitted_by_name, created_at
+                    FROM case_findings WHERE incident_id = ? ORDER BY created_at ASC, id ASC');
+                $findingsStmt->execute([(int) $case['id']]);
+                $caseFindings = $findingsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                foreach ($caseFindings as $finding) {
+                    $timeline[] = [
+                        'action' => 'Field findings recorded. Observations: ' . $finding['observations']
+                            . ' Action taken: ' . $finding['action_taken']
+                            . ' Findings: ' . $finding['findings']
+                            . ($finding['persons_contacted'] ? ' Persons contacted: ' . $finding['persons_contacted'] : '')
+                            . ($finding['recommended_next_steps'] ? ' Recommended next steps: ' . $finding['recommended_next_steps'] : ''),
+                        'status' => 'FINDINGS_RECORDED',
+                        'user' => $finding['submitted_by_name'],
+                        'assigned_to' => null,
+                        'created_at' => $finding['created_at'],
+                        'type' => 'finding',
+                    ];
+                }
+
+                $resolutionStmt = $pdo->prepare('SELECT id, outcome, findings_reviewed_summary, conclusion, settlement_terms,
+                        remaining_obligations, follow_up_at, resulting_status, resolved_by_name, resolved_at
+                    FROM case_resolutions WHERE incident_id = ? ORDER BY resolved_at ASC, id ASC');
+                $resolutionStmt->execute([(int) $case['id']]);
+                $caseResolutions = $resolutionStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                foreach ($caseResolutions as $resolution) {
+                    $timeline[] = [
+                        'action' => 'Resolution outcome: ' . $resolution['outcome'] . '. Conclusion: ' . $resolution['conclusion']
+                            . ($resolution['settlement_terms'] ? ' Settlement terms: ' . $resolution['settlement_terms'] : '')
+                            . ($resolution['remaining_obligations'] ? ' Remaining obligations: ' . $resolution['remaining_obligations'] : '')
+                            . ($resolution['follow_up_at'] ? ' Follow-up scheduled: ' . $resolution['follow_up_at'] . '.' : ''),
+                        'status' => $resolution['resulting_status'],
+                        'user' => $resolution['resolved_by_name'],
+                        'assigned_to' => null,
+                        'created_at' => $resolution['resolved_at'],
+                        'type' => 'resolution',
+                    ];
+                }
+                $closureStmt = $pdo->prepare('SELECT outcome, findings_reviewed_summary, conclusion, closed_by_name, closed_at
+                    FROM case_workflow_closures WHERE incident_id = ? ORDER BY closed_at ASC, id ASC');
+                $closureStmt->execute([(int) $case['id']]);
+                $caseClosures = $closureStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                foreach ($caseClosures as $closure) {
+                    $timeline[] = [
+                        'action' => 'Resolution finalized. Outcome: ' . $closure['outcome'] . '. Conclusion: ' . $closure['conclusion'],
+                        'status' => 'CLOSED',
+                        'user' => $closure['closed_by_name'],
+                        'assigned_to' => null,
+                        'created_at' => $closure['closed_at'],
+                        'type' => 'closure',
+                    ];
+                }
+            }
+
+            $severityColumns = [];
+            try {
+                $severityColumns = array_column($pdo->query("SHOW COLUMNS FROM severity_audit_logs")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+            } catch (Throwable $e) {
+                $severityColumns = [];
+            }
+            if (in_array('created_at', $severityColumns, true)
+                && in_array('incident_id', $severityColumns, true)
+                && in_array('action', $severityColumns, true)
+                && in_array('final_priority', $severityColumns, true)
+                && in_array('original_priority', $severityColumns, true)
+                && in_array('actor_user_id', $severityColumns, true)) {
+                $severityStmt = $pdo->prepare("
+                    SELECT sal.action, sal.original_priority, sal.final_priority, sal.created_at, u.full_name AS actor_name
+                    FROM severity_audit_logs sal
+                    LEFT JOIN users u ON u.id = sal.actor_user_id
+                    WHERE sal.incident_id = ?
+                    ORDER BY sal.created_at ASC
+                ");
+                $severityStmt->execute([(int) $case['id']]);
+                foreach ($severityStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $severityEvent) {
+                    $isTriage = strtoupper((string) $severityEvent['action']) === 'AI_TRIAGE';
+                    $timeline[] = [
+                        'action' => $isTriage
+                            ? 'Triage assessment completed. Priority: ' . $severityEvent['final_priority'] . '.'
+                            : 'Priority updated from ' . ($severityEvent['original_priority'] ?: 'unrecorded')
+                                . ' to ' . $severityEvent['final_priority'] . '.',
+                        'status' => $isTriage ? 'TRIAGE' : 'PRIORITY_UPDATED',
+                        'user' => $severityEvent['actor_name'] ?: 'System',
+                        'assigned_to' => null,
+                        'created_at' => $severityEvent['created_at'],
+                        'type' => 'priority_change',
+                    ];
+                }
+            }
+
+            $endorsementsTableStmt = $pdo->prepare("
+                SELECT 1 FROM information_schema.TABLES
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'endorsements'
+                LIMIT 1
+            ");
+            $endorsementsTableStmt->execute();
+            $caseEndorsements = [];
+            if ($endorsementsTableStmt->fetchColumn()) {
+                $endorsementStmt = $pdo->prepare("
+                    SELECT e.id, e.type, e.status, e.referred_at, e.endorsed_at, e.remarks,
+                        referred.full_name AS referred_by, endorsed.full_name AS endorsed_by
+                    FROM endorsements e
+                    LEFT JOIN users referred ON referred.id = e.referred_by_user_id
+                    LEFT JOIN users endorsed ON endorsed.id = e.endorsed_by_user_id
+                    WHERE e.case_id = ?
+                    ORDER BY e.referred_at ASC, e.id ASC
+                ");
+                $endorsementStmt->execute([(int) $case['id']]);
+                $caseEndorsements = $endorsementStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                foreach ($caseEndorsements as $endorsement) {
+                    $isCaptainReferral = $endorsement['type'] === 'CAPTAIN_ENDORSEMENT';
+                    $referralTarget = $isCaptainReferral ? 'Captain' : 'Lupon';
+                    if (!empty($endorsement['referred_at'])) {
+                        $timeline[] = [
+                            'action' => "Referred to {$referralTarget}" . ($endorsement['remarks'] ? ': ' . $endorsement['remarks'] : '.'),
+                            'status' => 'REFERRAL',
+                            'user' => $endorsement['referred_by'] ?: 'System',
+                            'assigned_to' => $referralTarget,
+                            'created_at' => $endorsement['referred_at'],
+                            'type' => 'referral',
+                        ];
+                    }
+                    if (!empty($endorsement['endorsed_at'])) {
+                        $timeline[] = [
+                            'action' => $isCaptainReferral ? 'Captain endorsement completed and signed.' : 'Lupon endorsement completed.',
+                            'status' => $isCaptainReferral ? 'CAPTAIN_ENDORSED' : 'ENDORSED',
+                            'user' => $endorsement['endorsed_by'] ?: 'System',
+                            'assigned_to' => $referralTarget,
+                            'created_at' => $endorsement['endorsed_at'],
+                            'type' => 'referral',
+                        ];
+                    }
+                }
+            }
+            usort($timeline, static fn (array $a, array $b): int => strcmp((string) $a['created_at'], (string) $b['created_at']));
+
+            $luponStmt = $pdo->prepare('SELECT stage, next_hearing, status, parties FROM lupon_cases WHERE case_id = ? ORDER BY id DESC LIMIT 1');
+            $luponStmt->execute([(int) $case['id']]);
+            $luponDetails = $luponStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
             $aiData = !empty($case['ai_analysis_json']) ? json_decode($case['ai_analysis_json'], true) : null;
             if (!$aiData && class_exists('TriageEngine')) {
                 $aiData = TriageEngine::evaluateIncident($case['narrative_description']);
+                try {
+                    $upd = $pdo->prepare("
+                        UPDATE incident_reports 
+                        SET ai_analysis_json = :json, legal_routing = :lr, weapon_detected = :wp, vawc_minor_flag = :vf
+                        WHERE id = :id
+                    ");
+                    $upd->execute([
+                        ':json' => json_encode($aiData, JSON_UNESCAPED_UNICODE),
+                        ':lr'   => $aiData['legal_routing'] ?? null,
+                        ':wp'   => $aiData['weapon_flag'] ?? 'NONE',
+                        ':vf'   => !empty($aiData['vawc_minor_flag']) ? 1 : 0,
+                        ':id'   => $case['id']
+                    ]);
+                } catch (Throwable $ignore) {}
             }
+
+            $dupStmt = $pdo->prepare("
+                SELECT reference_number, incident_type, complainant_name, created_at
+                FROM incident_reports
+                WHERE purok = :purok
+                  AND id <> :current_id
+                  AND created_at >= (NOW() - INTERVAL 2 HOUR)
+                ORDER BY created_at DESC
+                LIMIT 3
+            ");
+            $dupStmt->execute([
+                ':purok'      => $case['purok'],
+                ':current_id' => $case['id']
+            ]);
+            $recentPurokDuplicates = $dupStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            $histStmt = $pdo->prepare("
+                SELECT reference_number, incident_type, status, priority_level, created_at 
+                FROM incident_reports 
+                WHERE complainant_name = :cname
+                  AND id <> :current_id
+                ORDER BY created_at DESC 
+                LIMIT 4
+            ");
+            $histStmt->execute([
+                ':cname'      => $case['complainant_name'],
+                ':current_id' => $case['id']
+            ]);
+            $complainantHistory = $histStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             officerRespond([
                 'success'           => true,
                 'case'              => $case,
+                'timeline'          => $timeline,
+                'endorsements'      => $caseEndorsements,
+                'findings'          => $caseFindings,
+                'resolutions'       => $caseResolutions,
+                'closures'          => $caseClosures,
+                'workflow_ready'    => $workflowReady,
+                'lupon'             => $luponDetails,
                 'ai_analysis'       => $aiData,
-                'timeline'          => [],
-                'endorsements'      => [],
-                'findings'          => [],
-                'resolutions'       => [],
-                'closures'          => [],
-                'workflow_ready'    => officerWorkflowTablesAvailable($pdo),
-                'lupon'             => null
+                'duplicates'        => $recentPurokDuplicates,
+                'history_matches'   => $complainantHistory
             ]);
 
         case 'encode_case':
@@ -1154,18 +1606,19 @@ try {
 
                 $incidentId = (int) $pdo->lastInsertId();
 
-                if (officerTableExists($pdo, 'case_milestones')) {
-                    $pdo->prepare("
-                        INSERT INTO case_milestones (
-                            incident_id, tracking_id, status_snapshot, officer_in_charge, action_note
-                        ) VALUES (?, ?, 'PENDING', ?, ?)
-                    ")->execute([
-                        $incidentId,
-                        $refNumber,
-                        $actorName,
-                        "Incident encoded. Assessed priority: {$finalPriority}."
-                    ]);
-                }
+                $msStmt = $pdo->prepare("
+                    INSERT INTO case_milestones (
+                        incident_id, tracking_id, status_snapshot, officer_in_charge, action_note
+                    ) VALUES (
+                        :inc_id, :track_id, 'PENDING', :officer, :note
+                    )
+                ");
+                $msStmt->execute([
+                    ':inc_id'   => $incidentId,
+                    ':track_id' => $refNumber,
+                    ':officer'  => $actorName,
+                    ':note'     => "Incident encoded. Assessed priority: {$finalPriority}."
+                ]);
 
                 $pdo->commit();
 
@@ -1181,80 +1634,11 @@ try {
                 throw $e;
             }
 
-        case 'profile_update':
-            $name = trim((string) ($input['full_name'] ?? ''));
-            $contact = trim((string) ($input['contact_number'] ?? ''));
-
-            if ($name === '') {
-                officerRespond(['success' => false, 'message' => 'Full name cannot be blank.'], 422);
-            }
-
-            $picturePath = null;
-            if (!empty($_FILES['profile_picture']['tmp_name'])) {
-                $picture = $_FILES['profile_picture'];
-                if ($picture['error'] !== UPLOAD_ERR_OK || $picture['size'] > 2 * 1024 * 1024) {
-                    officerRespond(['success' => false, 'message' => 'Profile picture must be smaller than 2 MB.'], 422);
-                }
-
-                $finfo = new finfo(FILEINFO_MIME_TYPE);
-                $mime = $finfo->file($picture['tmp_name']);
-                $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
-                if (!isset($extensions[$mime])) {
-                    officerRespond(['success' => false, 'message' => 'Use a JPG, PNG, or WebP profile picture.'], 422);
-                }
-
-                $directory = __DIR__ . '/../uploads/profiles';
-                if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
-                    officerRespond(['success' => false, 'message' => 'Could not create profile images directory.'], 500);
-                }
-
-                $filename = 'officer_' . $actorId . '_' . bin2hex(random_bytes(6)) . '.' . $extensions[$mime];
-                if (!move_uploaded_file($picture['tmp_name'], $directory . '/' . $filename)) {
-                    officerRespond(['success' => false, 'message' => 'Could not save the profile picture.'], 500);
-                }
-                $picturePath = 'uploads/profiles/' . $filename;
-            }
-
-            if ($picturePath !== null) {
-                $stmt = $pdo->prepare('UPDATE users SET full_name = ?, contact_number = ?, profile_picture = ? WHERE id = ?');
-                $stmt->execute([$name, $contact, $picturePath, $actorId]);
-            } else {
-                $stmt = $pdo->prepare('UPDATE users SET full_name = ?, contact_number = ? WHERE id = ?');
-                $stmt->execute([$name, $contact, $actorId]);
-            }
-
-            $_SESSION['full_name'] = $name;
-            officerRespond(['success' => true, 'message' => 'Profile information updated successfully.']);
-
-        case 'password_update':
-            $currentPassword = (string) ($input['current_password'] ?? '');
-            $newPassword = (string) ($input['new_password'] ?? '');
-            $confirmPassword = (string) ($input['confirm_password'] ?? '');
-
-            if (strlen($newPassword) < 8 || $newPassword !== $confirmPassword) {
-                officerRespond(['success' => false, 'message' => 'New passwords must match and be at least 8 characters.'], 422);
-            }
-
-            $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = ?');
-            $stmt->execute([$actorId]);
-            $hash = (string) $stmt->fetchColumn();
-
-            if (!password_verify($currentPassword, $hash)) {
-                officerRespond(['success' => false, 'message' => 'Current password is incorrect.'], 422);
-            }
-
-            $stmt = $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
-            $stmt->execute([password_hash($newPassword, PASSWORD_DEFAULT), $actorId]);
-
-            officerRespond(['success' => true, 'message' => 'Password changed successfully.']);
-
         default:
-            officerRespond(['success' => false, 'message' => 'Unknown officer action.'], 422);
+            officerRespond(['success' => false, 'message' => 'Unknown officer action.'], 405);
     }
 } catch (PDOException $e) {
-    error_log('[officer_console] database error: ' . $e->getMessage());
     officerRespond(['success' => false, 'message' => 'Database error: ' . $e->getMessage()], 500);
 } catch (Throwable $e) {
-    error_log('[officer_console] ' . $e->getMessage());
     officerRespond(['success' => false, 'message' => 'Server error: ' . $e->getMessage()], 500);
 }

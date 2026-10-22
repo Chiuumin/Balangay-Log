@@ -35,10 +35,13 @@ if (!$initials) $initials = 'JD';
             document.documentElement.setAttribute('data-theme', 'dark');
         }
     </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="admin-dashboard.css?v=<?= time() ?>" />
 </head>
 <body>
-<div class="admin-shell">
+    <div class="admin-shell">
         <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
         <header class="mobile-top-header">
@@ -95,32 +98,44 @@ if (!$initials) $initials = 'JD';
         <main class="admin-main">
             <header class="admin-topbar">
                 <div>
-                    <p class="eyebrow">RESIDENT PORTAL</p>
-                    <h1 id="viewTitle">Resident Dashboard</h1>
+                    <h1 id="viewTitle" style="font-size: 22px; font-weight: 800; margin: 0; font-family: 'Manrope', sans-serif;">Resident Dashboard</h1>
+                    <p style="margin: 3px 0 0; color: var(--muted); font-size: 12px;">Track your submitted reports and receive official barangay feedback.</p>
                 </div>
-                <div class="topbar-meta"><span class="status-indicator"></span>System online <time id="todayLabel"><?= date('M j, Y') ?></time></div>
+                <div class="topbar-right-controls" style="display: flex; align-items: center; gap: 12px;">
+                    <button class="button button-primary" type="button" id="openReportModalBtn" style="background: #173d3b; border-color: #173d3b;">
+                        + File Incident Report
+                    </button>
+                </div>
             </header>
 
             <div class="notice" id="pageNotice" role="status" hidden></div>
 
             <section class="admin-view" id="view-overview">
-                <div class="section-heading">
-                    <div>
-                        <h2>Incident reports &amp; activity</h2>
-                        <p>Track your submitted reports and receive official barangay feedback.</p>
-                    </div>
-                    <button type="button" class="button button-primary" id="openReportModalBtn">+ File Incident Report</button>
-                </div>
-
                 <div class="metric-grid" style="grid-template-columns: repeat(4, minmax(130px, 1fr));">
-                    <article class="metric-tile metric-slate"><span>Submitted reports</span><strong id="metricTotal">—</strong><small>All reports on record</small></article>
-                    <article class="metric-tile metric-gold"><span>Under review</span><strong id="metricReview">—</strong><small>Awaiting desk verification</small></article>
-                    <article class="metric-tile metric-blue"><span>In progress</span><strong id="metricProgress">—</strong><small>Barangay action underway</small></article>
-                    <article class="metric-tile metric-green"><span>Resolved</span><strong id="metricResolved">—</strong><small>Cases settled amicably</small></article>
+                    <article class="metric-tile metric-slate">
+                        <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">SUBMITTED REPORTS</span>
+                        <strong id="metricTotal">—</strong>
+                        <small>All reports on record</small>
+                    </article>
+                    <article class="metric-tile metric-gold">
+                        <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">UNDER REVIEW</span>
+                        <strong id="metricReview">—</strong>
+                        <small>Awaiting desk verification</small>
+                    </article>
+                    <article class="metric-tile metric-blue">
+                        <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">IN PROGRESS</span>
+                        <strong id="metricProgress">—</strong>
+                        <small>Barangay action underway</small>
+                    </article>
+                    <article class="metric-tile metric-green">
+                        <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">RESOLVED</span>
+                        <strong id="metricResolved">—</strong>
+                        <small>Cases settled amicably</small>
+                    </article>
                 </div>
 
-                <div class="content-panel overview-panel">
-                    <div class="panel-heading">
+                <div class="content-panel overview-panel" style="margin-top: 22px;">
+                    <div class="panel-heading" style="border-bottom: 1px solid var(--line); padding-bottom: 14px;">
                         <div>
                             <h2>My Recent Reports</h2>
                             <p>Official records submitted via your verified resident profile.</p>
@@ -153,7 +168,7 @@ if (!$initials) $initials = 'JD';
                         <h2>My Incident Records</h2>
                         <p>Complete history of incidents and disputes submitted under your name.</p>
                     </div>
-                    <button type="button" class="button button-primary" id="openReportModalBtn2">+ File Incident Report</button>
+                    <button type="button" class="button button-primary" id="openReportModalBtn2" style="background: #173d3b; border-color: #173d3b;">+ File Incident Report</button>
                 </div>
                 <div class="content-panel">
                     <div class="toolbar">

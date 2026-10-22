@@ -17,6 +17,9 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
             document.documentElement.setAttribute('data-theme', 'dark');
         }
     </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="admin-dashboard.css?v=<?= time() ?>">
     <link rel="stylesheet" href="captain-dashboard.css?v=<?= time() ?>">
 </head>
@@ -53,6 +56,7 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 				<span class="identity-avatar" id="captainAvatar">CP<img id="captainPicture" alt="" hidden></span>
 				<span><strong id="captainSideName">Capt. <?= $captainName ?></strong><small>Punong Barangay</small></span>
 			</div>
+
 			<nav class="admin-nav" aria-label="Captain navigation">
 				<button class="admin-nav-link is-active" type="button" data-view="overview"><span class="nav-symbol">▦</span>Executive Overview</button>
 				<button class="admin-nav-link" type="button" data-view="registry"><span class="nav-symbol">☰</span>Master Blotter Registry</button>
@@ -74,15 +78,11 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
         <main class="admin-main">
             <header class="admin-topbar">
                 <div>
-                    <p class="eyebrow">EXECUTIVE OFFICE</p>
-                    <h1 id="viewTitle">Executive Overview</h1>
+                    <h1 id="viewTitle" style="font-size: 22px; font-weight: 800; margin: 0; font-family: 'Manrope', sans-serif;">Executive Overview</h1>
+                    <p style="margin: 3px 0 0; color: var(--muted); font-size: 12px;">Peace and order, executive review, and municipal reporting</p>
                 </div>
-                <div class="topbar-right">
-                    <div class="captain-badge">
-                        <strong id="captainName">Capt. <?= $captainName ?></strong>
-                        <span class="role-badge">Punong Barangay</span>
-                    </div>
-                    <button type="button" class="button button-primary" data-open-advisory>+ Issue Barangay Advisory</button>
+                <div class="topbar-right-controls" style="display: flex; align-items: center; gap: 12px;">
+                    <button type="button" class="button button-primary" data-open-advisory style="background: #173d3b; border-color: #173d3b;">+ Issue Barangay Advisory</button>
                 </div>
             </header>
 
@@ -103,31 +103,31 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
                     <button type="button" class="button button-quiet" data-refresh>Refresh data</button>
                 </div>
 
-                <div class="metric-grid metric-grid-4">
+                <div class="metric-grid" style="grid-template-columns: repeat(4, minmax(130px, 1fr));">
                     <article class="metric-tile metric-blue">
-                        <span>Monthly incidents</span>
+                        <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">MONTHLY INCIDENTS</span>
                         <strong id="metricIncidents">—</strong>
                         <small>Cases logged this month</small>
                     </article>
                     <article class="metric-tile metric-gold">
-                        <span>Cases under mediation</span>
+                        <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">CASES UNDER MEDIATION</span>
                         <strong id="metricMediation">—</strong>
                         <small>Active Lupon proceedings</small>
                     </article>
                     <article class="metric-tile metric-coral">
-                        <span>Endorsements needed</span>
+                        <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">ENDORSEMENTS NEEDED</span>
                         <strong id="metricEndorse">—</strong>
                         <small>Waiting for your signature</small>
                     </article>
                     <article class="metric-tile metric-green">
-                        <span>Resolution rate</span>
+                        <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">RESOLUTION RATE</span>
                         <strong id="metricRate">—</strong>
                         <small>Resolved vs. filed this month</small>
                     </article>
                 </div>
 
-                <div class="content-panel">
-                    <div class="panel-heading">
+                <div class="content-panel" style="margin-top: 22px;">
+                    <div class="panel-heading" style="border-bottom: 1px solid var(--line); padding-bottom: 14px;">
                         <div>
                             <h2>Cases awaiting endorsement</h2>
                             <p>Lupon certifications and PNP transmittals that need your formal approval.</p>
@@ -191,7 +191,7 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
                         </div>
                     </div>
                     <div class="quick-actions">
-                        <button type="button" class="button button-primary" data-open-advisory>Issue Barangay Advisory</button>
+                        <button type="button" class="button button-primary" data-open-advisory style="background: #173d3b; border-color: #173d3b;">Issue Barangay Advisory</button>
                         <button type="button" class="button button-quiet" data-generate-report>Generate Monthly DILG Report</button>
                         <button type="button" class="button button-quiet" data-open-view="lupon">Review Lupon Referrals</button>
                     </div>
@@ -317,7 +317,7 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
             </section>
 
 			<section class="admin-view" id="view-analytics" hidden>
-				<div class="section-heading"><div><h2>Analytics &amp; Official Reports</h2><p>Explore incident patterns and prepare clear, system-generated reports from available case records.</p></div><button type="button" class="button button-primary" data-generate-report>Generate Report</button></div>
+				<div class="section-heading"><div><h2>Analytics &amp; Official Reports</h2><p>Explore incident patterns and prepare clear, system-generated reports from available case records.</p></div><button type="button" class="button button-primary" data-generate-report style="background: #173d3b; border-color: #173d3b;">Generate Report</button></div>
 				<form class="content-panel analytics-filters" id="analyticsFilters">
 					<div class="panel-heading"><div><h2>Filter incident data</h2><p>Filters apply to analytics, incident records, and generated reports.</p></div></div>
 					<div class="filter-toolbar">
@@ -336,7 +336,7 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 							</div>
 						</details>
 					</div>
-					<div class="filter-actions"><button class="button button-primary" type="submit">Apply Filters</button><button class="button button-quiet" id="resetAnalyticsFilters" type="button">Reset</button><span id="analyticsLoading" class="filter-feedback" role="status" hidden>Loading incident records…</span></div>
+					<div class="filter-actions"><button class="button button-primary" type="submit" style="background: #173d3b; border-color: #173d3b;">Apply Filters</button><button class="button button-quiet" id="resetAnalyticsFilters" type="button">Reset</button><span id="analyticsLoading" class="filter-feedback" role="status" hidden>Loading incident records…</span></div>
 					<p class="coverage-note" id="coverageNote"></p>
 				</form>
 				<div class="analytics-tabs" role="tablist" aria-label="Analytics and reporting sections">
@@ -383,7 +383,7 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
 								<label>Purok<select id="reportPurok" name="purok"><option value="">All puroks</option></select></label>
 								<label>Case status<select id="reportStatus" name="status"><option value="">All statuses</option></select></label>
 							</div>
-							<div class="filter-actions"><button class="button button-primary" type="submit">Preview Report</button><button class="button button-quiet" id="printReport" type="button" disabled>Print / Save as PDF</button></div>
+							<div class="filter-actions"><button class="button button-primary" type="submit" style="background: #173d3b; border-color: #173d3b;">Preview Report</button><button class="button button-quiet" id="printReport" type="button" disabled>Print / Save as PDF</button></div>
 						</form>
 						<div id="reportPreview" class="report-preview" aria-live="polite" hidden></div>
 					</div>
@@ -477,7 +477,7 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
                             </div>
 
                             <div class="form-actions">
-                                <button class="button button-primary" type="submit">Update Password</button>
+                                <button class="button button-primary" type="submit" style="background: #173d3b; border-color: #173d3b;">Update Password</button>
                             </div>
                         </form>
                     </div>
@@ -509,7 +509,7 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
             </label>
             <div class="dialog-actions">
                 <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
-                <button class="button button-primary" type="submit">Publish advisory</button>
+                <button class="button button-primary" type="submit" style="background: #173d3b; border-color: #173d3b;">Publish advisory</button>
             </div>
         </form>
     </dialog>
@@ -530,7 +530,7 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
             </label>
             <div class="dialog-actions">
                 <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
-                <button class="button button-primary" type="submit" id="endorseSubmit">Endorse / Sign</button>
+                <button class="button button-primary" type="submit" id="endorseSubmit" style="background: #173d3b; border-color: #173d3b;">Endorse / Sign</button>
             </div>
         </form>
     </dialog>

@@ -410,7 +410,7 @@ if (!$initials) $initials = 'OF';
                 </span>
             </div>
 
-            <p class="eyebrow" style="margin: 4px 10px 8px; color: #a9cfc2; font-size: 9.5px;">OPERATIONS</p>
+   
             <nav class="admin-nav" aria-label="Officer Operations Views">
                 <button class="admin-nav-link is-active" type="button" data-view="dashboard">
                     <span class="nav-symbol">▦</span>Dashboard
