@@ -322,11 +322,39 @@
                 <form id="recoveryResetForm">
                     <div class="form-group">
                         <label for="recoveryPassword">New password</label>
-                        <input type="password" id="recoveryPassword" autocomplete="new-password" minlength="8" maxlength="72" required>
+                        <div class="password-input-wrapper">
+                            <input type="password" id="recoveryPassword" autocomplete="new-password" minlength="8" maxlength="72" required>
+                            <button type="button" class="eye-btn" data-recovery-password-toggle="recoveryPassword" aria-controls="recoveryPassword" aria-label="Show new password" aria-pressed="false">
+                                <svg class="eye-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                                <svg class="eye-icon" data-eye-closed hidden viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="m3 3 18 18"></path>
+                                    <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"></path>
+                                    <path d="M9.9 5.2A11.2 11.2 0 0 1 12 5c7 0 11 7 11 7a14.7 14.7 0 0 1-3.1 3.8"></path>
+                                    <path d="M6.2 6.2C3.4 8 1 12 1 12s4 7 11 7c1 0 2-.2 2.9-.6"></path>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="recoveryConfirmPassword">Confirm new password</label>
-                        <input type="password" id="recoveryConfirmPassword" autocomplete="new-password" minlength="8" maxlength="72" required>
+                        <div class="password-input-wrapper">
+                            <input type="password" id="recoveryConfirmPassword" autocomplete="new-password" minlength="8" maxlength="72" required>
+                            <button type="button" class="eye-btn" data-recovery-password-toggle="recoveryConfirmPassword" aria-controls="recoveryConfirmPassword" aria-label="Show confirm password" aria-pressed="false">
+                                <svg class="eye-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                                <svg class="eye-icon" data-eye-closed hidden viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="m3 3 18 18"></path>
+                                    <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"></path>
+                                    <path d="M9.9 5.2A11.2 11.2 0 0 1 12 5c7 0 11 7 11 7a14.7 14.7 0 0 1-3.1 3.8"></path>
+                                    <path d="M6.2 6.2C3.4 8 1 12 1 12s4 7 11 7c1 0 2-.2 2.9-.6"></path>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                     <button type="submit" class="primary-btn">Set new password</button>
                 </form>
