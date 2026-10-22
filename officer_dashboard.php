@@ -887,7 +887,7 @@ if (!$initials) $initials = 'OF';
             <div class="dialog-heading">
                 <div>
                     <h2 style="font-size: 19px; font-weight: 800; font-family: 'Manrope', sans-serif;">Encode Walk-In Desk Blotter</h2>
-                    <p style="margin: 3px 0 0; color: var(--muted); font-size: 12px;">Transcribe citizen narrative. Category and Priority are evaluated automatically by AI[cite: 17].</p>
+                    <p style="margin: 3px 0 0; color: var(--muted); font-size: 12px;">Transcribe citizen narrative. Category and Priority are evaluated automatically by AI.</p>
                 </div>
                 <button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button>
             </div>
@@ -940,7 +940,7 @@ if (!$initials) $initials = 'OF';
                     <div class="ai-inspection-panel" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line, rgba(255, 255, 255, 0.08)); border-radius: 8px; padding: 14px; margin-top: 14px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--muted);" id="aiTriageStatus">
-                                🤖 AI Automated Triage &amp; Categorization[cite: 17]
+                                🤖 AI Automated Triage &amp; Categorization
                             </span>
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <span id="aiAssessedCategoryBadge" class="pill pill-blue" style="font-weight: 700; font-size: 11px;">Category: Pending</span>
