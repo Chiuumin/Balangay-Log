@@ -3070,3 +3070,104 @@ html[data-theme="dark"] textarea,
     color: #f87171 !important;
     background-color: rgba(239, 68, 68, 0.15) !important;
 }
+
+/* ==========================================================================
+   Officer-Style Status & Priority Pills (Prominent Borders)
+   ========================================================================== */
+.pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+    border: 1px solid currentColor !important;
+}
+
+/* Status variants matching officer view */
+.pill-active, .pill-authorized, .pill-resolved {
+    color: #21643c !important;
+    background: #e7f5eb !important;
+    border-color: #38a169 !important;
+}
+
+.pill-pending, .pill-pending_verification {
+    color: #946619 !important;
+    background: #fbf1d9 !important;
+    border-color: #d97706 !important;
+}
+
+.pill-blue, .pill-in-progress, .pill-dispatched {
+    color: #1d4e89 !important;
+    background: #eaf2ff !important;
+    border-color: #3b82f6 !important;
+}
+
+.pill-rejected, .pill-inactive, .pill-deactivated {
+    color: #9d4538 !important;
+    background: #f9e8e4 !important;
+    border-color: #e05d44 !important;
+}
+
+/* Priority variants matching officer view */
+.pill-priority-low {
+    color: #475569 !important;
+    background: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+}
+
+.pill-priority-moderate {
+    color: #b45309 !important;
+    background: #fffbeb !important;
+    border-color: #d97706 !important;
+}
+
+.pill-priority-high,
+.pill-priority-critical {
+    color: #b91c1c !important;
+    background: #fef2f2 !important;
+    border-color: #dc2626 !important;
+}
+
+/* ==========================================================================
+   Match Dark Mode Status & Priority Pills to Officer Dashboard Style
+   ========================================================================== */
+[data-theme="dark"] .pill {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid currentColor !important;
+}
+
+[data-theme="dark"] .pill-active,
+[data-theme="dark"] .pill-authorized,
+[data-theme="dark"] .pill-resolved {
+    background-color: rgba(40, 112, 72, 0.2) !important;
+    color: #5ed694 !important;
+    border-color: #38a169 !important;
+}
+
+[data-theme="dark"] .pill-pending,
+[data-theme="dark"] .pill-pending_verification {
+    background-color: rgba(180, 133, 46, 0.2) !important;
+    color: #ffd077 !important;
+    border-color: #d97706 !important;
+}
+
+[data-theme="dark"] .pill-blue,
+[data-theme="dark"] .pill-in-progress,
+[data-theme="dark"] .pill-dispatched {
+    background-color: rgba(29, 78, 216, 0.2) !important;
+    color: #93c5fd !important;
+    border-color: #3b82f6 !important;
+}
+
+[data-theme="dark"] .pill-rejected,
+[data-theme="dark"] .pill-inactive,
+[data-theme="dark"] .pill-deactivated {
+    background-color: rgba(209, 92, 73, 0.2) !important;
+    color: #ff9182 !important;
+    border-color: #ef4444 !important;
+}

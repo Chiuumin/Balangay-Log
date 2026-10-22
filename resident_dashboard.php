@@ -168,7 +168,7 @@ if (!$initials) $initials = 'JD';
                         <h2>My Incident Records</h2>
                         <p>Complete history of incidents and disputes submitted under your name.</p>
                     </div>
-                    <button type="button" class="button button-primary" id="openReportModalBtn2" style="background: #173d3b; border-color: #173d3b;">+ File Incident Report</button>
+                    
                 </div>
                 <div class="content-panel">
                     <div class="toolbar">
