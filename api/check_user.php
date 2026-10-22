@@ -14,30 +14,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
 $data = json_decode(file_get_contents('php://input'), true);
 $identifier = is_array($data) ? trim((string) ($data['username'] ?? '')) : '';
 
-if ($identifier === '' || mb_strlen($identifier) > 120) {
-    echo json_encode(['success' => false, 'exists' => false, 'message' => 'Please enter your username or email first.']);
-    exit;
-}
-
-try {
-    $pdo = getDatabaseConnection();
-    // Username or email/phone only. Full names are not unique and must not be searchable here.
-    $stmt = $pdo->prepare('SELECT 1 FROM users WHERE username = :a OR email_or_phone = :b LIMIT 1');
-    $stmt->execute(['a' => $identifier, 'b' => $identifier]);
-    $exists = (bool) $stmt->fetchColumn();
-} catch (Throwable $e) {
-    error_log('[check_user] ' . $e->getMessage());
-    jsonError(500, 'Could not check the account right now.');
-}
-
-if ($exists) {
-    // The account holder's name is never sent back.
-    echo json_encode(['success' => true, 'exists' => true, 'name' => '']);
-} else {
-    echo json_encode([
-        'success' => true,
-        'exists'  => false,
-        'message' => 'No registered account found with that username or email. Please enter an existing account.'
-    ]);
-}
+// Retain the legacy response shape without exposing account existence.
+echo json_encode([
+    'success' => true,
+    'exists' => false,
+    'name' => '',
+    'message' => 'If the account is eligible, recovery instructions will be sent to its registered number.',
+]);
 exit;

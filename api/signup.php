@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/../auth.php';
+require_once __DIR__ . '/phone_helper.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 header('Access-Control-Allow-Origin: *');
@@ -25,6 +26,7 @@ $address = trim((string) ($data['address'] ?? ''));
 $purok = trim((string) ($data['purok'] ?? ''));
 $contactNumber = trim((string) ($data['contact_number'] ?? $data['contactNumber'] ?? ''));
 $otpCode = trim((string) ($data['otp_code'] ?? ''));
+$normalizedPhone = normalizePhilippineMobile($contactNumber);
 
 if ($firstName === '' || $lastName === '' || $username === '' || $password === '' || $confirmPassword === '' || $dob === '' || $address === '' || $purok === '' || $contactNumber === '') {
     echo json_encode(['success' => false, 'message' => 'Please complete all required resident registration fields.']);
@@ -36,12 +38,20 @@ if ($otpCode === '') {
     exit;
 }
 
-if (!isset($_SESSION['registration_otp']) || $otpCode != $_SESSION['registration_otp']) {
+if ($normalizedPhone === null) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'Enter a valid Philippine mobile number, such as 09171234567 or +639171234567.',
+    ]);
+    exit;
+}
+
+if (!isset($_SESSION['registration_otp']) || !hash_equals((string) $_SESSION['registration_otp'], $otpCode)) {
     echo json_encode(['success' => false, 'message' => 'Invalid or expired OTP.']);
     exit;
 }
 
-if ($contactNumber !== $_SESSION['registration_phone']) {
+if ($normalizedPhone !== ($_SESSION['registration_phone'] ?? null)) {
     echo json_encode(['success' => false, 'message' => 'Phone number was changed after requesting OTP.']);
     exit;
 }
@@ -62,6 +72,18 @@ if ($password !== $confirmPassword) {
 }
 
 $pdo = getDatabaseConnection();
+$contactNumber = '+' . $normalizedPhone;
+if (isRegisteredMobile($pdo, $normalizedPhone)) {
+    unset($_SESSION['registration_otp'], $_SESSION['registration_phone']);
+    http_response_code(409);
+    echo json_encode([
+        'success' => false,
+        'code' => 'PHONE_ALREADY_USED',
+        'message' => 'This phone number is already registered. Please use a different number.',
+    ]);
+    exit;
+}
+
 $duplicateStmt = $pdo->prepare('SELECT id FROM users WHERE username = :username OR email_or_phone = :email_or_phone LIMIT 1');
 $duplicateStmt->execute([
     'username' => $username,

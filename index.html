@@ -15,7 +15,7 @@
         } catch (e) {}
     </script>
     <link rel="stylesheet" href="style.css?v=20261011">
-    <link rel="stylesheet" href="homepage.css?v=20261018">
+    <link rel="stylesheet" href="homepage.css?v=20261022">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body class="homepage">
@@ -282,29 +282,63 @@
         <div class="page-width footer-bottom"><span>© <span id="copyrightYear">2026</span> BalangayLog. Barangay Case Management System.</span><span>Privacy Policy and Terms of Use: [To be provided by the barangay]</span></div>
     </footer>
 
-    <script src="script.js?v=99"></script>
+    <script src="script.js?v=100"></script>
     <script>
         document.getElementById('copyrightYear').textContent = new Date().getFullYear();
     </script>
     <div class="modal-overlay" id="forgotModal" style="display: none;">
-        <div class="forgot-modal">
+        <section class="forgot-modal" role="dialog" aria-modal="true" aria-labelledby="forgotModalTitle">
             <div class="forgot-modal-heading">
                 <div class="forgot-modal-icon" aria-hidden="true">⌑</div>
-                <h3>Password Reset Policy</h3>
+                <h3 id="forgotModalTitle">Reset your password</h3>
                 <button type="button" id="closeForgotModal" class="modal-close" aria-label="Close">&times;</button>
             </div>
-            <p>Verified Account: <strong id="forgotModalUserDisplay">Official Account</strong></p>
-            <p>Password reset requests must be submitted directly to the Barangay System Administrator.</p>
-            <div class="reset-steps">
-                <strong>Required Steps:</strong>
-                <ul>
-                    <li>Contact the <strong>Barangay Secretary</strong> or ICT Administrator.</li>
-                    <li>Present valid barangay identification credentials.</li>
-                    <li>The administrator will generate and issue a temporary login key.</li>
-                </ul>
+
+            <div class="recovery-step" data-recovery-step="username">
+                <p>Enter your username. If the account is eligible, a verification code will be sent to its registered phone.</p>
+                <form id="recoveryStartForm">
+                    <div class="form-group">
+                        <label for="recoveryUsername">Username</label>
+                        <input type="text" id="recoveryUsername" name="username" maxlength="80" autocomplete="username" required>
+                    </div>
+                    <button type="submit" id="recoveryStartBtn" class="primary-btn">Send verification code</button>
+                </form>
             </div>
-            <button type="button" id="dismissForgotBtn" class="primary-btn">Understood</button>
-        </div>
+
+            <div class="recovery-step" data-recovery-step="otp" hidden>
+                <p>Registered phone: <strong id="recoveryMaskedPhone">+63 9** *** ****</strong>. Enter the code below if it arrives. Codes expire in five minutes.</p>
+                <form id="recoveryVerifyForm">
+                    <div class="form-group">
+                        <label for="recoveryOtp">Verification code</label>
+                        <input type="text" id="recoveryOtp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required>
+                    </div>
+                    <button type="submit" class="primary-btn">Verify code</button>
+                </form>
+                <button type="button" id="recoveryResendBtn" class="recovery-secondary-btn" disabled>Resend in 30s</button>
+            </div>
+
+            <div class="recovery-step" data-recovery-step="password" hidden>
+                <p>Choose a new password. It must be at least eight characters long.</p>
+                <form id="recoveryResetForm">
+                    <div class="form-group">
+                        <label for="recoveryPassword">New password</label>
+                        <input type="password" id="recoveryPassword" autocomplete="new-password" minlength="8" maxlength="72" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="recoveryConfirmPassword">Confirm new password</label>
+                        <input type="password" id="recoveryConfirmPassword" autocomplete="new-password" minlength="8" maxlength="72" required>
+                    </div>
+                    <button type="submit" class="primary-btn">Set new password</button>
+                </form>
+            </div>
+
+            <div class="recovery-step" data-recovery-step="success" hidden>
+                <p>Your password has been reset. Sign in with your new password.</p>
+                <a href="#login" id="recoveryReturnLogin" class="primary-btn recovery-return-btn">Return to login</a>
+            </div>
+
+            <p id="recoveryStatus" class="recovery-status" role="status" aria-live="polite" hidden></p>
+        </section>
     </div>
 </body>
 </html>
