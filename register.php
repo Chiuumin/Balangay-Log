@@ -75,7 +75,7 @@ if (isLoggedIn()) {
                     <div class="register-grid register-grid-single">
                         <div class="form-group form-group--wide">
                             <label for="contact_number">Contact Number</label>
-                            <input type="tel" id="contact_number" name="contact_number" placeholder="+63 9XX XXX XXXX" autocomplete="tel" required aria-describedby="contact_number_error" />
+                            <input type="tel" id="contact_number" name="contact_number" placeholder="09XX XXX XXXX or +63 9XX XXX XXXX" autocomplete="tel" required aria-describedby="contact_number_error" />
                             <small class="field-error" id="contact_number_error"></small>
                         </div>
                         <div class="form-group form-group--wide">
@@ -227,6 +227,20 @@ if (isLoggedIn()) {
             field.setAttribute('aria-invalid', String(Boolean(message)));
         }
 
+        function normalizePhilippineMobile(value) {
+            const phone = value.trim().replace(/[\s().-]+/g, '');
+            if (/^\+?6309\d{9}$/.test(phone)) return `63${phone.slice(-10)}`;
+            if (/^09\d{9}$/.test(phone)) return `63${phone.slice(1)}`;
+            if (/^\+?639\d{9}$/.test(phone)) return phone.replace(/^\+/, '');
+            if (/^9\d{9}$/.test(phone)) return `63${phone}`;
+            return '';
+        }
+
+        function formatPhilippineMobile(value) {
+            const normalized = normalizePhilippineMobile(value);
+            return normalized ? `+63 ${normalized.slice(2, 3)}${normalized.slice(3, 5)} ${normalized.slice(5, 8)} ${normalized.slice(8)}` : value;
+        }
+
         function validateField(field) {
             let message = '';
             if (!field.checkValidity()) {
@@ -241,6 +255,9 @@ if (isLoggedIn()) {
                 } else {
                     message = field.validationMessage;
                 }
+            }
+            if (!message && field.id === 'contact_number' && !normalizePhilippineMobile(field.value)) {
+                message = 'Enter a valid Philippine mobile number, such as 09171234567 or +639171234567.';
             }
             if (!message && field.id === 'confirm_password' && field.value !== document.getElementById('password').value) {
                 message = 'Passwords do not match.';
@@ -275,6 +292,15 @@ if (isLoggedIn()) {
         registerForm.querySelectorAll('input, select').forEach((field) => {
             field.addEventListener('input', () => validateField(field));
             field.addEventListener('change', () => validateField(field));
+        });
+
+        const contactNumberInput = document.getElementById('contact_number');
+        contactNumberInput.addEventListener('blur', () => {
+            const normalized = normalizePhilippineMobile(contactNumberInput.value);
+            if (normalized) {
+                contactNumberInput.value = formatPhilippineMobile(normalized);
+                setFieldError(contactNumberInput, '');
+            }
         });
 
         document.getElementById('password').addEventListener('input', () => {
@@ -330,14 +356,15 @@ if (isLoggedIn()) {
 
         document.getElementById('requestOtpBtn').addEventListener('click', async function() {
             const phoneInput = document.getElementById('contact_number');
-            const phoneVal = phoneInput.value.trim();
+            const normalizedPhone = normalizePhilippineMobile(phoneInput.value);
+            const phoneVal = normalizedPhone ? `+${normalizedPhone}` : '';
             const errorElement = document.getElementById('otp_code_error');
             const btn = this;
             
-            if (!phoneVal) {
+            if (!normalizedPhone) {
                 showStep(1); 
                 phoneInput.focus();
-                setFieldError(phoneInput, 'Please provide a contact number before requesting an OTP.');
+                setFieldError(phoneInput, 'Enter a valid Philippine mobile number, such as 09171234567 or +639171234567.');
                 return;
             }
 
@@ -355,7 +382,7 @@ if (isLoggedIn()) {
                 const result = await response.json();
                 
                 if (result.success) {
-                    errorElement.textContent = 'OTP sent! Please check your messages.';
+                    errorElement.textContent = result.message || 'The SMS provider accepted the OTP request; delivery to your phone is not confirmed.';
                     errorElement.style.color = '#059669'; 
                     errorElement.classList.add('is-visible');
                     
@@ -374,6 +401,9 @@ if (isLoggedIn()) {
                     errorElement.textContent = result.message || 'Failed to send OTP.';
                     errorElement.style.color = ''; 
                     errorElement.classList.add('is-visible');
+                    if (result.code === 'PHONE_ALREADY_USED') {
+                        window.alert('This phone number is already registered. Please use a different number.');
+                    }
                     btn.disabled = false;
                     btn.textContent = 'Send OTP';
                 }
@@ -414,7 +444,7 @@ if (isLoggedIn()) {
                     date_of_birth: document.getElementById('date_of_birth').value,
                     address: document.getElementById('address').value.trim(),
                     purok: document.getElementById('purok').value.trim(),
-                    contact_number: document.getElementById('contact_number').value.trim(),
+                    contact_number: `+${normalizePhilippineMobile(document.getElementById('contact_number').value)}`,
                     username: document.getElementById('username').value.trim(),
                     password: document.getElementById('password').value,
                     confirm_password: document.getElementById('confirm_password').value,
@@ -465,6 +495,11 @@ if (isLoggedIn()) {
                         return;
                     }
 
+                    if (result.code === 'PHONE_ALREADY_USED') {
+                        window.alert(result.message);
+                        showStep(1);
+                        setFieldError(contactNumberInput, result.message);
+                    }
                     showError(result.message || 'Resident registration failed.');
                 } catch (error) {
                     showError('Unable to submit your registration right now. Please try again.');

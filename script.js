@@ -243,71 +243,186 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // Forgot Password Flow
     const forgotModal = document.getElementById('forgotModal');
     const closeForgotModal = document.getElementById('closeForgotModal');
-    const dismissForgotBtn = document.getElementById('dismissForgotBtn');
-    const forgotModalUserDisplay = document.getElementById('forgotModalUserDisplay');
+    const recoveryStatus = document.getElementById('recoveryStatus');
+    const recoveryStartForm = document.getElementById('recoveryStartForm');
+    const recoveryVerifyForm = document.getElementById('recoveryVerifyForm');
+    const recoveryResetForm = document.getElementById('recoveryResetForm');
+    const recoveryResendBtn = document.getElementById('recoveryResendBtn');
+    let resendTimer = null;
 
-    function closeForgotModalHandler() {
-        if (forgotModal) forgotModal.style.display = 'none';
-    }
-
-    if (forgotPasswordLink) {
-        forgotPasswordLink.addEventListener('click', async (e) => {
-            e.preventDefault();
-
-            if (errorBanner) {
-                errorBanner.style.display = 'none';
-                errorBanner.innerText = '';
-            }
-
-            const username = usernameInput ? usernameInput.value.trim() : '';
-
-            if (!username) {
-                if (errorBanner) {
-                    errorBanner.innerText = 'Please enter your username or email above first.';
-                    errorBanner.style.display = 'block';
-                }
-                if (usernameInput) usernameInput.focus();
-                return;
-            }
-
-            try {
-                const response = await fetch('api/check_user.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username })
-                });
-
-                const data = await response.json();
-
-                if (data.success && data.exists) {
-                    if (forgotModalUserDisplay) {
-                        forgotModalUserDisplay.innerText = data.name || username;
-                    }
-                    if (forgotModal) forgotModal.style.display = 'flex';
-                } else {
-                    if (errorBanner) {
-                        errorBanner.innerText = data.message || 'Account not registered.';
-                        errorBanner.style.display = 'block';
-                    }
-                    if (usernameInput) usernameInput.focus();
-                }
-            } catch (err) {
-                if (errorBanner) {
-                    errorBanner.innerText = 'Unable to verify account. Please try again.';
-                    errorBanner.style.display = 'block';
-                }
-            }
+    function showRecoveryStep(name) {
+        document.querySelectorAll('[data-recovery-step]').forEach((step) => {
+            step.hidden = step.dataset.recoveryStep !== name;
         });
     }
 
-    if (closeForgotModal) closeForgotModal.addEventListener('click', closeForgotModalHandler);
-    if (dismissForgotBtn) dismissForgotBtn.addEventListener('click', closeForgotModalHandler);
+    function showRecoveryStatus(message) {
+        recoveryStatus.textContent = message;
+        recoveryStatus.hidden = !message;
+    }
 
-    window.addEventListener('click', (e) => {
-        if (e.target === forgotModal) closeForgotModalHandler();
+    async function recoveryRequest(action, payload = {}) {
+        const response = await fetch('api/password_recovery.php', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, ...payload })
+        });
+        const data = await response.json();
+        return { response, data };
+    }
+
+    function startResendCooldown(seconds = 30) {
+        window.clearInterval(resendTimer);
+        let remaining = seconds;
+        recoveryResendBtn.disabled = true;
+        recoveryResendBtn.textContent = `Resend in ${remaining}s`;
+        resendTimer = window.setInterval(() => {
+            remaining -= 1;
+            if (remaining <= 0) {
+                window.clearInterval(resendTimer);
+                recoveryResendBtn.disabled = false;
+                recoveryResendBtn.textContent = 'Resend code';
+                return;
+            }
+            recoveryResendBtn.textContent = `Resend in ${remaining}s`;
+        }, 1000);
+    }
+
+    async function closeRecoveryModal() {
+        if (resendTimer) window.clearInterval(resendTimer);
+        if (forgotModal.style.display !== 'none') {
+            try {
+                await recoveryRequest('cancel');
+            } catch (error) {
+                // Closing the UI is safe; server-side challenges still expire.
+            }
+        }
+        forgotModal.style.display = 'none';
+        showRecoveryStatus('');
+        showRecoveryStep('username');
+    }
+
+    if (forgotPasswordLink && forgotModal) {
+        forgotPasswordLink.addEventListener('click', (event) => {
+            event.preventDefault();
+            showRecoveryStatus('');
+            showRecoveryStep('username');
+            document.getElementById('recoveryUsername').value = usernameInput?.value.trim() || '';
+            forgotModal.style.display = 'flex';
+            document.getElementById('recoveryUsername').focus();
+        });
+    }
+
+    recoveryStartForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = document.getElementById('recoveryStartBtn');
+        button.disabled = true;
+        showRecoveryStatus('');
+        try {
+            const { data } = await recoveryRequest('start', {
+                username: document.getElementById('recoveryUsername').value.trim()
+            });
+            if (!data.success) {
+                showRecoveryStatus(data.message || 'Unable to send a verification code right now. Please try again later.');
+                return;
+            }
+            if (data.provider_accepted !== true) {
+                showRecoveryStatus('Unable to send a verification code right now. Please try again later.');
+                return;
+            }
+            // Only reveal the OTP step after the SMS provider accepts the send request.
+            showRecoveryStep('otp');
+            document.getElementById('recoveryOtp').focus();
+            document.getElementById('recoveryMaskedPhone').textContent = data.masked_phone || '+63 9** *** ****';
+            recoveryVerifyForm.querySelector('button[type="submit"]').disabled = false;
+            showRecoveryStatus(data.message);
+            startResendCooldown();
+        } catch (error) {
+            showRecoveryStatus('Unable to send a verification code right now. Please try again later.');
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    recoveryResendBtn?.addEventListener('click', async () => {
+        recoveryResendBtn.disabled = true;
+        showRecoveryStatus('');
+        try {
+            const { data } = await recoveryRequest('resend');
+            if (!data.success || data.provider_accepted !== true) {
+                // A failed resend invalidates the old challenge, so do not accept its OTP.
+                recoveryVerifyForm.querySelector('button[type="submit"]').disabled = true;
+                showRecoveryStatus(data.message || 'Unable to send a verification code right now. Please try again later.');
+                startResendCooldown();
+                return;
+            }
+            document.getElementById('recoveryMaskedPhone').textContent = data.masked_phone || '+63 9** *** ****';
+            recoveryVerifyForm.querySelector('button[type="submit"]').disabled = false;
+            showRecoveryStatus(data.message);
+            startResendCooldown();
+        } catch (error) {
+            recoveryVerifyForm.querySelector('button[type="submit"]').disabled = true;
+            showRecoveryStatus('Unable to send a verification code right now. Please try again later.');
+            startResendCooldown();
+        }
+    });
+
+    recoveryVerifyForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = recoveryVerifyForm.querySelector('button[type="submit"]');
+        button.disabled = true;
+        showRecoveryStatus('');
+        try {
+            const { data } = await recoveryRequest('verify', {
+                otp: document.getElementById('recoveryOtp').value.trim()
+            });
+            if (!data.success) {
+                showRecoveryStatus(data.message || 'The code is invalid or expired.');
+                return;
+            }
+            showRecoveryStep('password');
+            showRecoveryStatus(data.message);
+            document.getElementById('recoveryPassword').focus();
+        } catch (error) {
+            showRecoveryStatus('Password recovery is temporarily unavailable. Please try again later.');
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    recoveryResetForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const password = document.getElementById('recoveryPassword').value;
+        const confirmPassword = document.getElementById('recoveryConfirmPassword').value;
+        const button = recoveryResetForm.querySelector('button[type="submit"]');
+        button.disabled = true;
+        showRecoveryStatus('');
+        try {
+            const { data } = await recoveryRequest('reset', { password, confirm_password: confirmPassword });
+            if (!data.success) {
+                showRecoveryStatus(data.message || 'Unable to set the new password.');
+                return;
+            }
+            recoveryResetForm.reset();
+            showRecoveryStep('success');
+            showRecoveryStatus(data.message);
+        } catch (error) {
+            showRecoveryStatus('Password recovery is temporarily unavailable. Please try again later.');
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    closeForgotModal?.addEventListener('click', closeRecoveryModal);
+    document.getElementById('recoveryReturnLogin')?.addEventListener('click', closeRecoveryModal);
+    window.addEventListener('click', (event) => {
+        if (event.target === forgotModal) closeRecoveryModal();
+    });
+    window.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && forgotModal?.style.display !== 'none') closeRecoveryModal();
     });
 });
 
