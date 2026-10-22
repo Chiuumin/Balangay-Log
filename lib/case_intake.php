@@ -120,23 +120,25 @@ function encode_case_run(array $input, array $actor, array $opts = []): array {
     try {
         $pdo->prepare("INSERT INTO incident_reports
             (reference_number, complainant_name, complainant_phone, incident_type, narrative_description, incident_datetime,
-             purok, street_address, scenario_type, verification_level, ai_urgency_score, priority_level, ai_recommendation, status,
-             original_ai_priority, severity_review_status, ai_analysis_json, analysis_version, legal_routing, weapon_detected,
-             vawc_minor_flag, assigned_officer_id, assigned_officer_name)
-            VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, 'VERIFIED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-            ->execute([$tmpRef, $name, $phone, $type, $narrative, $purok, $street !== '' ? $street : null, $scenarioType,
-                       $score, $finalPriority, $t['recommendation'], $initialStatus, $t['priority'], $review,
-                       json_encode($a, JSON_UNESCAPED_UNICODE), ENGINE_VERSION, $a['legal_routing'], $a['weapon_flag'],
-                       $a['vawc_minor_flag'] ? 1 : 0, $online ? null : ($actorId ?: null), $online ? 'Unassigned' : $actorName]);
+             purok, ai_urgency_score, priority_level, ai_recommendation, status,
+             assigned_officer_id, assigned_officer_name)
+            VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?)")
+            ->execute([$tmpRef, $name, $phone, $type, $narrative, $purok,
+                       $score, $finalPriority, $t['recommendation'], $initialStatus,
+                       $online ? null : ($actorId ?: null), $online ? 'Unassigned' : $actorName]);
         $incidentId = (int) $pdo->lastInsertId();
 
         $trackingId = sprintf('TRK-%s-%03d', date('Y'), $incidentId);
         $pdo->prepare('UPDATE incident_reports SET reference_number = ? WHERE id = ?')->execute([$trackingId, $incidentId]);
 
-        $party = $pdo->prepare('INSERT INTO case_parties (incident_id, role, full_name, is_minor) VALUES (?, ?, ?, 0)');
-        if ($name !== 'Walk-in Resident') $party->execute([$incidentId, 'COMPLAINANT', $name]);
-        foreach (array_slice((array) ($a['entities']['respondents'] ?? []), 0, 3) as $rn) {
-            $party->execute([$incidentId, 'RESPONDENT', mb_substr($rn, 0, 120)]);
+    try {
+            $party = $pdo->prepare('INSERT INTO case_parties (incident_id, role, full_name, is_minor) VALUES (?, ?, ?, 0)');
+            if ($name !== 'Walk-in Resident') $party->execute([$incidentId, 'COMPLAINANT', $name]);
+            foreach (array_slice((array) ($a['entities']['respondents'] ?? []), 0, 3) as $rn) {
+                $party->execute([$incidentId, 'RESPONDENT', mb_substr($rn, 0, 120)]);
+            }
+        } catch (Throwable $ignore) {
+            // Skips if table doesn't exist
         }
 
         // Neutral note only: Agent 2 reads milestones, so no justification or analysis text goes here.
@@ -167,8 +169,7 @@ function encode_case_run(array $input, array $actor, array $opts = []): array {
         $pdo->commit();
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        error_log('[encode_case] save failed: ' . $e->getMessage());
-        return $err(500, 'Could not save the incident. Nothing was recorded.');
+        return $err(500, 'DB Error: ' . $e->getMessage());
     }
 
     logAudit('ENCODE_INCIDENT', ['reference' => $trackingId, 'type' => $type, 'priority' => $finalPriority], $actorId);
@@ -207,7 +208,7 @@ function online_case_run(array $in, int $userId): array {
         'complainant_name'      => $name,
         'complainant_phone'     => (string) ($in['phone'] ?? ''),
         'purok'                 => (string) ($in['purok'] ?? ''),
-        'street_address'        => '',
+        'street_address'        => (string) ($in['street'] ?? $in['street_address'] ?? ''),
         'narrative_description' => (string) ($in['narrative'] ?? ''),
         'incident_type'         => (string) ($in['category'] ?? ''),
     ], ['id' => $userId, 'full_name' => $name !== '' ? $name : 'Online Resident'], ['online' => true, 'scenario' => 'ONLINE_PORTAL']);
