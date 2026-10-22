@@ -7,7 +7,13 @@ require_once __DIR__ . '/../auth.php';
 require_once __DIR__ . '/../lib/case_intake.php';
 
 requireJsonPost();
-$actor = requireApiRole(['OFFICER', 'CAPTAIN']);
+$inputPre = json_decode(file_get_contents('php://input'), true);
+$actionPre = (string) ($inputPre['action'] ?? '');
+$allowedRoles = in_array($actionPre, ['inspect_triage', 'inspect_triage_ai'], true) 
+    ? ['RESIDENT', 'OFFICER', 'CAPTAIN', 'ADMIN', 'SYSTEM_ADMIN'] 
+    : ['OFFICER', 'CAPTAIN'];
+
+$actor = requireApiRole($allowedRoles);
 
 $sent = (string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
 $tok  = (string) ($_SESSION['csrf_token'] ?? '');
