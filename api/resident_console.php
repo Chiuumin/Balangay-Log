@@ -1,5 +1,5 @@
 <?php
-ini_set('display_errors', '0');
+ini_set('display_errors', '1');
 error_reporting(E_ALL);
 require_once __DIR__ . '/../auth.php';
 require_once __DIR__ . '/../lib/case_intake.php';
@@ -244,60 +244,30 @@ case 'incident_create':
             }
 
             $locationDetails = trim("{$houseNo} {$street}");
-            $fullNarrative = $narrative . ($locationDetails ? "\n[Location: {$locationDetails}]" : '');
+            $fullNarrative = $narrative . ($locationDetails ? "\n[Landmark/Street: {$locationDetails}]" : '');
 
-            $r = online_case_run([
-                'complainant' => $complainant,
-                'phone'       => $phone,
-                'purok'       => $purok,
-                'category'    => $category,
-                'narrative'   => $fullNarrative,
-                'priority'    => $priority,
-            ], $userId);
+            // Call encode_case_run directly with proper online portal flags
+            $r = encode_case_run([
+                'complainant_name'      => $complainant,
+                'complainant_phone'     => $phone,
+                'purok'                 => $purok,
+                'street_address'        => $street,
+                'narrative_description' => $fullNarrative,
+                'incident_type'         => $category,
+            ], [
+                'id'        => $userId,
+                'full_name' => $complainant,
+                'role'      => 'RESIDENT'
+            ], [
+                'online'    => true,
+                'scenario'  => 'ONLINE_PORTAL'
+            ]);
 
-            if ($r['status'] === 200) {
-                residentRespond(['success' => true, 'message' => "Incident reported successfully. Tracking code: {$r['body']['reference_number']}"]);
+            if (isset($r['status']) && $r['status'] === 200) {
+                $refNum = $r['body']['reference_number'] ?? 'recorded';
+                residentRespond(['success' => true, 'message' => "Incident reported successfully. Tracking code: {$refNum}"]);
             }
-            residentRespond($r['body'], $r['status']);
-
-        case 'profile_update':
-            $fullName = trim((string) ($input['full_name'] ?? ''));
-            $contact = trim((string) ($input['contact_number'] ?? ''));
-
-            if (!$fullName) {
-                residentRespond(['success' => false, 'message' => 'Full name cannot be blank.'], 422);
-            }
-
-            $profilePicPath = null;
-            if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] === UPLOAD_ERR_OK) {
-                $file = $_FILES['profile_picture'];
-                $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-                if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'], true)) {
-                    residentRespond(['success' => false, 'message' => 'Invalid image format.'], 422);
-                }
-
-                $uploadDir = __DIR__ . '/../uploads/profiles/';
-                if (!is_dir($uploadDir)) {
-                    mkdir($uploadDir, 0755, true);
-                }
-
-                $fileName = 'profile_' . $userId . '_' . time() . '.' . $ext;
-                $targetFile = $uploadDir . $fileName;
-
-                if (move_uploaded_file($file['tmp_name'], $targetFile)) {
-                    $profilePicPath = 'uploads/profiles/' . $fileName;
-                }
-            }
-
-            if ($profilePicPath) {
-                $upStmt = $pdo->prepare('UPDATE users SET full_name = ?, contact_number = ?, profile_picture = ? WHERE id = ?');
-                $upStmt->execute([$fullName, $contact, $profilePicPath, $userId]);
-            } else {
-                $upStmt = $pdo->prepare('UPDATE users SET full_name = ?, contact_number = ? WHERE id = ?');
-                $upStmt->execute([$fullName, $contact, $userId]);
-            }
-
-            residentRespond(['success' => true, 'message' => 'Profile details saved successfully.']);
+            residentRespond($r['body'] ?? ['success' => false, 'message' => 'Could not save the incident. Nothing was recorded.'], $r['status'] ?? 500);
 
         case 'password_update':
             $current = (string) ($input['current_password'] ?? '');
