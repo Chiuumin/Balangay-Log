@@ -30,7 +30,14 @@ button { cursor: pointer; }
 [hidden] { display: none !important; }
 .admin-shell { min-height: 100vh; display: grid; grid-template-columns: 252px minmax(0, 1fr); }
 .admin-sidebar { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; padding: 24px 15px 18px; background: var(--sidebar); color: #f2f7f5; }
-.admin-brand { display: flex; align-items: center; gap: 11px; margin: 0 6px 28px; color: inherit; text-decoration: none; }
+.admin-brand { 
+    display: flex; 
+    align-items: center; 
+    gap: 11px; 
+    margin: 0 6px 44px; /* Increases the gap between the brand and the profile card */
+    color: inherit; 
+    text-decoration: none; 
+}
 .admin-brand-mark { width: 39px; height: 39px; display: grid; place-items: center; border-radius: 11px; color: var(--sidebar); background: #c8e0cb; font: 800 20px 'Manrope', sans-serif; }
 .admin-brand strong, .admin-brand small, .admin-identity strong, .admin-identity small { display: block; }
 .admin-brand strong { font: 800 15px 'Manrope', sans-serif; }
@@ -1252,7 +1259,7 @@ button { cursor: pointer; }
 [hidden] { display: none !important; }
 .admin-shell { min-height: 100vh; display: grid; grid-template-columns: 252px minmax(0, 1fr); }
 .admin-sidebar { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; padding: 24px 15px 18px; background: var(--sidebar); color: #f2f7f5; }
-.admin-brand { display: flex; align-items: center; gap: 11px; margin: 0 6px 28px; color: inherit; text-decoration: none; }
+.admin-brand { display: flex; align-items: center; gap: 11px; margin: 0 6px 36px; color: inherit; text-decoration: none; }
 .admin-brand-mark { width: 39px; height: 39px; display: grid; place-items: center; border-radius: 11px; color: var(--sidebar); background: #c8e0cb; font: 800 20px 'Manrope', sans-serif; }
 .admin-brand strong, .admin-brand small, .admin-identity strong, .admin-identity small { display: block; }
 .admin-brand strong { font: 800 15px 'Manrope', sans-serif; }
@@ -2564,7 +2571,7 @@ html[data-theme="dark"] textarea,
 .sidebar-collapse-btn {
     position: absolute;
     z-index: 5;
-    top: 72px;
+    top: 92px; 
     right: -12px;
     width: 26px;
     height: 36px;
@@ -3207,7 +3214,7 @@ html[data-theme="dark"] textarea,
     font-weight: 700;
 }
 
-/* Priority styling rules */
+
 #caseRows td:nth-child(4):is(:contains("Low")),
 #caseRows td:nth-child(4):is(:contains("low")) {
     display: inline-flex;
@@ -3241,7 +3248,7 @@ html[data-theme="dark"] textarea,
     border: 1px solid #dc2626;
 }
 
-/* Status styling rules for Captain table */
+
 #caseRows td:nth-child(5):is(:contains("In Progress")),
 #caseRows td:nth-child(5):is(:contains("Dispatched")) {
     background-color: #eaf2ff !important;
@@ -3264,7 +3271,7 @@ html[data-theme="dark"] textarea,
 }
 
 
-/* --- DARK MODE OVERRIDES FOR CAPTAIN TABLE --- */
+
 [data-theme="dark"] #caseRows td:nth-child(4):is(:contains("Low")) {
     background-color: #283233 !important;
     color: #c3cecf !important;
@@ -3303,4 +3310,57 @@ html[data-theme="dark"] textarea,
     background-color: rgba(180, 133, 46, 0.25) !important;
     color: #ffd077 !important;
     border-color: #d97706 !important;
+}
+
+/* ==========================================================================
+   Sidebar Spacing Fix: Separate Logo and Profile Card
+   ========================================================================== */
+.admin-sidebar > .admin-brand {
+    margin-bottom: 36px !important;
+}
+
+.admin-sidebar > .admin-identity {
+    margin-top: 16px !important;
+    margin-bottom: 28px !important;
+}
+
+/* ==========================================================================
+   Keep Brand in Mobile Drawer, Hide Only in Sticky Top Bar
+   ========================================================================== */
+@media (max-width: 768px) {
+    .mobile-top-header .admin-brand {
+        display: none !important;
+    }
+}
+
+/* ==========================================================================
+   Sidebar Depth & Layering Enhancements
+   ========================================================================== */
+.admin-sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 15px 18px;
+    background: linear-gradient(180deg, var(--sidebar) 0%, #102d2c 100%) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18);
+    z-index: 50;
+}
+
+/* Add a subtle inner shadow/depth to identity and nav elements */
+.admin-identity {
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 6px;
+    padding: 10px 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Dark mode specific sidebar enhancement */
+[data-theme="dark"] .admin-sidebar {
+    background: linear-gradient(180deg, #162d2c 0%, #071212 100%) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
+    box-shadow: 4px 0 28px rgba(0, 0, 0, 0.45);
 }

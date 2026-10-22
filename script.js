@@ -252,21 +252,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const recoveryResendBtn = document.getElementById('recoveryResendBtn');
     let resendTimer = null;
 
-    document.querySelectorAll('[data-recovery-password-toggle]').forEach((toggle) => {
-        toggle.addEventListener('click', () => {
-            const passwordInput = document.getElementById(toggle.dataset.recoveryPasswordToggle);
-            const showPassword = passwordInput.type === 'password';
-            passwordInput.type = showPassword ? 'text' : 'password';
-            toggle.setAttribute('aria-pressed', String(showPassword));
-            toggle.setAttribute(
-                'aria-label',
-                `${showPassword ? 'Hide' : 'Show'} ${passwordInput.id === 'recoveryPassword' ? 'new password' : 'confirm password'}`
-            );
-            toggle.querySelector('[data-eye-closed]').hidden = !showPassword;
-            toggle.querySelector('.eye-icon:not([data-eye-closed])').hidden = showPassword;
-        });
-    });
-
     function showRecoveryStep(name) {
         document.querySelectorAll('[data-recovery-step]').forEach((step) => {
             step.hidden = step.dataset.recoveryStep !== name;

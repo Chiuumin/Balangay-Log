@@ -38,11 +38,13 @@ $csrfToken = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
         </header>
 
         <aside class="admin-sidebar" id="adminSidebar">
-            <div class="sidebar-header-row">
-                <a class="admin-brand" href="admin_dashboard.php" aria-label="BalangayLog System Administration">
-                    <span class="admin-brand-mark">B</span>
-                    <span><strong>BalangayLog</strong><small>BARANGAY DUALE</small></span>
-                </a>
+        	<div class="sidebar-header-row">
+                <a class="admin-brand" href="captain_dashboard.php" aria-label="BalangayLog Executive Overview">
+                <span class="admin-brand-mark" style="background: transparent; overflow: hidden; display: grid; place-items: center;">
+                  <img src="assets/balangaylog-transparent.png" alt="Barangay Logo" style="width: 100%; height: 100%; object-fit: contain;">
+                </span>
+                <span><strong>BalangayLog</strong><small>BARANGAY DUALE</small></span>
+            </a>
                 <div class="sidebar-header-actions">
                     <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" type="button" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">
                         <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>

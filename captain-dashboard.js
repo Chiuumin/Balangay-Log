@@ -455,11 +455,11 @@ function renderHeatmap() {
 /* ---------- tables ---------- */
 const endorseRow = (e) => `<tr>
     <td><strong>${escapeHtml(e.case_no)}</strong><span class="table-secondary">${escapeHtml(e.title || '')}</span></td>
-    <td>${escapeHtml(endorseTypeLabel(e.type))}</td><td>${escapeHtml(e.purok || '—')}</td>
+    <td>${statusPill(e.type)}</td><td>${escapeHtml(e.purok || '—')}</td>
     <td>${escapeHtml(e.referred_by || '—')}</td><td>${escapeHtml(formatDate(e.referred_at))}</td>
     <td><div class="row-actions"><button class="small-button" data-view-case="${Number(e.case_id)}">View</button><button class="small-button" data-endorse="${Number(e.id)}">Endorse / Sign</button></div></td></tr>`;
 
-function renderEndorsements() {
+    function renderEndorsements() {
     const ov = document.getElementById('overviewEndorseRows');
     if (ov) ov.innerHTML = state.endorsements.slice(0, 5).map(endorseRow).join('');
     const ovEmp = document.getElementById('overviewEndorseEmpty');
@@ -484,12 +484,16 @@ function renderCases() {
         && (!search || [c.case_no, c.title, c.purok, c.severity, c.category, c.status].some((v) => String(v || '').toLowerCase().includes(search))));
     const tbody = document.getElementById('caseRows');
     if (tbody) {
-        tbody.innerHTML = rows.map((c) => `<tr>
-            <td><strong>${escapeHtml(c.case_no)}</strong></td>
-            <td>${escapeHtml(c.title)}<span class="table-secondary">${escapeHtml(c.complainant || '')}</span></td>
-            <td>${escapeHtml(c.purok || '—')}</td><td>${statusPill(c.severity)}</td><td>${statusPill(c.status)}</td>
-            <td>${escapeHtml(formatDate(c.incident_datetime))}</td>
-            <td><div class="row-actions"><button class="small-button" data-view-case="${Number(c.id)}">View</button></div></td></tr>`).join('');
+        tbody.innerHTML = rows.map((c) => {
+            const sev = String(c.severity || 'Low').toLowerCase();
+            const priorityPillHtml = `<span class="pill pill-priority-${escapeHtml(sev)}">${escapeHtml(statusLabel(c.severity))}</span>`;
+            return `<tr>
+                <td><strong>${escapeHtml(c.case_no)}</strong></td>
+                <td>${escapeHtml(c.title)}<span class="table-secondary">${escapeHtml(c.complainant || '')}</span></td>
+                <td>${escapeHtml(c.purok || '—')}</td><td>${priorityPillHtml}</td><td>${statusPill(c.status)}</td>
+                <td>${escapeHtml(formatDate(c.incident_datetime))}</td>
+                <td><div class="row-actions"><button class="small-button" data-view-case="${Number(c.id)}">View</button></div></td></tr>`;
+        }).join('');
     }
     const emptyEl = document.getElementById('caseEmpty');
     if (emptyEl) emptyEl.hidden = rows.length > 0;
@@ -895,6 +899,7 @@ document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     localStorage.removeItem('authToken');
     window.location.replace('index.html');
 });
+
 
 const initialView = location.hash.slice(1);
 if (viewTitles[initialView]) setView(initialView);
